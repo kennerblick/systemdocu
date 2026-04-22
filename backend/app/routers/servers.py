@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
@@ -40,7 +41,11 @@ async def get_server(server_id: int, db: AsyncSession = Depends(get_db)):
 async def create_server(payload: ServerCreate, db: AsyncSession = Depends(get_db)):
     server = Server(**payload.model_dump())
     db.add(server)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Hostname '{payload.hostname}' existiert bereits")
     await db.refresh(server)
     return await get_server_or_404(server.id, db)
 
@@ -50,7 +55,11 @@ async def update_server(server_id: int, payload: ServerUpdate, db: AsyncSession 
     server = await get_server_or_404(server_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(server, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Hostname bereits vergeben")
     return await get_server_or_404(server_id, db)
 
 
