@@ -48,7 +48,6 @@
   .tag-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
   #filter-bar{display:flex;align-items:center;gap:8px;margin-left:8px}
   #filter-bar label{font-size:0.82rem;color:#9ca3af}
-  .service-color{background:#7c3aed}
   .svc-postgresql{background:#336791}
   .svc-docker{background:#2496ed}
   .svc-kubernetes{background:#326ce5}
@@ -82,10 +81,10 @@
       <h2 id="sb-hostname"></h2>
       <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
     </div>
-    <div class="meta-row">FQDN: <span id="sb-fqdn">—</span></div>
-    <div class="meta-row">IP: <span id="sb-ip">—</span></div>
+    <div class="meta-row">FQDN: <span id="sb-fqdn">&#8212;</span></div>
+    <div class="meta-row">IP: <span id="sb-ip">&#8212;</span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
-    <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
+    <div class="meta-row">Beschreibung: <span id="sb-desc">&#8212;</span></div>
 
     <div class="section-label">Services</div>
     <div class="service-badges" id="sb-services"></div>
@@ -180,10 +179,10 @@ let allRelations = [];
 let currentServerId = null;
 
 const OS_ICONS = {
-  linux:   {icon: '', color: '#3b82f6'},
-  windows: {icon: '', color: '#60a5fa'},
-  proxmox: {icon: '', color: '#f97316'},
-  esxi:    {icon: '', color: '#22c55e'},
+  linux:   {code: '', color: '#3b82f6'},
+  windows: {code: '', color: '#60a5fa'},
+  proxmox: {code: '', color: '#f97316'},
+  esxi:    {code: '', color: '#22c55e'},
 };
 
 async function api(method, path, body) {
@@ -218,13 +217,14 @@ function buildNode(server) {
     label: server.hostname,
     shape: 'icon',
     icon: {
-      face: 'FontAwesome',
-      code: osInfo.icon,
+      face: '"Font Awesome 6 Free"',
+      weight: 'bold',
+      code: osInfo.code,
       size: 40,
       color: serverColor(server),
     },
     font: {color: '#e0e0e0', size: 12},
-    title: `${server.hostname}\n${server.ip || ''}`,
+    title: server.hostname + (server.ip ? '\n' + server.ip : ''),
   };
 }
 
@@ -334,8 +334,8 @@ function openSidebar(serverId) {
   badges.innerHTML = '';
   (server.services || []).forEach(svc => {
     const b = document.createElement('span');
-    b.className = `badge svc-${svc.type}`;
-    b.textContent = `${svc.type}${svc.version ? ' ' + svc.version : ''}${svc.port ? ':' + svc.port : ''}`;
+    b.className = 'badge svc-' + svc.type;
+    b.textContent = svc.type + (svc.version ? ' ' + svc.version : '') + (svc.port ? ':' + svc.port : '');
     badges.appendChild(b);
   });
 
@@ -367,7 +367,7 @@ async function addService() {
   const type = document.getElementById('svc-type').value;
   const version = document.getElementById('svc-version').value || null;
   const port = parseInt(document.getElementById('svc-port').value) || null;
-  await api('POST', `/servers/${currentServerId}/services`, {type, version, port});
+  await api('POST', '/servers/' + currentServerId + '/services', {type, version, port});
   await loadAll();
   openSidebar(currentServerId);
   document.getElementById('add-service-form').style.display = 'none';
@@ -376,20 +376,20 @@ async function addService() {
 async function assignTag() {
   const tagId = parseInt(document.getElementById('tag-select').value);
   if (!tagId) return;
-  await api('POST', `/servers/${currentServerId}/tags/${tagId}`);
+  await api('POST', '/servers/' + currentServerId + '/tags/' + tagId);
   await loadAll();
   openSidebar(currentServerId);
 }
 
 async function removeTagFromServer(tagId) {
-  await api('DELETE', `/servers/${currentServerId}/tags/${tagId}`);
+  await api('DELETE', '/servers/' + currentServerId + '/tags/' + tagId);
   await loadAll();
   openSidebar(currentServerId);
 }
 
 async function deleteCurrentServer() {
   if (!confirm('Server wirklich löschen?')) return;
-  await api('DELETE', `/servers/${currentServerId}`);
+  await api('DELETE', '/servers/' + currentServerId);
   closeSidebar();
   await loadAll();
 }
@@ -435,7 +435,7 @@ function renderTagList() {
   allTags.forEach(t => {
     const row = document.createElement('div');
     row.className = 'tag-list-item';
-    row.innerHTML = `<div class="tag-dot" style="background:${t.color}"></div><span style="flex:1">${t.name}</span><span style="font-size:0.75rem;color:#6b7280">${t.color}</span>`;
+    row.innerHTML = '<div class="tag-dot" style="background:' + t.color + '"></div><span style="flex:1">' + t.name + '</span><span style="font-size:0.75rem;color:#6b7280">' + t.color + '</span>';
     list.appendChild(row);
   });
 }
@@ -469,7 +469,7 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   });
 });
 
-loadAll();
+document.fonts.ready.then(() => loadAll());
 </script>
 </body>
 </html>
