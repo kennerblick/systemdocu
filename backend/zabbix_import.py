@@ -10,8 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ZABBIX_URL = os.environ["ZABBIX_URL"]
-ZABBIX_USER = os.environ["ZABBIX_USER"]
-ZABBIX_PASSWORD = os.environ["ZABBIX_PASSWORD"]
+ZABBIX_API_TOKEN = os.getenv("ZABBIX_API_TOKEN")
+ZABBIX_USER = os.getenv("ZABBIX_USER")
+ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD")
 API_URL = os.getenv("SYSTEMDOCU_API_URL", "http://localhost:8000/api/import/zabbix")
 
 TEMPLATE_MAP = {
@@ -47,7 +48,10 @@ def map_templates(template_names):
 
 def main():
     zapi = ZabbixAPI(ZABBIX_URL)
-    zapi.login(ZABBIX_USER, ZABBIX_PASSWORD)
+    if ZABBIX_API_TOKEN:
+        zapi.login(api_token=ZABBIX_API_TOKEN)
+    else:
+        zapi.login(ZABBIX_USER, ZABBIX_PASSWORD)
 
     hosts = zapi.host.get(
         output=["hostid", "host", "name", "status"],
