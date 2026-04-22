@@ -10,55 +10,54 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
-  #topbar{background:#16213e;padding:10px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0}
+  #topbar{background:#16213e;padding:10px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0;flex-wrap:wrap}
   #topbar h1{font-size:1.1rem;color:#e94560;margin-right:auto;letter-spacing:1px}
   button{background:#0f3460;color:#e0e0e0;border:none;padding:7px 14px;border-radius:5px;cursor:pointer;font-size:0.85rem}
   button:hover{background:#e94560}
   button.danger{background:#7f1d1d}
   button.danger:hover{background:#ef4444}
   button.small{padding:3px 8px;font-size:0.75rem}
-  select,input[type=text],input[type=number],input[type=color]{background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:4px;padding:5px 8px;font-size:0.85rem}
+  button.xs{padding:1px 6px;font-size:0.7rem}
+  select,input[type=text],input[type=number],input[type=color],textarea{background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:4px;padding:5px 8px;font-size:0.85rem}
   select{cursor:pointer}
   #main{display:flex;flex:1;overflow:hidden}
   #graph{flex:1;background:#1a1a2e}
-  #sidebar{width:340px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;padding:16px;display:none;flex-direction:column;gap:12px}
+  #sidebar{width:360px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:10px}
   #sidebar.open{display:flex}
   #sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
   .meta-row{font-size:0.82rem;color:#9ca3af}
   .meta-row span{color:#e0e0e0}
-  .section-label{font-size:0.78rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
-  .service-badges{display:flex;flex-wrap:wrap;gap:6px}
-  .badge{padding:3px 10px;border-radius:12px;font-size:0.78rem;font-weight:600;background:#1d4ed8;color:#fff}
-  .tag-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .chip{padding:3px 10px;border-radius:12px;font-size:0.78rem;color:#fff;cursor:pointer;user-select:none}
-  .chip:hover{opacity:0.7}
-  .tag-assign{display:flex;gap:6px;align-items:center;margin-top:4px}
-  .add-service-form{display:flex;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px}
-  .add-service-form label{font-size:0.78rem;color:#9ca3af}
-  .add-service-row{display:flex;gap:6px;align-items:center}
+  .section-label{font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+  .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.75rem;color:#fff;cursor:pointer;user-select:none}
+  .chip:hover{opacity:0.75}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
   .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center}
   .modal-backdrop.open{display:flex}
-  .modal{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:20px;min-width:340px;max-width:500px;width:100%;display:flex;flex-direction:column;gap:12px}
+  .modal{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:20px;min-width:340px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto}
   .modal h3{color:#e94560;font-size:1rem}
   .modal-row{display:flex;flex-direction:column;gap:4px}
   .modal-row label{font-size:0.78rem;color:#9ca3af}
-  .modal-row input,.modal-row select{width:100%}
+  .modal-row input,.modal-row select,.modal-row textarea{width:100%}
   .modal-actions{display:flex;gap:8px;justify-content:flex-end}
-  .tag-list-item{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #0f3460}
-  .tag-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
-  #filter-bar{display:flex;align-items:center;gap:8px;margin-left:8px}
+  .list-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #0f3460}
+  .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+  #filter-bar{display:flex;align-items:center;gap:6px}
   #filter-bar label{font-size:0.82rem;color:#9ca3af}
-  .svc-postgresql{background:#336791}
-  .svc-docker{background:#2496ed}
-  .svc-kubernetes{background:#326ce5}
-  .svc-hyperv{background:#00adef}
-  .svc-samba{background:#d97706}
-  .svc-sftp{background:#059669}
-  .svc-freeipa{background:#7c3aed}
-  .svc-zabbix{background:#e53e3e}
-  .svc-graylog{background:#2d3748}
-  .svc-veeam{background:#00b050}
-  .svc-minio{background:#c83b0e}
+  .svc-block{background:#0f1b35;border-radius:6px;padding:8px;margin-top:4px}
+  .svc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .svc-title{font-size:0.82rem;font-weight:600;color:#93c5fd}
+  .instance-row{display:flex;flex-direction:column;gap:3px;padding:5px 0;border-top:1px solid #1e3a5f}
+  .instance-name{font-size:0.8rem;color:#e0e0e0;font-weight:500}
+  .instance-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+  .add-instance-form{display:flex;gap:5px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid #1e3a5f}
+  .add-instance-form input{flex:1;font-size:0.78rem;padding:3px 6px}
+  .assign-row{display:flex;gap:5px;align-items:center;margin-top:4px}
+  .assign-row select{flex:1;font-size:0.75rem;padding:2px 4px}
+  .svc-postgresql .svc-title{color:#93c5fd}
+  .badge{padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:#fff}
+  .svc-postgresql{background:#1e3a5f}
+  .svc-docker .svc-title{color:#7dd3fc}
+  .svc-kubernetes .svc-title{color:#818cf8}
 </style>
 </head>
 <body>
@@ -71,26 +70,29 @@
   </div>
   <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
   <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
+  <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
+  <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
   <button onclick="exportJson()"><i class="fa-solid fa-download"></i> Export</button>
 </div>
 
 <div id="main">
   <div id="graph"></div>
+
   <div id="sidebar">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2 id="sb-hostname"></h2>
       <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
     </div>
-    <div class="meta-row">FQDN: <span id="sb-fqdn">&#8212;</span></div>
-    <div class="meta-row">IP: <span id="sb-ip">&#8212;</span></div>
+    <div class="meta-row">FQDN: <span id="sb-fqdn">—</span></div>
+    <div class="meta-row">IP: <span id="sb-ip">—</span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
-    <div class="meta-row">Beschreibung: <span id="sb-desc">&#8212;</span></div>
+    <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
 
-    <div class="section-label">Services</div>
-    <div class="service-badges" id="sb-services"></div>
-    <button class="small" onclick="toggleAddService()"><i class="fa-solid fa-plus"></i> Service hinzufügen</button>
-    <div class="add-service-form" id="add-service-form" style="display:none">
-      <div class="add-service-row">
+    <div class="section-label">Services &amp; Instanzen</div>
+    <div id="sb-services"></div>
+    <button class="small" style="margin-top:4px" onclick="toggleAddService()"><i class="fa-solid fa-plus"></i> Service hinzufügen</button>
+    <div id="add-service-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px;margin-top:4px">
+      <div style="display:flex;gap:6px;align-items:center">
         <select id="svc-type">
           <option value="postgresql">PostgreSQL</option>
           <option value="docker">Docker</option>
@@ -111,16 +113,16 @@
     </div>
 
     <div class="section-label">Tags</div>
-    <div class="tag-chips" id="sb-tags"></div>
-    <div class="tag-assign">
-      <select id="tag-select"></select>
+    <div class="chips" id="sb-tags"></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+      <select id="tag-select" style="flex:1"></select>
       <button class="small" onclick="assignTag()">Hinzufügen</button>
     </div>
 
-    <div class="section-label" style="margin-top:8px">Relation hinzufügen</div>
+    <div class="section-label">Relation hinzufügen</div>
     <div style="display:flex;gap:6px;align-items:center">
       <select id="rel-target" style="flex:1"></select>
-      <select id="rel-type" style="width:130px">
+      <select id="rel-type" style="width:120px">
         <option value="connects_to">connects_to</option>
         <option value="hosts">hosts</option>
         <option value="depends_on">depends_on</option>
@@ -130,6 +132,7 @@
   </div>
 </div>
 
+<!-- Modal: Server hinzufügen -->
 <div class="modal-backdrop" id="modal-add-server">
   <div class="modal">
     <h3>Server hinzufügen</h3>
@@ -152,6 +155,7 @@
   </div>
 </div>
 
+<!-- Modal: Tags -->
 <div class="modal-backdrop" id="modal-tags">
   <div class="modal">
     <h3>Tags verwalten</h3>
@@ -162,9 +166,39 @@
       <input type="color" id="new-tag-color" value="#3498db" style="width:40px;padding:2px"/>
       <button onclick="createTag()">Erstellen</button>
     </div>
-    <div class="modal-actions">
-      <button onclick="closeModal('modal-tags')">Schließen</button>
+    <div class="modal-actions"><button onclick="closeModal('modal-tags')">Schließen</button></div>
+  </div>
+</div>
+
+<!-- Modal: Umgebungen -->
+<div class="modal-backdrop" id="modal-environments">
+  <div class="modal">
+    <h3>Umgebungen verwalten</h3>
+    <div id="env-list"></div>
+    <hr style="border-color:#0f3460;margin:8px 0"/>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="new-env-name" placeholder="Name" style="flex:1;min-width:100px"/>
+      <input type="text" id="new-env-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
+      <input type="color" id="new-env-color" value="#3b82f6" style="width:40px;padding:2px"/>
+      <button onclick="createEnvironment()">Erstellen</button>
     </div>
+    <div class="modal-actions"><button onclick="closeModal('modal-environments')">Schließen</button></div>
+  </div>
+</div>
+
+<!-- Modal: Anwendungen -->
+<div class="modal-backdrop" id="modal-applications">
+  <div class="modal">
+    <h3>Anwendungen verwalten</h3>
+    <div id="app-list"></div>
+    <hr style="border-color:#0f3460;margin:8px 0"/>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="new-app-name" placeholder="Name" style="flex:1;min-width:100px"/>
+      <input type="text" id="new-app-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
+      <input type="color" id="new-app-color" value="#8b5cf6" style="width:40px;padding:2px"/>
+      <button onclick="createApplication()">Erstellen</button>
+    </div>
+    <div class="modal-actions"><button onclick="closeModal('modal-applications')">Schließen</button></div>
   </div>
 </div>
 
@@ -176,6 +210,8 @@ let edges = null;
 let allServers = [];
 let allTags = [];
 let allRelations = [];
+let allEnvironments = [];
+let allApplications = [];
 let currentServerId = null;
 
 const OS_COLORS = {
@@ -183,6 +219,13 @@ const OS_COLORS = {
   windows: '#60a5fa',
   proxmox: '#f97316',
   esxi:    '#22c55e',
+};
+
+const SVC_COLORS = {
+  postgresql:'#336791', docker:'#2496ed', kubernetes:'#326ce5',
+  hyperv:'#00adef', samba:'#d97706', sftp:'#059669',
+  freeipa:'#7c3aed', zabbix:'#e53e3e', graylog:'#2d3748',
+  veeam:'#00b050', minio:'#c83b0e',
 };
 
 async function api(method, path, body) {
@@ -195,14 +238,21 @@ async function api(method, path, body) {
 }
 
 async function loadAll() {
-  [allServers, allTags, allRelations] = await Promise.all([
-    api('GET', '/servers'),
-    api('GET', '/tags'),
-    api('GET', '/relations'),
-  ]);
+  try {
+    [allServers, allTags, allRelations, allEnvironments, allApplications] = await Promise.all([
+      api('GET', '/servers'),
+      api('GET', '/tags'),
+      api('GET', '/relations'),
+      api('GET', '/environments'),
+      api('GET', '/applications'),
+    ]);
+  } catch (e) {
+    console.error('loadAll failed:', e);
+    return;
+  }
   renderGraph();
   updateTagFilter();
-  updateTagSelects();
+  if (currentServerId) openSidebar(currentServerId);
 }
 
 function serverColor(server) {
@@ -226,98 +276,55 @@ function buildNode(server) {
 function renderGraph() {
   const nodeData = allServers.map(buildNode);
   const edgeData = allRelations.map(r => ({
-    id: r.id,
-    from: r.source_id,
-    to: r.target_id,
-    label: r.type,
-    arrows: 'to',
-    color: {color: '#4b5563'},
+    id: r.id, from: r.source_id, to: r.target_id, label: r.type,
+    arrows: 'to', color: {color: '#4b5563'},
     font: {color: '#9ca3af', size: 10, align: 'middle'},
   }));
 
   if (network) {
-    nodes.clear();
-    nodes.add(nodeData);
-    edges.clear();
-    edges.add(edgeData);
+    nodes.clear(); nodes.add(nodeData);
+    edges.clear(); edges.add(edgeData);
     return;
   }
 
   const {DataSet, Network} = vis;
   nodes = new DataSet(nodeData);
   edges = new DataSet(edgeData);
-
   network = new Network(document.getElementById('graph'), {nodes, edges}, {
-    physics: {
-      barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150},
-      stabilization: {iterations: 150},
-    },
+    physics: {barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150}, stabilization: {iterations: 150}},
     interaction: {hover: true, tooltipDelay: 200},
     edges: {smooth: {type: 'continuous'}},
   });
-
   network.on('click', params => {
-    if (params.nodes.length) {
-      openSidebar(params.nodes[0]);
-    } else {
-      closeSidebar();
-    }
+    if (params.nodes.length) openSidebar(params.nodes[0]);
+    else closeSidebar();
   });
 }
 
 function updateTagFilter() {
   const sel = document.getElementById('tag-filter');
-  const current = sel.value;
+  const cur = sel.value;
   sel.innerHTML = '<option value="">Alle</option>';
   allTags.forEach(t => {
     const o = document.createElement('option');
-    o.value = t.id;
-    o.textContent = t.name;
-    sel.appendChild(o);
+    o.value = t.id; o.textContent = t.name; sel.appendChild(o);
   });
-  sel.value = current;
+  sel.value = cur;
 }
 
-function applyTagFilter() {
+document.getElementById('tag-filter').addEventListener('change', () => {
   const tagId = parseInt(document.getElementById('tag-filter').value);
-  if (!tagId) {
-    nodes.update(allServers.map(s => ({id: s.id, opacity: 1})));
-    return;
-  }
+  if (!nodes) return;
+  if (!tagId) { nodes.update(allServers.map(s => ({id: s.id, opacity: 1}))); return; }
   allServers.forEach(s => {
-    const match = s.tags.some(t => t.id === tagId);
-    nodes.update({id: s.id, opacity: match ? 1 : 0.15});
+    nodes.update({id: s.id, opacity: s.tags.some(t => t.id === tagId) ? 1 : 0.15});
   });
-}
-
-document.getElementById('tag-filter').addEventListener('change', applyTagFilter);
-
-function updateTagSelects() {
-  const sel = document.getElementById('tag-select');
-  sel.innerHTML = '';
-  allTags.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.id;
-    o.textContent = t.name;
-    sel.appendChild(o);
-  });
-
-  const relSel = document.getElementById('rel-target');
-  relSel.innerHTML = '';
-  allServers.forEach(s => {
-    if (s.id === currentServerId) return;
-    const o = document.createElement('option');
-    o.value = s.id;
-    o.textContent = s.hostname;
-    relSel.appendChild(o);
-  });
-}
+});
 
 function openSidebar(serverId) {
   const server = allServers.find(s => s.id === serverId);
   if (!server) return;
   currentServerId = serverId;
-
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sb-hostname').textContent = server.hostname;
   document.getElementById('sb-fqdn').textContent = server.fqdn || '—';
@@ -325,32 +332,172 @@ function openSidebar(serverId) {
   document.getElementById('sb-os').textContent = server.os_type;
   document.getElementById('sb-desc').textContent = server.description || '—';
 
-  const badges = document.getElementById('sb-services');
-  badges.innerHTML = '';
-  (server.services || []).forEach(svc => {
-    const b = document.createElement('span');
-    b.className = 'badge svc-' + svc.type;
-    b.textContent = svc.type + (svc.version ? ' ' + svc.version : '') + (svc.port ? ':' + svc.port : '');
-    badges.appendChild(b);
-  });
+  renderServicesSection(server);
 
   const chips = document.getElementById('sb-tags');
   chips.innerHTML = '';
   (server.tags || []).forEach(tag => {
     const c = document.createElement('span');
-    c.className = 'chip';
-    c.style.background = tag.color;
-    c.textContent = tag.name;
+    c.className = 'chip'; c.style.background = tag.color;
+    c.innerHTML = tag.name + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
     c.onclick = () => removeTagFromServer(tag.id);
     chips.appendChild(c);
   });
 
-  updateTagSelects();
+  const tagSel = document.getElementById('tag-select');
+  tagSel.innerHTML = '';
+  allTags.forEach(t => {
+    const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; tagSel.appendChild(o);
+  });
+
+  const relSel = document.getElementById('rel-target');
+  relSel.innerHTML = '';
+  allServers.forEach(s => {
+    if (s.id === currentServerId) return;
+    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; relSel.appendChild(o);
+  });
+}
+
+function renderServicesSection(server) {
+  const container = document.getElementById('sb-services');
+  container.innerHTML = '';
+  (server.services || []).forEach(svc => {
+    const block = document.createElement('div');
+    block.className = 'svc-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'svc-header';
+    const col = SVC_COLORS[svc.type] || '#4b5563';
+    hdr.innerHTML = '<span class="svc-title" style="color:' + col + '">' +
+      svc.type + (svc.version ? ' ' + svc.version : '') + (svc.port ? ':' + svc.port : '') +
+      '</span>';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'xs danger';
+    delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    delBtn.onclick = () => deleteService(svc.id);
+    hdr.appendChild(delBtn);
+    block.appendChild(hdr);
+
+    (svc.instances || []).forEach(inst => {
+      const row = document.createElement('div');
+      row.className = 'instance-row';
+      row.innerHTML = '<div class="instance-name">' + escHtml(inst.name) +
+        (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '') +
+        ' <button class="xs danger" onclick="deleteInstance(' + inst.id + ')"><i class="fa-solid fa-xmark"></i></button></div>';
+
+      const chipRow = document.createElement('div');
+      chipRow.className = 'instance-chips';
+
+      (inst.environments || []).forEach(env => {
+        const c = document.createElement('span');
+        c.className = 'chip'; c.style.background = env.color;
+        c.innerHTML = env.name + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.onclick = () => removeInstanceEnv(inst.id, env.id);
+        chipRow.appendChild(c);
+      });
+
+      (inst.applications || []).forEach(app => {
+        const c = document.createElement('span');
+        c.className = 'chip'; c.style.background = app.color;
+        c.innerHTML = app.name + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.onclick = () => removeInstanceApp(inst.id, app.id);
+        chipRow.appendChild(c);
+      });
+
+      if (allEnvironments.length) {
+        const envSel = document.createElement('select');
+        envSel.style.cssText = 'flex:1;font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+        allEnvironments.forEach(e => {
+          const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
+        });
+        const envBtn = document.createElement('button');
+        envBtn.className = 'xs'; envBtn.textContent = '+Umgeb.';
+        envBtn.onclick = () => addInstanceEnv(inst.id, parseInt(envSel.value));
+        chipRow.appendChild(envSel);
+        chipRow.appendChild(envBtn);
+      }
+
+      if (allApplications.length) {
+        const appSel = document.createElement('select');
+        appSel.style.cssText = 'flex:1;font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+        allApplications.forEach(a => {
+          const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; appSel.appendChild(o);
+        });
+        const appBtn = document.createElement('button');
+        appBtn.className = 'xs'; appBtn.textContent = '+Anwend.';
+        appBtn.onclick = () => addInstanceApp(inst.id, parseInt(appSel.value));
+        chipRow.appendChild(appSel);
+        chipRow.appendChild(appBtn);
+      }
+
+      row.appendChild(chipRow);
+      block.appendChild(row);
+    });
+
+    const addRow = document.createElement('div');
+    addRow.className = 'add-instance-form';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.placeholder = 'Instanzname...';
+    const descInput = document.createElement('input');
+    descInput.type = 'text'; descInput.placeholder = 'Beschreibung'; descInput.style.width = '100px';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'xs'; addBtn.textContent = '+ Instanz';
+    addBtn.onclick = () => addInstance(svc.id, nameInput.value, descInput.value);
+    addRow.appendChild(nameInput);
+    addRow.appendChild(descInput);
+    addRow.appendChild(addBtn);
+    block.appendChild(addRow);
+
+    container.appendChild(block);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function closeSidebar() {
   currentServerId = null;
   document.getElementById('sidebar').classList.remove('open');
+}
+
+async function addInstance(serviceId, name, description) {
+  name = name.trim();
+  if (!name) return alert('Instanzname fehlt');
+  try {
+    await api('POST', '/services/' + serviceId + '/instances', {name, description: description || null});
+  } catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteInstance(instanceId) {
+  try { await api('DELETE', '/instances/' + instanceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function addInstanceEnv(instanceId, envId) {
+  try { await api('POST', '/instances/' + instanceId + '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function removeInstanceEnv(instanceId, envId) {
+  try { await api('DELETE', '/instances/' + instanceId + '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function addInstanceApp(instanceId, appId) {
+  try { await api('POST', '/instances/' + instanceId + '/applications/' + appId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function removeInstanceApp(instanceId, appId) {
+  try { await api('DELETE', '/instances/' + instanceId + '/applications/' + appId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
 }
 
 function toggleAddService() {
@@ -364,31 +511,36 @@ async function addService() {
   const port = parseInt(document.getElementById('svc-port').value) || null;
   try {
     await api('POST', '/servers/' + currentServerId + '/services', {type, version, port});
-  } catch (e) {
-    return alert('Fehler: ' + e.message);
-  }
+  } catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
-  openSidebar(currentServerId);
   document.getElementById('add-service-form').style.display = 'none';
+}
+
+async function deleteService(serviceId) {
+  if (!confirm('Service und alle Instanzen löschen?')) return;
+  try { await api('DELETE', '/services/' + serviceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
 }
 
 async function assignTag() {
   const tagId = parseInt(document.getElementById('tag-select').value);
   if (!tagId) return;
-  await api('POST', '/servers/' + currentServerId + '/tags/' + tagId);
+  try { await api('POST', '/servers/' + currentServerId + '/tags/' + tagId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
-  openSidebar(currentServerId);
 }
 
 async function removeTagFromServer(tagId) {
-  await api('DELETE', '/servers/' + currentServerId + '/tags/' + tagId);
+  try { await api('DELETE', '/servers/' + currentServerId + '/tags/' + tagId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
-  openSidebar(currentServerId);
 }
 
 async function deleteCurrentServer() {
   if (!confirm('Server wirklich löschen?')) return;
-  await api('DELETE', '/servers/' + currentServerId);
+  try { await api('DELETE', '/servers/' + currentServerId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   closeSidebar();
   await loadAll();
 }
@@ -397,7 +549,8 @@ async function addRelation() {
   const target_id = parseInt(document.getElementById('rel-target').value);
   const type = document.getElementById('rel-type').value;
   if (!target_id) return;
-  await api('POST', '/relations', {source_id: currentServerId, target_id, type});
+  try { await api('POST', '/relations', {source_id: currentServerId, target_id, type}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }
 
@@ -416,14 +569,9 @@ async function createServer() {
       os_type: document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
     });
-  } catch (e) {
-    return alert('Fehler: ' + e.message);
-  }
+  } catch (e) { return alert('Fehler: ' + e.message); }
   closeModal('modal-add-server');
-  document.getElementById('new-hostname').value = '';
-  document.getElementById('new-fqdn').value = '';
-  document.getElementById('new-ip').value = '';
-  document.getElementById('new-desc').value = '';
+  ['new-hostname','new-fqdn','new-ip','new-desc'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
 }
 
@@ -437,8 +585,8 @@ function renderTagList() {
   list.innerHTML = '';
   allTags.forEach(t => {
     const row = document.createElement('div');
-    row.className = 'tag-list-item';
-    row.innerHTML = '<div class="tag-dot" style="background:' + t.color + '"></div><span style="flex:1">' + t.name + '</span><span style="font-size:0.75rem;color:#6b7280">' + t.color + '</span>';
+    row.className = 'list-item';
+    row.innerHTML = '<div class="dot" style="background:' + t.color + '"></div><span style="flex:1">' + escHtml(t.name) + '</span>';
     list.appendChild(row);
   });
 }
@@ -447,10 +595,89 @@ async function createTag() {
   const name = document.getElementById('new-tag-name').value.trim();
   const color = document.getElementById('new-tag-color').value;
   if (!name) return;
-  await api('POST', '/tags', {name, color});
+  try { await api('POST', '/tags', {name, color}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('new-tag-name').value = '';
   await loadAll();
   renderTagList();
+}
+
+function openManageEnvironments() {
+  renderEnvList();
+  document.getElementById('modal-environments').classList.add('open');
+}
+
+function renderEnvList() {
+  const list = document.getElementById('env-list');
+  list.innerHTML = '';
+  allEnvironments.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = '<div class="dot" style="background:' + e.color + '"></div>' +
+      '<span style="flex:1">' + escHtml(e.name) + '</span>' +
+      (e.description ? '<span style="font-size:0.75rem;color:#6b7280">' + escHtml(e.description) + '</span>' : '') +
+      '<button class="xs danger" onclick="deleteEnvironment(' + e.id + ')"><i class="fa-solid fa-xmark"></i></button>';
+    list.appendChild(row);
+  });
+}
+
+async function createEnvironment() {
+  const name = document.getElementById('new-env-name').value.trim();
+  const description = document.getElementById('new-env-desc').value || null;
+  const color = document.getElementById('new-env-color').value;
+  if (!name) return;
+  try { await api('POST', '/environments', {name, description, color}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  document.getElementById('new-env-name').value = '';
+  document.getElementById('new-env-desc').value = '';
+  await loadAll();
+  renderEnvList();
+}
+
+async function deleteEnvironment(envId) {
+  try { await api('DELETE', '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderEnvList();
+}
+
+function openManageApplications() {
+  renderAppList();
+  document.getElementById('modal-applications').classList.add('open');
+}
+
+function renderAppList() {
+  const list = document.getElementById('app-list');
+  list.innerHTML = '';
+  allApplications.forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = '<div class="dot" style="background:' + a.color + '"></div>' +
+      '<span style="flex:1">' + escHtml(a.name) + '</span>' +
+      (a.description ? '<span style="font-size:0.75rem;color:#6b7280">' + escHtml(a.description) + '</span>' : '') +
+      '<button class="xs danger" onclick="deleteApplication(' + a.id + ')"><i class="fa-solid fa-xmark"></i></button>';
+    list.appendChild(row);
+  });
+}
+
+async function createApplication() {
+  const name = document.getElementById('new-app-name').value.trim();
+  const description = document.getElementById('new-app-desc').value || null;
+  const color = document.getElementById('new-app-color').value;
+  if (!name) return;
+  try { await api('POST', '/applications', {name, description, color}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  document.getElementById('new-app-name').value = '';
+  document.getElementById('new-app-desc').value = '';
+  await loadAll();
+  renderAppList();
+}
+
+async function deleteApplication(appId) {
+  try { await api('DELETE', '/applications/' + appId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderAppList();
 }
 
 function closeModal(id) {
@@ -467,9 +694,7 @@ async function exportJson() {
 }
 
 document.querySelectorAll('.modal-backdrop').forEach(el => {
-  el.addEventListener('click', e => {
-    if (e.target === el) el.classList.remove('open');
-  });
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
 loadAll();

@@ -11,6 +11,18 @@ server_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
 
+instance_environments = Table(
+    "instance_environments", Base.metadata,
+    Column("instance_id", Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), primary_key=True),
+    Column("environment_id", Integer, ForeignKey("environments.id", ondelete="CASCADE"), primary_key=True),
+)
+
+instance_applications = Table(
+    "instance_applications", Base.metadata,
+    Column("instance_id", Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), primary_key=True),
+    Column("application_id", Integer, ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class Server(Base):
     __tablename__ = "servers"
@@ -38,6 +50,39 @@ class Service(Base):
     detail = Column(Text)
 
     server = relationship("Server", back_populates="services")
+    instances = relationship("ServiceInstance", back_populates="service", cascade="all, delete-orphan")
+
+
+class ServiceInstance(Base):
+    __tablename__ = "service_instances"
+    id = Column(Integer, primary_key=True, index=True)
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+
+    service = relationship("Service", back_populates="instances")
+    environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
+    applications = relationship("Application", secondary=instance_applications, back_populates="instances")
+
+
+class Environment(Base):
+    __tablename__ = "environments"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(Text)
+    color = Column(String(7), default="#3b82f6")
+
+    instances = relationship("ServiceInstance", secondary=instance_environments, back_populates="environments")
+
+
+class Application(Base):
+    __tablename__ = "applications"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(Text)
+    color = Column(String(7), default="#8b5cf6")
+
+    instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="instances")
 
 
 class Tag(Base):

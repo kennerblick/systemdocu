@@ -8,9 +8,9 @@ from sqlalchemy import select, insert
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Tag, Relation, server_tags
-from .schemas import RelationCreate, RelationOut, ZabbixImportPayload
-from .routers import servers, services, tags
+from .models import Server, Service, Tag, Relation, server_tags, Environment, Application
+from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
+from .routers import servers, services, tags, instances, environments, applications
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -44,6 +44,9 @@ app.add_middleware(
 app.include_router(servers.router)
 app.include_router(services.router)
 app.include_router(tags.router)
+app.include_router(instances.router)
+app.include_router(environments.router)
+app.include_router(applications.router)
 
 
 @app.on_event("startup")

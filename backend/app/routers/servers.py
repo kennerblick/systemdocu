@@ -6,16 +6,26 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
-from ..models import Server, Tag
+from ..models import Server, Tag, Service, ServiceInstance
 from ..schemas import ServerCreate, ServerUpdate, ServerOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
+
+_server_options = [
+    selectinload(Server.services)
+        .selectinload(Service.instances)
+        .selectinload(ServiceInstance.environments),
+    selectinload(Server.services)
+        .selectinload(Service.instances)
+        .selectinload(ServiceInstance.applications),
+    selectinload(Server.tags),
+]
 
 
 async def get_server_or_404(server_id: int, db: AsyncSession) -> Server:
     result = await db.execute(
         select(Server)
-        .options(selectinload(Server.services), selectinload(Server.tags))
+        .options(*_server_options)
         .where(Server.id == server_id)
     )
     server = result.scalar_one_or_none()
@@ -27,7 +37,7 @@ async def get_server_or_404(server_id: int, db: AsyncSession) -> Server:
 @router.get("", response_model=List[ServerOut])
 async def list_servers(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Server).options(selectinload(Server.services), selectinload(Server.tags))
+        select(Server).options(*_server_options)
     )
     return result.scalars().all()
 
