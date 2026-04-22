@@ -8,12 +8,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/vis-network.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.css"/>
 <style>
-  @font-face {
-    font-family: 'FontAwesome';
-    src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-solid-900.woff2') format('woff2');
-    font-weight: 900;
-    font-style: normal;
-  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
   #topbar{background:#16213e;padding:10px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0}
@@ -213,24 +207,19 @@ async function loadAll() {
 
 function serverColor(server) {
   if (server.tags && server.tags.length > 0) return server.tags[0].color;
-  return OS_ICONS[server.os_type]?.color || '#888';
+  return OS_COLORS[server.os_type] || '#888';
 }
 
 function buildNode(server) {
-  const osInfo = OS_ICONS[server.os_type] || OS_ICONS.linux;
+  const col = serverColor(server);
   return {
     id: server.id,
     label: server.hostname,
-    shape: 'icon',
-    icon: {
-      face: 'FontAwesome',
-      weight: 900,
-      code: osInfo.code,
-      size: 40,
-      color: serverColor(server),
-    },
-    font: {color: '#e0e0e0', size: 12},
-    title: server.hostname + (server.ip ? '\n' + server.ip : ''),
+    shape: 'dot',
+    size: 18,
+    color: {background: col, border: col, highlight: {background: col, border: '#fff'}},
+    font: {color: '#e0e0e0', size: 13},
+    title: '[' + server.os_type + '] ' + server.hostname + (server.ip ? ' (' + server.ip + ')' : ''),
   };
 }
 
@@ -483,7 +472,7 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
   });
 });
 
-document.fonts.ready.then(() => loadAll());
+loadAll();
 </script>
 </body>
 </html>
