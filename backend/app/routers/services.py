@@ -1,18 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
-from ..models import Service, Server
+from ..models import Service, Server, ServiceInstance
 from ..schemas import ServiceCreate, ServiceOut
 
 router = APIRouter(tags=["services"])
 
+_svc_options = [
+    selectinload(Service.instances).selectinload(ServiceInstance.environments),
+    selectinload(Service.instances).selectinload(ServiceInstance.applications),
+]
+
 
 @router.get("/api/servers/{server_id}/services", response_model=List[ServiceOut])
 async def list_services(server_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Service).where(Service.server_id == server_id))
+    result = await db.execute(
+        select(Service).options(*_svc_options).where(Service.server_id == server_id)
+    )
     return result.scalars().all()
 
 
@@ -24,8 +32,10 @@ async def create_service(server_id: int, payload: ServiceCreate, db: AsyncSessio
     service = Service(server_id=server_id, **payload.model_dump())
     db.add(service)
     await db.commit()
-    await db.refresh(service)
-    return service
+    result = await db.execute(
+        select(Service).options(*_svc_options).where(Service.id == service.id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/api/services/{service_id}", status_code=204)
