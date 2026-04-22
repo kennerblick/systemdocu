@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>systemdocu</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/vis-network.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.css"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
+  #topbar{background:#16213e;padding:10px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0}
+  #topbar h1{font-size:1.1rem;color:#e94560;margin-right:auto;letter-spacing:1px}
+  button{background:#0f3460;color:#e0e0e0;border:none;padding:7px 14px;border-radius:5px;cursor:pointer;font-size:0.85rem}
+  button:hover{background:#e94560}
+  button.danger{background:#7f1d1d}
+  button.danger:hover{background:#ef4444}
+  button.small{padding:3px 8px;font-size:0.75rem}
+  select,input[type=text],input[type=number],input[type=color]{background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:4px;padding:5px 8px;font-size:0.85rem}
+  select{cursor:pointer}
+  #main{display:flex;flex:1;overflow:hidden}
+  #graph{flex:1;background:#1a1a2e}
+  #sidebar{width:340px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;padding:16px;display:none;flex-direction:column;gap:12px}
+  #sidebar.open{display:flex}
+  #sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
+  .meta-row{font-size:0.82rem;color:#9ca3af}
+  .meta-row span{color:#e0e0e0}
+  .section-label{font-size:0.78rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+  .service-badges{display:flex;flex-wrap:wrap;gap:6px}
+  .badge{padding:3px 10px;border-radius:12px;font-size:0.78rem;font-weight:600;background:#1d4ed8;color:#fff}
+  .tag-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:3px 10px;border-radius:12px;font-size:0.78rem;color:#fff;cursor:pointer;user-select:none}
+  .chip:hover{opacity:0.7}
+  .tag-assign{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .add-service-form{display:flex;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px}
+  .add-service-form label{font-size:0.78rem;color:#9ca3af}
+  .add-service-row{display:flex;gap:6px;align-items:center}
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center}
+  .modal-backdrop.open{display:flex}
+  .modal{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:20px;min-width:340px;max-width:500px;width:100%;display:flex;flex-direction:column;gap:12px}
+  .modal h3{color:#e94560;font-size:1rem}
+  .modal-row{display:flex;flex-direction:column;gap:4px}
+  .modal-row label{font-size:0.78rem;color:#9ca3af}
+  .modal-row input,.modal-row select{width:100%}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end}
+  .tag-list-item{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #0f3460}
+  .tag-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+  #filter-bar{display:flex;align-items:center;gap:8px;margin-left:8px}
+  #filter-bar label{font-size:0.82rem;color:#9ca3af}
+  .service-color{background:#7c3aed}
+  .svc-postgresql{background:#336791}
+  .svc-docker{background:#2496ed}
+  .svc-kubernetes{background:#326ce5}
+  .svc-hyperv{background:#00adef}
+  .svc-samba{background:#d97706}
+  .svc-sftp{background:#059669}
+  .svc-freeipa{background:#7c3aed}
+  .svc-zabbix{background:#e53e3e}
+  .svc-graylog{background:#2d3748}
+  .svc-veeam{background:#00b050}
+  .svc-minio{background:#c83b0e}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1><i class="fa-solid fa-network-wired"></i> systemdocu</h1>
+  <div id="filter-bar">
+    <label>Filter:</label>
+    <select id="tag-filter"><option value="">Alle</option></select>
+  </div>
+  <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
+  <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
+  <button onclick="exportJson()"><i class="fa-solid fa-download"></i> Export</button>
+</div>
+
+<div id="main">
+  <div id="graph"></div>
+  <div id="sidebar">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 id="sb-hostname"></h2>
+      <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
+    </div>
+    <div class="meta-row">FQDN: <span id="sb-fqdn">—</span></div>
+    <div class="meta-row">IP: <span id="sb-ip">—</span></div>
+    <div class="meta-row">OS: <span id="sb-os"></span></div>
+    <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
+
+    <div class="section-label">Services</div>
+    <div class="service-badges" id="sb-services"></div>
+    <button class="small" onclick="toggleAddService()"><i class="fa-solid fa-plus"></i> Service hinzufügen</button>
+    <div class="add-service-form" id="add-service-form" style="display:none">
+      <div class="add-service-row">
+        <select id="svc-type">
+          <option value="postgresql">PostgreSQL</option>
+          <option value="docker">Docker</option>
+          <option value="kubernetes">Kubernetes</option>
+          <option value="hyperv">Hyper-V</option>
+          <option value="samba">Samba</option>
+          <option value="sftp">SFTP</option>
+          <option value="freeipa">FreeIPA</option>
+          <option value="zabbix">Zabbix</option>
+          <option value="graylog">Graylog</option>
+          <option value="veeam">Veeam</option>
+          <option value="minio">MinIO</option>
+        </select>
+        <input type="text" id="svc-version" placeholder="Version" style="width:80px"/>
+        <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
+      </div>
+      <button class="small" onclick="addService()">Speichern</button>
+    </div>
+
+    <div class="section-label">Tags</div>
+    <div class="tag-chips" id="sb-tags"></div>
+    <div class="tag-assign">
+      <select id="tag-select"></select>
+      <button class="small" onclick="assignTag()">Hinzufügen</button>
+    </div>
+
+    <div class="section-label" style="margin-top:8px">Relation hinzufügen</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="rel-target" style="flex:1"></select>
+      <select id="rel-type" style="width:130px">
+        <option value="connects_to">connects_to</option>
+        <option value="hosts">hosts</option>
+        <option value="depends_on">depends_on</option>
+      </select>
+      <button class="small" onclick="addRelation()">+</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-add-server">
+  <div class="modal">
+    <h3>Server hinzufügen</h3>
+    <div class="modal-row"><label>Hostname *</label><input type="text" id="new-hostname"/></div>
+    <div class="modal-row"><label>FQDN</label><input type="text" id="new-fqdn"/></div>
+    <div class="modal-row"><label>IP</label><input type="text" id="new-ip"/></div>
+    <div class="modal-row"><label>OS-Typ</label>
+      <select id="new-os">
+        <option value="linux">Linux</option>
+        <option value="windows">Windows</option>
+        <option value="proxmox">Proxmox</option>
+        <option value="esxi">ESXi</option>
+      </select>
+    </div>
+    <div class="modal-row"><label>Beschreibung</label><input type="text" id="new-desc"/></div>
+    <div class="modal-actions">
+      <button onclick="closeModal('modal-add-server')">Abbrechen</button>
+      <button onclick="createServer()">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-tags">
+  <div class="modal">
+    <h3>Tags verwalten</h3>
+    <div id="tag-list"></div>
+    <hr style="border-color:#0f3460;margin:8px 0"/>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="new-tag-name" placeholder="Name" style="flex:1"/>
+      <input type="color" id="new-tag-color" value="#3498db" style="width:40px;padding:2px"/>
+      <button onclick="createTag()">Erstellen</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal('modal-tags')">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+let network = null;
+let nodes = null;
+let edges = null;
+let allServers = [];
+let allTags = [];
+let allRelations = [];
+let currentServerId = null;
+
+const OS_ICONS = {
+  linux:   {icon: '', color: '#3b82f6'},
+  windows: {icon: '', color: '#60a5fa'},
+  proxmox: {icon: '', color: '#f97316'},
+  esxi:    {icon: '', color: '#22c55e'},
+};
+
+async function api(method, path, body) {
+  const opts = {method, headers: {'Content-Type': 'application/json'}};
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+async function loadAll() {
+  [allServers, allTags, allRelations] = await Promise.all([
+    api('GET', '/servers'),
+    api('GET', '/tags'),
+    api('GET', '/relations'),
+  ]);
+  renderGraph();
+  updateTagFilter();
+  updateTagSelects();
+}
+
+function serverColor(server) {
+  if (server.tags && server.tags.length > 0) return server.tags[0].color;
+  return OS_ICONS[server.os_type]?.color || '#888';
+}
+
+function buildNode(server) {
+  const osInfo = OS_ICONS[server.os_type] || OS_ICONS.linux;
+  return {
+    id: server.id,
+    label: server.hostname,
+    shape: 'icon',
+    icon: {
+      face: 'FontAwesome',
+      code: osInfo.icon,
+      size: 40,
+      color: serverColor(server),
+    },
+    font: {color: '#e0e0e0', size: 12},
+    title: `${server.hostname}\n${server.ip || ''}`,
+  };
+}
+
+function renderGraph() {
+  const nodeData = allServers.map(buildNode);
+  const edgeData = allRelations.map(r => ({
+    id: r.id,
+    from: r.source_id,
+    to: r.target_id,
+    label: r.type,
+    arrows: 'to',
+    color: {color: '#4b5563'},
+    font: {color: '#9ca3af', size: 10, align: 'middle'},
+  }));
+
+  if (network) {
+    nodes.clear();
+    nodes.add(nodeData);
+    edges.clear();
+    edges.add(edgeData);
+    return;
+  }
+
+  const {DataSet, Network} = vis;
+  nodes = new DataSet(nodeData);
+  edges = new DataSet(edgeData);
+
+  network = new Network(document.getElementById('graph'), {nodes, edges}, {
+    physics: {
+      barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150},
+      stabilization: {iterations: 150},
+    },
+    interaction: {hover: true, tooltipDelay: 200},
+    edges: {smooth: {type: 'continuous'}},
+  });
+
+  network.on('click', params => {
+    if (params.nodes.length) {
+      openSidebar(params.nodes[0]);
+    } else {
+      closeSidebar();
+    }
+  });
+}
+
+function updateTagFilter() {
+  const sel = document.getElementById('tag-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Alle</option>';
+  allTags.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id;
+    o.textContent = t.name;
+    sel.appendChild(o);
+  });
+  sel.value = current;
+}
+
+function applyTagFilter() {
+  const tagId = parseInt(document.getElementById('tag-filter').value);
+  if (!tagId) {
+    nodes.update(allServers.map(s => ({id: s.id, opacity: 1})));
+    return;
+  }
+  allServers.forEach(s => {
+    const match = s.tags.some(t => t.id === tagId);
+    nodes.update({id: s.id, opacity: match ? 1 : 0.15});
+  });
+}
+
+document.getElementById('tag-filter').addEventListener('change', applyTagFilter);
+
+function updateTagSelects() {
+  const sel = document.getElementById('tag-select');
+  sel.innerHTML = '';
+  allTags.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id;
+    o.textContent = t.name;
+    sel.appendChild(o);
+  });
+
+  const relSel = document.getElementById('rel-target');
+  relSel.innerHTML = '';
+  allServers.forEach(s => {
+    if (s.id === currentServerId) return;
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = s.hostname;
+    relSel.appendChild(o);
+  });
+}
+
+function openSidebar(serverId) {
+  const server = allServers.find(s => s.id === serverId);
+  if (!server) return;
+  currentServerId = serverId;
+
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sb-hostname').textContent = server.hostname;
+  document.getElementById('sb-fqdn').textContent = server.fqdn || '—';
+  document.getElementById('sb-ip').textContent = server.ip || '—';
+  document.getElementById('sb-os').textContent = server.os_type;
+  document.getElementById('sb-desc').textContent = server.description || '—';
+
+  const badges = document.getElementById('sb-services');
+  badges.innerHTML = '';
+  (server.services || []).forEach(svc => {
+    const b = document.createElement('span');
+    b.className = `badge svc-${svc.type}`;
+    b.textContent = `${svc.type}${svc.version ? ' ' + svc.version : ''}${svc.port ? ':' + svc.port : ''}`;
+    badges.appendChild(b);
+  });
+
+  const chips = document.getElementById('sb-tags');
+  chips.innerHTML = '';
+  (server.tags || []).forEach(tag => {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.style.background = tag.color;
+    c.textContent = tag.name;
+    c.onclick = () => removeTagFromServer(tag.id);
+    chips.appendChild(c);
+  });
+
+  updateTagSelects();
+}
+
+function closeSidebar() {
+  currentServerId = null;
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+function toggleAddService() {
+  const f = document.getElementById('add-service-form');
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function addService() {
+  const type = document.getElementById('svc-type').value;
+  const version = document.getElementById('svc-version').value || null;
+  const port = parseInt(document.getElementById('svc-port').value) || null;
+  await api('POST', `/servers/${currentServerId}/services`, {type, version, port});
+  await loadAll();
+  openSidebar(currentServerId);
+  document.getElementById('add-service-form').style.display = 'none';
+}
+
+async function assignTag() {
+  const tagId = parseInt(document.getElementById('tag-select').value);
+  if (!tagId) return;
+  await api('POST', `/servers/${currentServerId}/tags/${tagId}`);
+  await loadAll();
+  openSidebar(currentServerId);
+}
+
+async function removeTagFromServer(tagId) {
+  await api('DELETE', `/servers/${currentServerId}/tags/${tagId}`);
+  await loadAll();
+  openSidebar(currentServerId);
+}
+
+async function deleteCurrentServer() {
+  if (!confirm('Server wirklich löschen?')) return;
+  await api('DELETE', `/servers/${currentServerId}`);
+  closeSidebar();
+  await loadAll();
+}
+
+async function addRelation() {
+  const target_id = parseInt(document.getElementById('rel-target').value);
+  const type = document.getElementById('rel-type').value;
+  if (!target_id) return;
+  await api('POST', '/relations', {source_id: currentServerId, target_id, type});
+  await loadAll();
+}
+
+function openAddServer() {
+  document.getElementById('modal-add-server').classList.add('open');
+}
+
+async function createServer() {
+  const hostname = document.getElementById('new-hostname').value.trim();
+  if (!hostname) return alert('Hostname fehlt');
+  await api('POST', '/servers', {
+    hostname,
+    fqdn: document.getElementById('new-fqdn').value || null,
+    ip: document.getElementById('new-ip').value || null,
+    os_type: document.getElementById('new-os').value,
+    description: document.getElementById('new-desc').value || null,
+  });
+  closeModal('modal-add-server');
+  document.getElementById('new-hostname').value = '';
+  document.getElementById('new-fqdn').value = '';
+  document.getElementById('new-ip').value = '';
+  document.getElementById('new-desc').value = '';
+  await loadAll();
+}
+
+function openManageTags() {
+  renderTagList();
+  document.getElementById('modal-tags').classList.add('open');
+}
+
+function renderTagList() {
+  const list = document.getElementById('tag-list');
+  list.innerHTML = '';
+  allTags.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'tag-list-item';
+    row.innerHTML = `<div class="tag-dot" style="background:${t.color}"></div><span style="flex:1">${t.name}</span><span style="font-size:0.75rem;color:#6b7280">${t.color}</span>`;
+    list.appendChild(row);
+  });
+}
+
+async function createTag() {
+  const name = document.getElementById('new-tag-name').value.trim();
+  const color = document.getElementById('new-tag-color').value;
+  if (!name) return;
+  await api('POST', '/tags', {name, color});
+  document.getElementById('new-tag-name').value = '';
+  await loadAll();
+  renderTagList();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+async function exportJson() {
+  const data = await api('GET', '/export/json');
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'systemdocu-export.json';
+  a.click();
+}
+
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+
+loadAll();
+</script>
+</body>
+</html>
