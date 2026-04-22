@@ -72,6 +72,7 @@
   <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
+  <button onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button onclick="exportJson()"><i class="fa-solid fa-download"></i> Export</button>
 </div>
 
@@ -183,6 +184,31 @@
       <button onclick="createEnvironment()">Erstellen</button>
     </div>
     <div class="modal-actions"><button onclick="closeModal('modal-environments')">Schließen</button></div>
+  </div>
+</div>
+
+<!-- Modal: Zabbix Scan -->
+<div class="modal-backdrop" id="modal-zabbix">
+  <div class="modal" style="max-width:640px">
+    <h3><i class="fa-solid fa-radar"></i> Zabbix Scan</h3>
+    <div id="zbx-step-hosts">
+      <div class="modal-row">
+        <label>Host auswählen</label>
+        <select id="zbx-host-select" style="width:100%"><option value="">— Lädt… —</option></select>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeModal('modal-zabbix')">Abbrechen</button>
+        <button id="zbx-scan-btn" onclick="runZabbixScan()">Scannen</button>
+      </div>
+    </div>
+    <div id="zbx-step-result" style="display:none">
+      <div id="zbx-result-info" style="font-size:0.82rem;color:#9ca3af;margin-bottom:6px"></div>
+      <div id="zbx-result-services" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto"></div>
+      <div class="modal-actions" style="margin-top:10px">
+        <button onclick="zbxBack()">Zurück</button>
+        <button onclick="zbxImport()"><i class="fa-solid fa-file-import"></i> Importieren</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -682,6 +708,109 @@ async function deleteApplication(appId) {
 
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+}
+
+let zbxScanData = null;
+
+async function openZabbixScan() {
+  zbxScanData = null;
+  document.getElementById('zbx-step-hosts').style.display = '';
+  document.getElementById('zbx-step-result').style.display = 'none';
+  document.getElementById('modal-zabbix').classList.add('open');
+  const sel = document.getElementById('zbx-host-select');
+  sel.innerHTML = '<option value="">— Lädt… —</option>';
+  try {
+    const hosts = await api('GET', '/zabbix/hosts');
+    sel.innerHTML = '';
+    if (!hosts.length) {
+      sel.innerHTML = '<option value="">Keine Hosts gefunden</option>';
+      return;
+    }
+    hosts.forEach(h => {
+      const o = document.createElement('option');
+      o.value = h.hostid;
+      o.textContent = h.hostname + (h.ip ? ' (' + h.ip + ')' : '');
+      sel.appendChild(o);
+    });
+  } catch (e) {
+    sel.innerHTML = '<option value="">Fehler: ' + escHtml(e.message) + '</option>';
+  }
+}
+
+async function runZabbixScan() {
+  const hostid = document.getElementById('zbx-host-select').value;
+  if (!hostid) return alert('Bitte Host auswählen');
+  const btn = document.getElementById('zbx-scan-btn');
+  btn.disabled = true; btn.textContent = 'Scannt…';
+  try {
+    zbxScanData = await api('GET', '/zabbix/scan/' + hostid);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Scannen';
+    return alert('Scan fehlgeschlagen: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = 'Scannen';
+  renderZabbixResult();
+}
+
+function renderZabbixResult() {
+  if (!zbxScanData) return;
+  const d = zbxScanData;
+  document.getElementById('zbx-step-hosts').style.display = 'none';
+  document.getElementById('zbx-step-result').style.display = '';
+  document.getElementById('zbx-result-info').innerHTML =
+    '<b>' + escHtml(d.hostname) + '</b>' +
+    (d.ip ? ' &nbsp;IP: ' + escHtml(d.ip) : '') +
+    (d.fqdn ? ' &nbsp;FQDN: ' + escHtml(d.fqdn) : '') +
+    ' &nbsp;OS: ' + escHtml(d.os_type);
+  const container = document.getElementById('zbx-result-services');
+  container.innerHTML = '';
+  if (!d.services || !d.services.length) {
+    container.innerHTML = '<div style="color:#6b7280;font-size:0.82rem">Keine Services erkannt</div>';
+    return;
+  }
+  d.services.forEach(svc => {
+    const col = SVC_COLORS[svc.type] || '#4b5563';
+    const block = document.createElement('div');
+    block.className = 'svc-block';
+    block.innerHTML = '<div class="svc-title" style="color:' + col + ';margin-bottom:4px">' +
+      escHtml(svc.type) + (svc.version ? ' ' + escHtml(svc.version) : '') + '</div>';
+    if (svc.instances && svc.instances.length) {
+      const ul = document.createElement('div');
+      ul.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:2px';
+      svc.instances.forEach(name => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.style.background = col;
+        chip.textContent = name;
+        ul.appendChild(chip);
+      });
+      block.appendChild(ul);
+    } else {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:0.75rem;color:#6b7280';
+      note.textContent = 'Keine Instanzen erkannt';
+      block.appendChild(note);
+    }
+    container.appendChild(block);
+  });
+}
+
+function zbxBack() {
+  zbxScanData = null;
+  document.getElementById('zbx-step-hosts').style.display = '';
+  document.getElementById('zbx-step-result').style.display = 'none';
+}
+
+async function zbxImport() {
+  if (!zbxScanData) return;
+  try {
+    const result = await api('POST', '/zabbix/import', zbxScanData);
+    alert('Importiert: ' + result.hostname + ' (ID ' + result.server_id + ')');
+  } catch (e) {
+    return alert('Import fehlgeschlagen: ' + e.message);
+  }
+  closeModal('modal-zabbix');
+  await loadAll();
 }
 
 async function exportJson() {
