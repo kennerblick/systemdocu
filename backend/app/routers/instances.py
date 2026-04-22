@@ -5,8 +5,8 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
-from ..models import Service, ServiceInstance, Environment, Application
-from ..schemas import ServiceInstanceCreate, ServiceInstanceOut
+from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
+from ..schemas import ServiceInstanceCreate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut
 
 router = APIRouter(tags=["instances"])
 
@@ -97,3 +97,28 @@ async def remove_application(instance_id: int, app_id: int, db: AsyncSession = D
     obj.applications = [a for a in obj.applications if a.id != app_id]
     await db.commit()
     return await get_instance_or_404(instance_id, db)
+
+
+@router.get("/api/instance-relations", response_model=List[InstanceRelationOut])
+async def list_instance_relations(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(InstanceRelation))
+    return result.scalars().all()
+
+
+@router.post("/api/instance-relations", response_model=InstanceRelationOut, status_code=201)
+async def create_instance_relation(payload: InstanceRelationCreate, db: AsyncSession = Depends(get_db)):
+    rel = InstanceRelation(**payload.model_dump())
+    db.add(rel)
+    await db.commit()
+    await db.refresh(rel)
+    return rel
+
+
+@router.delete("/api/instance-relations/{rel_id}", status_code=204)
+async def delete_instance_relation(rel_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(InstanceRelation).where(InstanceRelation.id == rel_id))
+    rel = result.scalar_one_or_none()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Relation not found")
+    await db.delete(rel)
+    await db.commit()

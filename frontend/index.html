@@ -65,8 +65,12 @@
 <div id="topbar">
   <h1><i class="fa-solid fa-network-wired"></i> systemdocu</h1>
   <div id="filter-bar">
-    <label>Filter:</label>
+    <label>Tag:</label>
     <select id="tag-filter"><option value="">Alle</option></select>
+    <label>Umgebung:</label>
+    <select id="env-filter"><option value="">Alle</option></select>
+    <label>Anwendung:</label>
+    <select id="app-filter"><option value="">Alle</option></select>
   </div>
   <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
   <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
@@ -82,12 +86,30 @@
   <div id="sidebar">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2 id="sb-hostname"></h2>
-      <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
+      <div style="display:flex;gap:5px">
+        <button class="small" onclick="toggleServerEdit()"><i class="fa-solid fa-pen"></i></button>
+        <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
+      </div>
     </div>
     <div class="meta-row">FQDN: <span id="sb-fqdn">—</span></div>
     <div class="meta-row">IP: <span id="sb-ip">—</span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
     <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
+    <div id="sb-edit-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px">
+      <div class="modal-row"><label>Hostname</label><input type="text" id="edit-hostname"/></div>
+      <div class="modal-row"><label>FQDN</label><input type="text" id="edit-fqdn"/></div>
+      <div class="modal-row"><label>IP</label><input type="text" id="edit-ip"/></div>
+      <div class="modal-row"><label>OS-Typ</label>
+        <select id="edit-os">
+          <option value="linux">Linux</option>
+          <option value="windows">Windows</option>
+          <option value="proxmox">Proxmox</option>
+          <option value="esxi">ESXi</option>
+        </select>
+      </div>
+      <div class="modal-row"><label>Beschreibung</label><textarea id="edit-desc" rows="2" style="width:100%"></textarea></div>
+      <button class="small" onclick="saveServerEdit()"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
+    </div>
 
     <div class="section-label">Services &amp; Instanzen</div>
     <div id="sb-services"></div>
@@ -120,7 +142,7 @@
       <button class="small" onclick="assignTag()">Hinzufügen</button>
     </div>
 
-    <div class="section-label">Relation hinzufügen</div>
+    <div class="section-label">Server-Relation</div>
     <div style="display:flex;gap:6px;align-items:center">
       <select id="rel-target" style="flex:1"></select>
       <select id="rel-type" style="width:120px">
@@ -129,6 +151,25 @@
         <option value="depends_on">depends_on</option>
       </select>
       <button class="small" onclick="addRelation()">+</button>
+    </div>
+
+    <div class="section-label">Instanz-Relationen</div>
+    <div id="sb-inst-rels"></div>
+    <div style="display:flex;flex-direction:column;gap:4px;background:#0f1b35;padding:8px;border-radius:6px;margin-top:4px">
+      <div style="display:flex;gap:4px">
+        <select id="ir-src" style="flex:1;font-size:0.78rem"></select>
+        <select id="ir-reltype" style="width:105px;font-size:0.78rem">
+          <option value="connects_to">connects_to</option>
+          <option value="uses">uses</option>
+          <option value="depends_on">depends_on</option>
+          <option value="hosts">hosts</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:4px">
+        <select id="ir-tgt-srv" style="flex:1;font-size:0.78rem" onchange="updateIrTgtInst()"></select>
+        <select id="ir-tgt" style="flex:1;font-size:0.78rem"></select>
+        <button class="xs" onclick="addInstRel()">+</button>
+      </div>
     </div>
   </div>
 </div>
@@ -238,6 +279,7 @@ let allTags = [];
 let allRelations = [];
 let allEnvironments = [];
 let allApplications = [];
+let allInstanceRelations = [];
 let currentServerId = null;
 
 const OS_COLORS = {
@@ -265,19 +307,20 @@ async function api(method, path, body) {
 
 async function loadAll() {
   try {
-    [allServers, allTags, allRelations, allEnvironments, allApplications] = await Promise.all([
+    [allServers, allTags, allRelations, allEnvironments, allApplications, allInstanceRelations] = await Promise.all([
       api('GET', '/servers'),
       api('GET', '/tags'),
       api('GET', '/relations'),
       api('GET', '/environments'),
       api('GET', '/applications'),
+      api('GET', '/instance-relations'),
     ]);
   } catch (e) {
     console.error('loadAll failed:', e);
     return;
   }
   renderGraph();
-  updateTagFilter();
+  updateFilters();
   if (currentServerId) openSidebar(currentServerId);
   checkZabbixStatus();
 }
@@ -324,13 +367,37 @@ function buildNode(server) {
   };
 }
 
+function buildInstServerMap() {
+  const map = {};
+  allServers.forEach(s => {
+    (s.services || []).forEach(svc => {
+      (svc.instances || []).forEach(inst => { map[inst.id] = {serverId: s.id, name: inst.name, svcType: svc.type}; });
+    });
+  });
+  return map;
+}
+
 function renderGraph() {
   const nodeData = allServers.map(buildNode);
+  const instMap = buildInstServerMap();
   const edgeData = allRelations.map(r => ({
-    id: r.id, from: r.source_id, to: r.target_id, label: r.type,
+    id: 'sr_' + r.id, from: r.source_id, to: r.target_id, label: r.type,
     arrows: 'to', color: {color: '#4b5563'},
     font: {color: '#9ca3af', size: 10, align: 'middle'},
   }));
+  allInstanceRelations.forEach(r => {
+    const src = instMap[r.source_instance_id];
+    const tgt = instMap[r.target_instance_id];
+    if (src && tgt && src.serverId !== tgt.serverId) {
+      edgeData.push({
+        id: 'ir_' + r.id, from: src.serverId, to: tgt.serverId,
+        label: src.name + ' → ' + tgt.name,
+        arrows: 'to', dashes: true,
+        color: {color: '#7c3aed'},
+        font: {color: '#a78bfa', size: 9, align: 'middle'},
+      });
+    }
+  });
 
   if (network) {
     nodes.clear(); nodes.add(nodeData);
@@ -352,24 +419,38 @@ function renderGraph() {
   });
 }
 
-function updateTagFilter() {
-  const sel = document.getElementById('tag-filter');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">Alle</option>';
-  allTags.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.name; sel.appendChild(o);
-  });
-  sel.value = cur;
+function updateFilters() {
+  function syncSel(selId, items, labelKey) {
+    const sel = document.getElementById(selId);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Alle</option>';
+    items.forEach(it => {
+      const o = document.createElement('option');
+      o.value = it.id; o.textContent = it[labelKey]; sel.appendChild(o);
+    });
+    sel.value = cur;
+  }
+  syncSel('tag-filter', allTags, 'name');
+  syncSel('env-filter', allEnvironments, 'name');
+  syncSel('app-filter', allApplications, 'name');
 }
 
-document.getElementById('tag-filter').addEventListener('change', () => {
-  const tagId = parseInt(document.getElementById('tag-filter').value);
+function applyFilters() {
   if (!nodes) return;
-  if (!tagId) { nodes.update(allServers.map(s => ({id: s.id, opacity: 1}))); return; }
+  const tagId = parseInt(document.getElementById('tag-filter').value) || 0;
+  const envId = parseInt(document.getElementById('env-filter').value) || 0;
+  const appId = parseInt(document.getElementById('app-filter').value) || 0;
   allServers.forEach(s => {
-    nodes.update({id: s.id, opacity: s.tags.some(t => t.id === tagId) ? 1 : 0.15});
+    let vis = true;
+    if (tagId && !s.tags.some(t => t.id === tagId)) vis = false;
+    if (envId && !s.services.some(sv => sv.instances.some(i => i.environments.some(e => e.id === envId)))) vis = false;
+    if (appId && !s.services.some(sv => sv.instances.some(i => i.applications.some(a => a.id === appId)))) vis = false;
+    nodes.update({id: s.id, opacity: vis ? 1 : 0.15});
   });
+}
+
+['tag-filter', 'env-filter', 'app-filter'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
 });
 
 function openSidebar(serverId) {
@@ -407,6 +488,84 @@ function openSidebar(serverId) {
     if (s.id === currentServerId) return;
     const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; relSel.appendChild(o);
   });
+
+  // instance relation form
+  const instMap = buildInstServerMap();
+  const srcSel = document.getElementById('ir-src');
+  srcSel.innerHTML = '';
+  (server.services || []).forEach(svc => {
+    (svc.instances || []).forEach(inst => {
+      const o = document.createElement('option');
+      o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; srcSel.appendChild(o);
+    });
+  });
+  const tgtSrvSel = document.getElementById('ir-tgt-srv');
+  tgtSrvSel.innerHTML = '';
+  allServers.filter(s => s.id !== currentServerId).forEach(s => {
+    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; tgtSrvSel.appendChild(o);
+  });
+  updateIrTgtInst();
+  renderInstRelSection(server, instMap);
+}
+
+function renderInstRelSection(server, instMap) {
+  instMap = instMap || buildInstServerMap();
+  const myInstIds = new Set();
+  (server.services || []).forEach(svc => (svc.instances || []).forEach(i => myInstIds.add(i.id)));
+  const container = document.getElementById('sb-inst-rels');
+  container.innerHTML = '';
+  const rels = allInstanceRelations.filter(r => myInstIds.has(r.source_instance_id) || myInstIds.has(r.target_instance_id));
+  if (!rels.length) {
+    container.innerHTML = '<div style="font-size:0.78rem;color:#6b7280">Keine</div>';
+    return;
+  }
+  rels.forEach(r => {
+    const src = instMap[r.source_instance_id];
+    const tgt = instMap[r.target_instance_id];
+    const srcSrv = allServers.find(s => s.id === (src && src.serverId));
+    const tgtSrv = allServers.find(s => s.id === (tgt && tgt.serverId));
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.style.fontSize = '0.78rem';
+    row.innerHTML =
+      '<span style="color:#a78bfa;flex:1">' +
+      escHtml((src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')') +
+      ' <i class="fa-solid fa-arrow-right" style="font-size:0.65rem"></i> ' +
+      escHtml((tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')') +
+      '</span><span style="color:#6b7280;margin:0 6px">' + escHtml(r.type) + '</span>' +
+      '<button class="xs danger" onclick="deleteInstRel(' + r.id + ')"><i class="fa-solid fa-xmark"></i></button>';
+    container.appendChild(row);
+  });
+}
+
+function updateIrTgtInst() {
+  const tgtSrvId = parseInt(document.getElementById('ir-tgt-srv').value);
+  const tgtInstSel = document.getElementById('ir-tgt');
+  tgtInstSel.innerHTML = '';
+  const tgtSrv = allServers.find(s => s.id === tgtSrvId);
+  if (!tgtSrv) return;
+  (tgtSrv.services || []).forEach(svc => {
+    (svc.instances || []).forEach(inst => {
+      const o = document.createElement('option');
+      o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; tgtInstSel.appendChild(o);
+    });
+  });
+}
+
+async function addInstRel() {
+  const source_instance_id = parseInt(document.getElementById('ir-src').value);
+  const target_instance_id = parseInt(document.getElementById('ir-tgt').value);
+  const type = document.getElementById('ir-reltype').value;
+  if (!source_instance_id || !target_instance_id) return alert('Bitte Instanzen auswählen');
+  try { await api('POST', '/instance-relations', {source_instance_id, target_instance_id, type}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteInstRel(relId) {
+  try { await api('DELETE', '/instance-relations/' + relId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
 }
 
 function renderServicesSection(server) {
@@ -548,6 +707,35 @@ async function addInstanceApp(instanceId, appId) {
 async function removeInstanceApp(instanceId, appId) {
   try { await api('DELETE', '/instances/' + instanceId + '/applications/' + appId); }
   catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+function toggleServerEdit() {
+  const form = document.getElementById('sb-edit-form');
+  const visible = form.style.display !== 'none';
+  form.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    const s = allServers.find(s => s.id === currentServerId);
+    if (!s) return;
+    document.getElementById('edit-hostname').value = s.hostname || '';
+    document.getElementById('edit-fqdn').value = s.fqdn || '';
+    document.getElementById('edit-ip').value = s.ip || '';
+    document.getElementById('edit-os').value = s.os_type || 'linux';
+    document.getElementById('edit-desc').value = s.description || '';
+  }
+}
+
+async function saveServerEdit() {
+  try {
+    await api('PUT', '/servers/' + currentServerId, {
+      hostname: document.getElementById('edit-hostname').value.trim() || undefined,
+      fqdn: document.getElementById('edit-fqdn').value || null,
+      ip: document.getElementById('edit-ip').value || null,
+      os_type: document.getElementById('edit-os').value,
+      description: document.getElementById('edit-desc').value || null,
+    });
+  } catch (e) { return alert('Fehler: ' + e.message); }
+  document.getElementById('sb-edit-form').style.display = 'none';
   await loadAll();
 }
 

@@ -85,6 +85,17 @@ class Application(Base):
     instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="applications")
 
 
+class InstanceRelation(Base):
+    __tablename__ = "instance_relations"
+    id = Column(Integer, primary_key=True, index=True)
+    source_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
+    target_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
+    type = Column(String(50), default="connects_to")
+
+    source_instance = relationship("ServiceInstance", foreign_keys=[source_instance_id])
+    target_instance = relationship("ServiceInstance", foreign_keys=[target_instance_id])
+
+
 class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True, index=True)

@@ -139,6 +139,19 @@ class RelationOut(RelationBase):
         from_attributes = True
 
 
+class InstanceRelationCreate(BaseModel):
+    source_instance_id: int
+    target_instance_id: int
+    type: str = "connects_to"
+
+
+class InstanceRelationOut(InstanceRelationCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class ZabbixHost(BaseModel):
     hostname: str
     fqdn: Optional[str] = None
