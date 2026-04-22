@@ -31,6 +31,7 @@ services:
       ZABBIX_USER: ${ZABBIX_USER:-}
       ZABBIX_PASSWORD: ${ZABBIX_PASSWORD:-}
       ZABBIX_API_TOKEN: ${ZABBIX_API_TOKEN:-}
+      ZABBIX_VERIFY_SSL: ${ZABBIX_VERIFY_SSL:-false}
       LOG_DIR: /logs
     volumes:
       - logs_data:/logs
