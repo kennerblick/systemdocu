@@ -8,6 +8,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/vis-network.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.css"/>
 <style>
+  @font-face {
+    font-family: 'FontAwesome';
+    src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/fa-solid-900.woff2') format('woff2');
+    font-weight: 900;
+    font-style: normal;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
   #topbar{background:#16213e;padding:10px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0}
@@ -217,8 +223,8 @@ function buildNode(server) {
     label: server.hostname,
     shape: 'icon',
     icon: {
-      face: '"Font Awesome 6 Free"',
-      weight: 'bold',
+      face: 'FontAwesome',
+      weight: 900,
       code: osInfo.code,
       size: 40,
       color: serverColor(server),
@@ -367,7 +373,11 @@ async function addService() {
   const type = document.getElementById('svc-type').value;
   const version = document.getElementById('svc-version').value || null;
   const port = parseInt(document.getElementById('svc-port').value) || null;
-  await api('POST', '/servers/' + currentServerId + '/services', {type, version, port});
+  try {
+    await api('POST', '/servers/' + currentServerId + '/services', {type, version, port});
+  } catch (e) {
+    return alert('Fehler: ' + e.message);
+  }
   await loadAll();
   openSidebar(currentServerId);
   document.getElementById('add-service-form').style.display = 'none';
@@ -409,13 +419,17 @@ function openAddServer() {
 async function createServer() {
   const hostname = document.getElementById('new-hostname').value.trim();
   if (!hostname) return alert('Hostname fehlt');
-  await api('POST', '/servers', {
-    hostname,
-    fqdn: document.getElementById('new-fqdn').value || null,
-    ip: document.getElementById('new-ip').value || null,
-    os_type: document.getElementById('new-os').value,
-    description: document.getElementById('new-desc').value || null,
-  });
+  try {
+    await api('POST', '/servers', {
+      hostname,
+      fqdn: document.getElementById('new-fqdn').value || null,
+      ip: document.getElementById('new-ip').value || null,
+      os_type: document.getElementById('new-os').value,
+      description: document.getElementById('new-desc').value || null,
+    });
+  } catch (e) {
+    return alert('Fehler: ' + e.message);
+  }
   closeModal('modal-add-server');
   document.getElementById('new-hostname').value = '';
   document.getElementById('new-fqdn').value = '';
