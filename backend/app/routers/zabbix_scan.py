@@ -22,6 +22,10 @@ def _get_zapi() -> ZabbixAPI:
         raise HTTPException(503, "Zabbix nicht konfiguriert (ZABBIX_URL fehlt)")
     try:
         zapi = ZabbixAPI(url)
+        if os.getenv("ZABBIX_VERIFY_SSL", "true").lower() == "false":
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            zapi.session.verify = False
         token = os.getenv("ZABBIX_API_TOKEN")
         if token:
             zapi.login(api_token=token)
@@ -30,6 +34,21 @@ def _get_zapi() -> ZabbixAPI:
         return zapi
     except Exception as e:
         raise HTTPException(503, f"Zabbix Login fehlgeschlagen: {e}")
+
+
+@router.get("/ping")
+def zabbix_ping():
+    url = os.getenv("ZABBIX_URL")
+    if not url:
+        return {"status": "error", "message": "ZABBIX_URL nicht gesetzt"}
+    try:
+        zapi = _get_zapi()
+        version = zapi.api_version()
+        return {"status": "ok", "message": f"Verbunden mit {url} (v{version})"}
+    except HTTPException as e:
+        return {"status": "error", "message": e.detail}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @router.get("/hosts")

@@ -72,7 +72,7 @@
   <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
-  <button onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
+  <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button onclick="exportJson()"><i class="fa-solid fa-download"></i> Export</button>
 </div>
 
@@ -279,6 +279,31 @@ async function loadAll() {
   renderGraph();
   updateTagFilter();
   if (currentServerId) openSidebar(currentServerId);
+  checkZabbixStatus();
+}
+
+async function checkZabbixStatus() {
+  const btn = document.getElementById('zbx-btn');
+  btn.title = 'Prüfe Verbindung…';
+  btn.style.outline = '';
+  btn.style.background = '';
+  try {
+    const r = await fetch('/api/zabbix/ping');
+    const data = await r.json();
+    if (data.status === 'ok') {
+      btn.style.outline = '2px solid #22c55e';
+      btn.style.background = '';
+      btn.title = data.message;
+    } else {
+      btn.style.background = '#7f1d1d';
+      btn.style.outline = '';
+      btn.title = data.message;
+    }
+  } catch (e) {
+    btn.style.background = '#7f1d1d';
+    btn.style.outline = '';
+    btn.title = 'Verbindungsfehler: ' + e.message;
+  }
 }
 
 function serverColor(server) {
