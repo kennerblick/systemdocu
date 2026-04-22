@@ -24,6 +24,10 @@ services:
       ZABBIX_URL: ${ZABBIX_URL:-}
       ZABBIX_USER: ${ZABBIX_USER:-}
       ZABBIX_PASSWORD: ${ZABBIX_PASSWORD:-}
+      ZABBIX_API_TOKEN: ${ZABBIX_API_TOKEN:-}
+      LOG_DIR: /logs
+    volumes:
+      - logs_data:/logs
     networks:
       - internal
 
@@ -44,6 +48,12 @@ volumes:
       type: none
       o: bind
       device: /opt/docker/systemdocu/postgres
+  logs_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/docker/systemdocu/logs
 
 networks:
   internal:
