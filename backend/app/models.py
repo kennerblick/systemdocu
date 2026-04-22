@@ -82,7 +82,7 @@ class Application(Base):
     description = Column(Text)
     color = Column(String(7), default="#8b5cf6")
 
-    instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="instances")
+    instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="applications")
 
 
 class Tag(Base):
