@@ -4,11 +4,11 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, insert
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Tag, Relation
+from .models import Server, Service, Tag, Relation, server_tags
 from .schemas import RelationCreate, RelationOut, ZabbixImportPayload
 from .routers import servers, services, tags
 from typing import List
@@ -89,9 +89,12 @@ async def seed_data():
         db.add_all([srv1, srv2, srv3])
         await db.flush()
 
-        srv1.tags = [tag_prod, tag_infra]
-        srv2.tags = [tag_win]
-        srv3.tags = [tag_infra]
+        await db.execute(insert(server_tags).values([
+            {"server_id": srv1.id, "tag_id": tag_prod.id},
+            {"server_id": srv1.id, "tag_id": tag_infra.id},
+            {"server_id": srv2.id, "tag_id": tag_win.id},
+            {"server_id": srv3.id, "tag_id": tag_infra.id},
+        ]))
 
         db.add_all([
             Service(server_id=srv1.id, type="postgresql", version="16", port=5432),
