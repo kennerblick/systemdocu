@@ -178,11 +178,11 @@ let allTags = [];
 let allRelations = [];
 let currentServerId = null;
 
-const OS_ICONS = {
-  linux:   {code: '', color: '#3b82f6'},
-  windows: {code: '', color: '#60a5fa'},
-  proxmox: {code: '', color: '#f97316'},
-  esxi:    {code: '', color: '#22c55e'},
+const OS_COLORS = {
+  linux:   '#3b82f6',
+  windows: '#60a5fa',
+  proxmox: '#f97316',
+  esxi:    '#22c55e',
 };
 
 async function api(method, path, body) {
