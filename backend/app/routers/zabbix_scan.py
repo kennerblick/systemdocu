@@ -115,11 +115,18 @@ def scan_host(zabbix_hostid: str):
     template_names = [t["name"] for t in host.get("parentTemplates", [])]
 
     os_type = "linux"
+    tpl_lower = [t.lower() for t in template_names]
     if any(fnmatch.fnmatch(t, "Template OS Windows*") for t in template_names):
+        os_type = "windows"
+    elif any("windows" in t for t in tpl_lower):
         os_type = "windows"
     elif any(fnmatch.fnmatch(t, "Template Virt Proxmox*") for t in template_names):
         os_type = "proxmox"
+    elif any("proxmox" in t for t in tpl_lower):
+        os_type = "proxmox"
     elif any(fnmatch.fnmatch(t, "Template Virt VMware ESXi*") for t in template_names):
+        os_type = "esxi"
+    elif any("esxi" in t or "vmware" in t for t in tpl_lower):
         os_type = "esxi"
 
     ip = next((i["ip"] for i in host.get("interfaces", []) if i.get("ip") and i["ip"] != "0.0.0.0"), None)
@@ -147,6 +154,10 @@ def scan_host(zabbix_hostid: str):
 
     # Hyper-V: text item from PowerShell Get-VM
     _scan_hyperv_items(zapi, zabbix_hostid, services)
+
+    # fallback: if Hyper-V VMs found but template didn't reveal Windows
+    if "hyperv" in services and os_type == "linux":
+        os_type = "windows"
 
     return {
         "hostid": zabbix_hostid,
@@ -239,9 +250,12 @@ def _scan_hyperv_items(zapi, hostid, services):
             limit=200,
         )
         for item in items:
-            key = item.get("key_", "")
-            name = item.get("name", "")
-            if "Get-VM" in key or "VM-List" in name or "VM-list" in name or "Hyper-V VM" in name:
+            key = item.get("key_", "").lower()
+            name = item.get("name", "").lower()
+            if ("get-vm" in key or "get-vm" in name or
+                    "vm-list" in key or "vm-list" in name or
+                    "hyper-v" in key or "hyper-v" in name or
+                    "hyperv" in key or "hyperv" in name):
                 vms = _parse_hyperv_output(item.get("lastvalue", ""))
                 if vms:
                     if "hyperv" not in services:
@@ -254,12 +268,25 @@ def _scan_hyperv_items(zapi, hostid, services):
 def _parse_hyperv_output(text: str) -> list:
     if not text:
         return []
+
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+
+    # Format A: "VMName    {ip, ...}" per line — PowerShell column output
+    brace_re = re.compile(r'^(\S+)\s+\{[^}]*\}\s*$')
+    brace_hits = [brace_re.match(l) for l in lines]
+    brace_hits = [m for m in brace_hits if m]
+    if brace_hits and len(brace_hits) >= max(1, len(lines) * 0.35):
+        vms = []
+        for m in brace_hits:
+            name = m.group(1).rstrip('.')  # strip PS truncation (e.g. "kabeld-p...")
+            if name and len(name) > 1 and not name.startswith('{'):
+                vms.append(name)
+        return vms
+
+    # Format B: table with VMName header row + "---" separator
     vms = []
     header_passed = False
-    for line in text.strip().splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
+    for stripped in lines:
         if re.match(r'^[-=]+', stripped):
             header_passed = True
             continue
