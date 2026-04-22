@@ -21,11 +21,14 @@ def _get_zapi() -> ZabbixAPI:
     if not url:
         raise HTTPException(503, "Zabbix nicht konfiguriert (ZABBIX_URL fehlt)")
     try:
-        zapi = ZabbixAPI(url)
-        if os.getenv("ZABBIX_VERIFY_SSL", "true").lower() == "false":
-            import urllib3
+        import requests
+        import urllib3
+        ssl_verify = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() != "false"
+        if not ssl_verify:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            zapi.session.verify = False
+        session = requests.Session()
+        session.verify = ssl_verify
+        zapi = ZabbixAPI(url, session=session)
         token = os.getenv("ZABBIX_API_TOKEN")
         if token:
             zapi.login(api_token=token)
