@@ -402,7 +402,6 @@ function buildInstServerMap() {
 
 function buildInstanceNodesEdges() {
   const instNodes = [], siEdges = [], irInstEdges = [];
-  const im = buildInstServerMap();
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
       const col = SVC_COLORS[svc.type] || '#4b5563';
@@ -434,9 +433,10 @@ function buildInstanceNodesEdges() {
       from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
       arrows: 'to', width: 2,
       color: {color: '#7c3aed'},
-      title: (src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ') → ' +
-             (tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
-             '\n' + r.type,
+      title: (src ? src.svcType + ': ' + src.name : '?') + ' @ ' + (srcSrv ? srcSrv.hostname : '?') +
+             ' → ' +
+             (tgt ? tgt.svcType + ': ' + tgt.name : '?') + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') +
+             '<br>' + r.type,
     });
   });
   return {instNodes, siEdges, irInstEdges};
@@ -454,7 +454,7 @@ function renderGraph() {
       id: 'sr_' + r.id, from: r.source_id, to: r.target_id,
       arrows: 'to', color: {color: '#4b5563'},
       title: (srcSrv ? srcSrv.hostname : r.source_id) + ' → ' +
-             (tgtSrv ? tgtSrv.hostname : r.target_id) + '\n' + r.type,
+             (tgtSrv ? tgtSrv.hostname : r.target_id) + '<br>' + r.type,
     });
   });
 
@@ -469,9 +469,10 @@ function renderGraph() {
       id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
       arrows: 'to', dashes: true,
       color: {color: '#7c3aed'},
-      title: src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ') → ' +
-             tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
-             '\n' + r.type,
+      title: src.svcType + ': ' + src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' +
+             ' → ' +
+             tgt.svcType + ': ' + tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
+             '<br>' + r.type,
     });
   });
 
