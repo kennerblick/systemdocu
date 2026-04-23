@@ -29,6 +29,11 @@ async def create_service(server_id: int, payload: ServiceCreate, db: AsyncSessio
     server_result = await db.execute(select(Server).where(Server.id == server_id))
     if not server_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Server not found")
+    dup = await db.execute(
+        select(Service).where(Service.server_id == server_id, Service.type == payload.type)
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Service '{payload.type}' existiert bereits auf diesem Server")
     service = Service(server_id=server_id, **payload.model_dump())
     db.add(service)
     await db.commit()

@@ -61,6 +61,7 @@ class ServiceInstanceUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     ip: Optional[str] = None
+    service_id: Optional[int] = None
 
 
 class ServiceInstanceOut(ServiceInstanceBase):

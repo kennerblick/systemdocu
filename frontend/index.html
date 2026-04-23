@@ -998,6 +998,19 @@ function renderServicesSection(server) {
     hdr.innerHTML = '<span class="svc-title" style="color:' + col + '">' +
       svc.type + (svc.version ? ' ' + svc.version : '') + (svc.port ? ':' + svc.port : '') +
       '</span>';
+
+    // Merge button: shown when there's another service of same type on this server
+    const siblings = (server.services || []).filter(s => s.type === svc.type && s.id !== svc.id);
+    if (siblings.length) {
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'xs';
+      mergeBtn.title = 'Instanzen in den anderen ' + svc.type + '-Service verschieben und diesen löschen';
+      mergeBtn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Zusammenführen';
+      mergeBtn.style.color = '#fbbf24';
+      mergeBtn.onclick = () => mergeService(svc.id, siblings[0].id, svc.instances || []);
+      hdr.appendChild(mergeBtn);
+    }
+
     const delBtn = document.createElement('button');
     delBtn.className = 'xs danger';
     delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
@@ -1204,6 +1217,20 @@ async function deleteService(serviceId) {
   if (!confirm('Service und alle Instanzen löschen?')) return;
   try { await api('DELETE', '/services/' + serviceId); }
   catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function mergeService(sourceId, targetId, instances) {
+  const n = instances.length;
+  if (!confirm(
+    'Alle ' + n + ' Instanz(en) aus diesem Service in den anderen verschieben und diesen Service danach löschen?\n\nKeine Daten gehen verloren.'
+  )) return;
+  try {
+    for (const inst of instances) {
+      await api('PATCH', '/instances/' + inst.id, {service_id: targetId});
+    }
+    await api('DELETE', '/services/' + sourceId);
+  } catch (e) { return alert('Fehler beim Zusammenführen: ' + e.message); }
   await loadAll();
 }
 
