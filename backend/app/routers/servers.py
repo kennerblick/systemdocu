@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
-from ..models import Server, Tag, Service, ServiceInstance, Environment
+from ..models import Server, Service, ServiceInstance, Environment
 from ..schemas import ServerCreate, ServerUpdate, ServerOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -15,7 +15,6 @@ _server_options = [
     selectinload(Server.services)
         .selectinload(Service.instances)
         .selectinload(ServiceInstance.applications),
-    selectinload(Server.tags),
     selectinload(Server.environments),
 ]
 
@@ -77,26 +76,6 @@ async def delete_server(server_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(server)
     await db.commit()
 
-
-@router.post("/{server_id}/tags/{tag_id}", response_model=ServerOut)
-async def add_tag(server_id: int, tag_id: int, db: AsyncSession = Depends(get_db)):
-    server = await get_server_or_404(server_id, db)
-    tag_result = await db.execute(select(Tag).where(Tag.id == tag_id))
-    tag = tag_result.scalar_one_or_none()
-    if not tag:
-        raise HTTPException(status_code=404, detail="Tag not found")
-    if tag not in server.tags:
-        server.tags.append(tag)
-        await db.commit()
-    return await get_server_or_404(server_id, db)
-
-
-@router.delete("/{server_id}/tags/{tag_id}", response_model=ServerOut)
-async def remove_tag(server_id: int, tag_id: int, db: AsyncSession = Depends(get_db)):
-    server = await get_server_or_404(server_id, db)
-    server.tags = [t for t in server.tags if t.id != tag_id]
-    await db.commit()
-    return await get_server_or_404(server_id, db)
 
 
 @router.post("/{server_id}/environments/{env_id}", response_model=ServerOut)

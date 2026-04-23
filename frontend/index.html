@@ -71,15 +71,12 @@
 <div id="topbar">
   <h1><i class="fa-solid fa-network-wired"></i> systemdocu</h1>
   <div id="filter-bar">
-    <label>Tag:</label>
-    <select id="tag-filter"><option value="">Alle</option></select>
     <label>Umgebung:</label>
     <select id="env-filter"><option value="">Alle</option></select>
     <label>Anwendung:</label>
     <select id="app-filter"><option value="">Alle</option></select>
   </div>
   <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
-  <button onclick="openManageTags()"><i class="fa-solid fa-tags"></i> Tags</button>
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
   <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
@@ -98,13 +95,11 @@
         <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>
-    <div class="meta-row">FQDN: <span id="sb-fqdn">—</span></div>
     <div class="meta-row">IP: <span id="sb-ip">—</span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
     <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
     <div id="sb-edit-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px">
       <div class="modal-row"><label>Hostname</label><input type="text" id="edit-hostname"/></div>
-      <div class="modal-row"><label>FQDN</label><input type="text" id="edit-fqdn"/></div>
       <div class="modal-row"><label>IP</label><input type="text" id="edit-ip"/></div>
       <div class="modal-row"><label>OS-Typ</label>
         <select id="edit-os">
@@ -151,12 +146,6 @@
       <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
     </div>
 
-    <div class="section-label">Tags</div>
-    <div class="chips" id="sb-tags"></div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-      <select id="tag-select" style="flex:1"></select>
-      <button class="small" onclick="assignTag()">Hinzufügen</button>
-    </div>
 
     <div class="section-label">Server-Relation</div>
     <div style="display:flex;gap:6px;align-items:center">
@@ -195,7 +184,6 @@
   <div class="modal">
     <h3>Server hinzufügen</h3>
     <div class="modal-row"><label>Hostname *</label><input type="text" id="new-hostname"/></div>
-    <div class="modal-row"><label>FQDN</label><input type="text" id="new-fqdn"/></div>
     <div class="modal-row"><label>IP</label><input type="text" id="new-ip"/></div>
     <div class="modal-row"><label>OS-Typ</label>
       <select id="new-os">
@@ -210,21 +198,6 @@
       <button onclick="closeModal('modal-add-server')">Abbrechen</button>
       <button onclick="createServer()">Erstellen</button>
     </div>
-  </div>
-</div>
-
-<!-- Modal: Tags -->
-<div class="modal-backdrop" id="modal-tags">
-  <div class="modal">
-    <h3>Tags verwalten</h3>
-    <div id="tag-list"></div>
-    <hr style="border-color:#0f3460;margin:8px 0"/>
-    <div style="display:flex;gap:8px;align-items:center">
-      <input type="text" id="new-tag-name" placeholder="Name" style="flex:1"/>
-      <input type="color" id="new-tag-color" value="#3498db" style="width:40px;padding:2px"/>
-      <button onclick="createTag()">Erstellen</button>
-    </div>
-    <div class="modal-actions"><button onclick="closeModal('modal-tags')">Schließen</button></div>
   </div>
 </div>
 
@@ -289,7 +262,6 @@ let network = null;
 let nodes = null;
 let edges = null;
 let allServers = [];
-let allTags = [];
 let allRelations = [];
 let allEnvironments = [];
 let allApplications = [];
@@ -322,9 +294,8 @@ async function api(method, path, body) {
 
 async function loadAll() {
   try {
-    [allServers, allTags, allRelations, allEnvironments, allApplications, allInstanceRelations] = await Promise.all([
+    [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations] = await Promise.all([
       api('GET', '/servers'),
-      api('GET', '/tags'),
       api('GET', '/relations'),
       api('GET', '/environments'),
       api('GET', '/applications'),
@@ -367,7 +338,6 @@ async function checkZabbixStatus() {
 
 function serverColor(server) {
   if (server.environments && server.environments.length > 0) return server.environments[0].color;
-  if (server.tags && server.tags.length > 0) return server.tags[0].color;
   return OS_COLORS[server.os_type] || '#888';
 }
 
@@ -635,26 +605,23 @@ function updateFilters() {
     });
     sel.value = cur;
   }
-  syncSel('tag-filter', allTags, 'name');
   syncSel('env-filter', allEnvironments, 'name');
   syncSel('app-filter', allApplications, 'name');
 }
 
 function applyFilters() {
   if (!nodes) return;
-  const tagId = parseInt(document.getElementById('tag-filter').value) || 0;
   const envId = parseInt(document.getElementById('env-filter').value) || 0;
   const appId = parseInt(document.getElementById('app-filter').value) || 0;
   allServers.forEach(s => {
     let vis = true;
-    if (tagId && !s.tags.some(t => t.id === tagId)) vis = false;
     if (envId && !(s.environments || []).some(e => e.id === envId)) vis = false;
     if (appId && !s.services.some(sv => sv.instances.some(i => i.applications.some(a => a.id === appId)))) vis = false;
     nodes.update({id: s.id, opacity: vis ? 1 : 0.15});
   });
 }
 
-['tag-filter', 'env-filter', 'app-filter'].forEach(id => {
+['env-filter', 'app-filter'].forEach(id => {
   document.getElementById(id).addEventListener('change', applyFilters);
 });
 
@@ -664,7 +631,6 @@ function openSidebar(serverId) {
   currentServerId = serverId;
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sb-hostname').textContent = server.hostname;
-  document.getElementById('sb-fqdn').textContent = server.fqdn || '—';
   document.getElementById('sb-ip').textContent = server.ip || '—';
   document.getElementById('sb-os').textContent = server.os_type;
   document.getElementById('sb-desc').textContent = server.description || '—';
@@ -684,22 +650,6 @@ function openSidebar(serverId) {
   envSel.innerHTML = '';
   allEnvironments.forEach(e => {
     const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
-  });
-
-  const chips = document.getElementById('sb-tags');
-  chips.innerHTML = '';
-  (server.tags || []).forEach(tag => {
-    const c = document.createElement('span');
-    c.className = 'chip'; c.style.background = tag.color;
-    c.innerHTML = tag.name + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
-    c.onclick = () => removeTagFromServer(tag.id);
-    chips.appendChild(c);
-  });
-
-  const tagSel = document.getElementById('tag-select');
-  tagSel.innerHTML = '';
-  allTags.forEach(t => {
-    const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; tagSel.appendChild(o);
   });
 
   const relSel = document.getElementById('rel-target');
@@ -917,7 +867,6 @@ function toggleServerEdit() {
     const s = allServers.find(s => s.id === currentServerId);
     if (!s) return;
     document.getElementById('edit-hostname').value = s.hostname || '';
-    document.getElementById('edit-fqdn').value = s.fqdn || '';
     document.getElementById('edit-ip').value = s.ip || '';
     document.getElementById('edit-os').value = s.os_type || 'linux';
     document.getElementById('edit-desc').value = s.description || '';
@@ -928,7 +877,6 @@ async function saveServerEdit() {
   try {
     await api('PUT', '/servers/' + currentServerId, {
       hostname: document.getElementById('edit-hostname').value.trim() || undefined,
-      fqdn: document.getElementById('edit-fqdn').value || null,
       ip: document.getElementById('edit-ip').value || null,
       os_type: document.getElementById('edit-os').value,
       description: document.getElementById('edit-desc').value || null,
@@ -1016,43 +964,16 @@ async function createServer() {
   try {
     await api('POST', '/servers', {
       hostname,
-      fqdn: document.getElementById('new-fqdn').value || null,
       ip: document.getElementById('new-ip').value || null,
       os_type: document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
     });
   } catch (e) { return alert('Fehler: ' + e.message); }
   closeModal('modal-add-server');
-  ['new-hostname','new-fqdn','new-ip','new-desc'].forEach(id => document.getElementById(id).value = '');
+  ['new-hostname','new-ip','new-desc'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
 }
 
-function openManageTags() {
-  renderTagList();
-  document.getElementById('modal-tags').classList.add('open');
-}
-
-function renderTagList() {
-  const list = document.getElementById('tag-list');
-  list.innerHTML = '';
-  allTags.forEach(t => {
-    const row = document.createElement('div');
-    row.className = 'list-item';
-    row.innerHTML = '<div class="dot" style="background:' + t.color + '"></div><span style="flex:1">' + escHtml(t.name) + '</span>';
-    list.appendChild(row);
-  });
-}
-
-async function createTag() {
-  const name = document.getElementById('new-tag-name').value.trim();
-  const color = document.getElementById('new-tag-color').value;
-  if (!name) return;
-  try { await api('POST', '/tags', {name, color}); }
-  catch (e) { return alert('Fehler: ' + e.message); }
-  document.getElementById('new-tag-name').value = '';
-  await loadAll();
-  renderTagList();
-}
 
 function openManageEnvironments() {
   renderEnvList();
@@ -1199,7 +1120,6 @@ function renderZabbixResult() {
   document.getElementById('zbx-result-info').innerHTML =
     '<b>' + escHtml(d.hostname) + '</b>' +
     (d.ip ? ' &nbsp;IP: ' + escHtml(d.ip) : '') +
-    (d.fqdn ? ' &nbsp;FQDN: ' + escHtml(d.fqdn) : '') +
     ' &nbsp;OS: ' + escHtml(d.os_type);
   const container = document.getElementById('zbx-result-services');
   container.innerHTML = '';

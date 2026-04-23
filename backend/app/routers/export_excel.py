@@ -48,8 +48,6 @@ def _fill(c: str) -> PatternFill:
 def _srv_hex(srv: Server) -> str:
     if srv.environments:
         return _h(srv.environments[0].color)
-    if srv.tags:
-        return _h(srv.tags[0].color)
     return OS_HEX.get(srv.os_type, "888888")
 
 
@@ -127,22 +125,21 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
     ws.freeze_panes = "A2"
 
     _header_row(ws, [
-        "Server", "OS", "IP", "Umgebungen", "Tags",
+        "Server", "OS", "IP", "Umgebungen",
         "Service", "Version", "Port", "Instanz", "Anwendungen",
     ])
-    _col_widths(ws, [22, 10, 16, 22, 22, 14, 10, 7, 22, 35])
+    _col_widths(ws, [22, 10, 16, 22, 14, 10, 7, 22, 35])
 
     row = 2
     for si, srv in enumerate(servers):
         envs = ", ".join(e.name for e in srv.environments)
-        tags = ", ".join(t.name for t in srv.tags)
         srv_hex = _srv_hex(srv)
         band    = BANDS1[si % 2]
         srv_r0  = row
 
         services = srv.services or []
         if not services:
-            _write_srv_row(ws, row, srv, envs, tags, "", "", "", "", "", band)
+            _write_srv_row(ws, row, srv, envs, "", "", "", "", "", band)
             row += 1
         else:
             for svc in services:
@@ -150,7 +147,7 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
                 svc_r0  = row
                 instances = svc.instances or []
                 if not instances:
-                    _write_srv_row(ws, row, srv, envs, tags,
+                    _write_srv_row(ws, row, srv, envs,
                                    svc.type, svc.version or "",
                                    str(svc.port) if svc.port else "",
                                    "", "", band)
@@ -159,7 +156,7 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
                 else:
                     for inst in instances:
                         apps = ", ".join(a.name for a in inst.applications)
-                        _write_srv_row(ws, row, srv, envs, tags,
+                        _write_srv_row(ws, row, srv, envs,
                                        svc.type, svc.version or "",
                                        str(svc.port) if svc.port else "",
                                        inst.name, apps, band)
@@ -167,11 +164,11 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
                         row += 1
 
                 svc_r1 = row - 1
-                for c in (6, 7, 8):
+                for c in (5, 6, 7):
                     _merge(ws, c, svc_r0, svc_r1)
 
         srv_r1 = row - 1
-        for c in range(1, 6):
+        for c in range(1, 5):
             _merge(ws, c, srv_r0, srv_r1)
 
         # Server name cell: coloured, bold
@@ -188,16 +185,16 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
             )
 
 
-def _write_srv_row(ws, row, srv, envs, tags, svc_t, svc_v, svc_p, inst, apps, band):
-    vals = [srv.hostname, srv.os_type, srv.ip or "", envs, tags,
+def _write_srv_row(ws, row, srv, envs, svc_t, svc_v, svc_p, inst, apps, band):
+    vals = [srv.hostname, srv.os_type, srv.ip or "", envs,
             svc_t, svc_v, svc_p, inst, apps]
-    aligns = [CENTER, CENTER, CENTER, LEFT, LEFT, CENTER, CENTER, CENTER, LEFT, LEFT]
+    aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT, LEFT]
     for col, (v, a) in enumerate(zip(vals, aligns), 1):
         _cell(ws, row, col, v, band, DATA_FONT, a)
 
 
 def _apply_svc_cell(ws, row: int, svc_hex: str) -> None:
-    c = ws.cell(row=row, column=6)
+    c = ws.cell(row=row, column=5)
     c.fill = _fill(svc_hex)
     c.font = WHITE_BOLD
     c.alignment = CENTER

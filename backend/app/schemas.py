@@ -75,25 +75,8 @@ class ServiceOut(ServiceBase):
         from_attributes = True
 
 
-class TagBase(BaseModel):
-    name: str
-    color: str = "#888888"
-
-
-class TagCreate(TagBase):
-    pass
-
-
-class TagOut(TagBase):
-    id: int
-
-    class Config:
-        from_attributes = True
-
-
 class ServerBase(BaseModel):
     hostname: str
-    fqdn: Optional[str] = None
     ip: Optional[str] = None
     os_type: str = "linux"
     description: Optional[str] = None
@@ -105,7 +88,6 @@ class ServerCreate(ServerBase):
 
 class ServerUpdate(BaseModel):
     hostname: Optional[str] = None
-    fqdn: Optional[str] = None
     ip: Optional[str] = None
     os_type: Optional[str] = None
     description: Optional[str] = None
@@ -115,7 +97,6 @@ class ServerOut(ServerBase):
     id: int
     created_at: datetime
     services: List[ServiceOut] = []
-    tags: List[TagOut] = []
     environments: List[EnvironmentOut] = []
 
     class Config:

@@ -4,13 +4,13 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Tag, Relation, server_tags, Environment, Application
+from .models import Server, Service, Relation, Environment, Application
 from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
-from .routers import servers, services, tags, instances, environments, applications, zabbix_scan, export_excel
+from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -43,7 +43,6 @@ app.add_middleware(
 
 app.include_router(servers.router)
 app.include_router(services.router)
-app.include_router(tags.router)
 app.include_router(instances.router)
 app.include_router(environments.router)
 app.include_router(applications.router)
@@ -64,42 +63,14 @@ async def seed_data():
         if result.scalars().first():
             return
 
-        tag_prod = Tag(name="production", color="#e74c3c")
-        tag_infra = Tag(name="infrastructure", color="#3498db")
-        tag_win = Tag(name="windows", color="#2ecc71")
-        db.add_all([tag_prod, tag_infra, tag_win])
-        await db.flush()
-
-        srv1 = Server(
-            hostname="lin-app01",
-            fqdn="lin-app01.internal",
-            ip="10.0.1.10",
-            os_type="linux",
-            description="Main application server",
-        )
-        srv2 = Server(
-            hostname="win-dc01",
-            fqdn="win-dc01.internal",
-            ip="10.0.1.20",
-            os_type="windows",
-            description="Active Directory domain controller",
-        )
-        srv3 = Server(
-            hostname="prx-host01",
-            fqdn="prx-host01.internal",
-            ip="10.0.1.30",
-            os_type="proxmox",
-            description="Proxmox hypervisor node",
-        )
+        srv1 = Server(hostname="lin-app01", ip="10.0.1.10", os_type="linux",
+                      description="Main application server")
+        srv2 = Server(hostname="win-dc01", ip="10.0.1.20", os_type="windows",
+                      description="Active Directory domain controller")
+        srv3 = Server(hostname="prx-host01", ip="10.0.1.30", os_type="proxmox",
+                      description="Proxmox hypervisor node")
         db.add_all([srv1, srv2, srv3])
         await db.flush()
-
-        await db.execute(insert(server_tags).values([
-            {"server_id": srv1.id, "tag_id": tag_prod.id},
-            {"server_id": srv1.id, "tag_id": tag_infra.id},
-            {"server_id": srv2.id, "tag_id": tag_win.id},
-            {"server_id": srv3.id, "tag_id": tag_infra.id},
-        ]))
 
         db.add_all([
             Service(server_id=srv1.id, type="postgresql", version="16", port=5432),
