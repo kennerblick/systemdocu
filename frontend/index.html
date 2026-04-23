@@ -136,6 +136,7 @@
           <option value="veeam">Veeam</option>
           <option value="minio">MinIO</option>
           <option value="gateway">Gateway</option>
+          <option value="webserver">Webserver</option>
         </select>
         <input type="text" id="svc-version" placeholder="Version" style="width:80px"/>
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
@@ -306,7 +307,7 @@ const SVC_COLORS = {
   postgresql:'#336791', docker:'#2496ed', kubernetes:'#326ce5',
   hyperv:'#00adef', samba:'#d97706', sftp:'#059669',
   freeipa:'#7c3aed', zabbix:'#e53e3e', graylog:'#2d3748',
-  veeam:'#00b050', minio:'#c83b0e', gateway:'#0d9488',
+  veeam:'#00b050', minio:'#c83b0e', gateway:'#0d9488', webserver:'#0ea5e9',
 };
 
 async function api(method, path, body) {
@@ -388,7 +389,7 @@ let showingInstances = false;
 const INST_ICONS = {
   postgresql: '🗄', docker: '🐳', kubernetes: '☸', hyperv: '🖥',
   samba: '📁', sftp: '📂', freeipa: '🔑', zabbix: '📊',
-  graylog: '📝', veeam: '💾', minio: '🪣', gateway: '🔀',
+  graylog: '📝', veeam: '💾', minio: '🪣', gateway: '🔀', webserver: '🌐',
 };
 
 function buildInstServerMap() {

@@ -32,6 +32,7 @@ SVC_HEX = {
     "hyperv": "00ADEF",    "samba": "D97706",   "sftp": "059669",
     "freeipa": "7C3AED",   "zabbix": "E53E3E",  "graylog": "2D3748",
     "veeam": "00B050",     "minio": "C83B0E",   "gateway": "0D9488",
+    "webserver": "0EA5E9",
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
