@@ -1,49 +1,66 @@
 # systemdocu
 
-Server-CMDB mit Graphansicht. Dokumentiert Server, Services und Abhängigkeiten.
-
-## Was ist das
-
-Web-App zur Dokumentation von Servern, Diensten und deren Beziehungen. Vis-network-Graph im Browser. Keine externe Auth nötig.
+Server-CMDB mit Graphansicht. Dokumentiert Server, Services, Instanzen und Abhängigkeiten.
 
 ## Voraussetzungen
 
 - Docker + docker-compose
-- `/opt/docker/systemdocu/postgres/` muss existieren
+- Verzeichnisse auf dem Host anlegen:
 
 ```bash
-mkdir -p /opt/docker/systemdocu/postgres
+mkdir -p /opt/docker/systemdocu/postgres /opt/docker/systemdocu/logs
 ```
 
 ## Starten
 
 ```bash
 cp .env.example .env
-# .env anpassen
-docker compose up -d
+# .env anpassen (siehe unten)
+docker compose up -d --build
 ```
 
-Aufruf: `http://<server-ip>/`
+Aufruf: `http://<server-ip>:9191`
 
-## Zabbix Import
+## .env
 
-Skript läuft standalone, schreibt direkt per API in die Datenbank.
+```env
+POSTGRES_USER=systemdocu
+POSTGRES_PASSWORD=geheim
+POSTGRES_DB=systemdocu
 
-```bash
-cd backend
-pip install -r requirements.txt
-ZABBIX_URL=https://zabbix.internal \
-ZABBIX_USER=Admin \
-ZABBIX_PASSWORD=secret \
-SYSTEMDOCU_API_URL=http://localhost:8000/api/import/zabbix \
-python zabbix_import.py
+ZABBIX_URL=https://monitoring.example.com/
+ZABBIX_API_TOKEN=<api-token>
+ZABBIX_VERIFY_SSL=false
 ```
 
-Oder als Cronjob im Backend-Container:
+`ZABBIX_VERIFY_SSL=false` deaktiviert die Zertifikatsprüfung (für selbstsignierte Zertifikate).
 
-```bash
-docker compose exec backend python zabbix_import.py
-```
+## Env-Variablen
+
+| Variable | Beschreibung |
+|---|---|
+| `POSTGRES_USER` | DB-Benutzer |
+| `POSTGRES_PASSWORD` | DB-Passwort |
+| `POSTGRES_DB` | DB-Name |
+| `ZABBIX_URL` | Zabbix API URL |
+| `ZABBIX_API_TOKEN` | Zabbix API-Token (empfohlen) |
+| `ZABBIX_USER` | Zabbix Benutzer (alternativ zu Token) |
+| `ZABBIX_PASSWORD` | Zabbix Passwort (alternativ zu Token) |
+| `ZABBIX_VERIFY_SSL` | `false` = SSL-Prüfung deaktivieren (Standard: false) |
+
+## Features
+
+- **Graph**: Server als Knoten, Relationen als Kanten; Reinzoomen zeigt Instanz-Knoten mit Typ-Icon
+- **Server**: anlegen, bearbeiten, löschen; Tags, Umgebungen, Relationen
+- **Services & Instanzen**: je Server mehrere Services, je Service mehrere Instanzen mit Anwendungs-Zuordnung
+- **Instanz-Relationen**: direkte Verbindungen zwischen Instanzen verschiedener Server
+- **Filter**: nach Tag, Umgebung oder Anwendung
+- **Zabbix-Scan**: Host aus `Server/*`-Gruppe scannen → LLD-Erkennung von DBs, Containern, VMs, Freigaben → importieren
+- **Export**: JSON-Export aller Daten
+
+## Zabbix API-Token erstellen
+
+Zabbix → Administration → API-Token → Token erstellen, Benutzer mit Lesezugriff zuweisen.
 
 ## Backup
 
@@ -56,14 +73,3 @@ Restore:
 ```bash
 cat backup.sql | docker compose exec -T postgres psql -U $POSTGRES_USER $POSTGRES_DB
 ```
-
-## Env-Variablen
-
-| Variable | Beschreibung |
-|---|---|
-| `POSTGRES_USER` | DB-Benutzer |
-| `POSTGRES_PASSWORD` | DB-Passwort |
-| `POSTGRES_DB` | DB-Name |
-| `ZABBIX_URL` | Zabbix API URL |
-| `ZABBIX_USER` | Zabbix Benutzer |
-| `ZABBIX_PASSWORD` | Zabbix Passwort |
