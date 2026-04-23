@@ -49,7 +49,6 @@ class ServiceInstanceCreate(ServiceInstanceBase):
 class ServiceInstanceOut(ServiceInstanceBase):
     id: int
     service_id: int
-    environments: List[EnvironmentOut] = []
     applications: List[ApplicationOut] = []
 
     class Config:
