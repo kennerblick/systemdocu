@@ -95,12 +95,12 @@
         <button class="small danger" onclick="deleteCurrentServer()"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>
-    <div class="meta-row">IP: <span id="sb-ip">—</span></div>
+    <div class="meta-row">IP: <span id="sb-ip"></span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
     <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
     <div id="sb-edit-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px">
       <div class="modal-row"><label>Hostname</label><input type="text" id="edit-hostname"/></div>
-      <div class="modal-row"><label>IP</label><input type="text" id="edit-ip"/></div>
+      <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="edit-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
       <div class="modal-row"><label>OS-Typ</label>
         <select id="edit-os">
           <option value="linux">Linux</option>
@@ -184,7 +184,7 @@
   <div class="modal">
     <h3>Server hinzufügen</h3>
     <div class="modal-row"><label>Hostname *</label><input type="text" id="new-hostname"/></div>
-    <div class="modal-row"><label>IP</label><input type="text" id="new-ip"/></div>
+    <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="new-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
     <div class="modal-row"><label>OS-Typ</label>
       <select id="new-os">
         <option value="linux">Linux</option>
@@ -353,7 +353,8 @@ function buildNode(server) {
     size: 18,
     color: {background: col, border: col, highlight: {background: col, border: '#fff'}},
     font: {color: '#e0e0e0', size: 13},
-    title: '[' + server.os_type + '] ' + server.hostname + (server.ip ? ' (' + server.ip + ')' : ''),
+    title: '[' + server.os_type + '] ' + server.hostname +
+           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : ''),
   };
 }
 
@@ -388,7 +389,7 @@ function buildInstanceNodesEdges() {
           id: 'inst_' + inst.id,
           label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
           title: inst.name +
-                 (inst.ip ? ' — ' + inst.ip : '') +
+                 (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
                  (inst.environments && inst.environments.length
                    ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : ''),
           shape: 'box',
@@ -685,7 +686,11 @@ function openSidebar(serverId) {
   currentServerId = serverId;
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sb-hostname').textContent = server.hostname;
-  document.getElementById('sb-ip').textContent = server.ip || '—';
+  const ipEl = document.getElementById('sb-ip');
+  const ips = (server.ip || '').split(',').map(s => s.trim()).filter(Boolean);
+  ipEl.innerHTML = ips.length
+    ? ips.map(ip => '<span style="background:#0f3460;border:1px solid #1d4ed8;border-radius:3px;padding:1px 7px;font-size:0.78rem;margin-right:3px;display:inline-block">' + escHtml(ip) + '</span>').join('')
+    : '—';
   document.getElementById('sb-os').textContent = server.os_type;
   document.getElementById('sb-desc').textContent = server.description || '—';
 
@@ -823,9 +828,9 @@ function renderServicesSection(server) {
       nameDiv.innerHTML = escHtml(inst.name) +
         (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '');
       const ipInp = document.createElement('input');
-      ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP';
-      ipInp.style.cssText = 'width:110px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
-      ipInp.title = 'IP dieser Instanz';
+      ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
+      ipInp.style.cssText = 'width:140px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
+      ipInp.title = 'IPs dieser Instanz (kommagetrennt)';
       ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
       const delBtn = document.createElement('button');
       delBtn.className = 'xs danger';
