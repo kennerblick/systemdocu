@@ -422,12 +422,20 @@ function buildInstanceNodesEdges() {
       });
     });
   });
+  const im = buildInstServerMap();
   allInstanceRelations.forEach(r => {
+    const src = im[r.source_instance_id];
+    const tgt = im[r.target_instance_id];
+    const srcSrv = allServers.find(s => s.id === (src && src.serverId));
+    const tgtSrv = allServers.find(s => s.id === (tgt && tgt.serverId));
     irInstEdges.push({
       id: 'ir_inst_' + r.id,
       from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
-      label: r.type, arrows: 'to', width: 2,
-      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 10},
+      arrows: 'to', width: 2,
+      color: {color: '#7c3aed'},
+      title: (src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ') → ' +
+             (tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
+             '\n' + r.type,
     });
   });
   return {instNodes, siEdges, irInstEdges};
@@ -439,10 +447,13 @@ function renderGraph() {
   const edgeData = [];
 
   allRelations.forEach(r => {
+    const srcSrv = allServers.find(s => s.id === r.source_id);
+    const tgtSrv = allServers.find(s => s.id === r.target_id);
     edgeData.push({
-      id: 'sr_' + r.id, from: r.source_id, to: r.target_id, label: r.type,
+      id: 'sr_' + r.id, from: r.source_id, to: r.target_id,
       arrows: 'to', color: {color: '#4b5563'},
-      font: {color: '#9ca3af', size: 10, align: 'middle'},
+      title: (srcSrv ? srcSrv.hostname : r.source_id) + ' → ' +
+             (tgtSrv ? tgtSrv.hostname : r.target_id) + '\n' + r.type,
     });
   });
 
@@ -451,11 +462,15 @@ function renderGraph() {
     const src = instMap[r.source_instance_id];
     const tgt = instMap[r.target_instance_id];
     if (!src || !tgt || src.serverId === tgt.serverId) return;
+    const srcSrv = allServers.find(s => s.id === src.serverId);
+    const tgtSrv = allServers.find(s => s.id === tgt.serverId);
     edgeData.push({
       id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
-      label: src.name + ' → ' + tgt.name,
       arrows: 'to', dashes: true,
-      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 9},
+      color: {color: '#7c3aed'},
+      title: src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ') → ' +
+             tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
+             '\n' + r.type,
     });
   });
 
