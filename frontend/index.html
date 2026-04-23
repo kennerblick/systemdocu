@@ -286,6 +286,9 @@ const SVC_COLORS = {
   veeam:'#00b050', minio:'#c83b0e', gateway:'#0d9488', webserver:'#0ea5e9',
 };
 
+// Only instances of these service types represent VMs with their own IP addresses
+const VM_SVC_TYPES = new Set(['hyperv', 'esxi', 'proxmox']);
+
 async function api(method, path, body) {
   const opts = {method, headers: {'Content-Type': 'application/json'}};
   if (body !== undefined) opts.body = JSON.stringify(body);
@@ -827,16 +830,20 @@ function renderServicesSection(server) {
       nameDiv.style.display = 'flex'; nameDiv.style.alignItems = 'center'; nameDiv.style.gap = '5px';
       nameDiv.innerHTML = escHtml(inst.name) +
         (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '');
-      const ipInp = document.createElement('input');
-      ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
-      ipInp.style.cssText = 'width:140px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
-      ipInp.title = 'IPs dieser Instanz (kommagetrennt)';
-      ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
       const delBtn = document.createElement('button');
       delBtn.className = 'xs danger';
       delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
       delBtn.onclick = () => deleteInstance(inst.id);
-      nameDiv.appendChild(ipInp);
+      if (VM_SVC_TYPES.has(svc.type)) {
+        const ipInp = document.createElement('input');
+        ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
+        ipInp.style.cssText = 'width:140px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
+        ipInp.title = 'IPs dieser VM (kommagetrennt)';
+        ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
+        nameDiv.appendChild(ipInp);
+      } else {
+        delBtn.style.marginLeft = 'auto';
+      }
       nameDiv.appendChild(delBtn);
       row.appendChild(nameDiv);
 
