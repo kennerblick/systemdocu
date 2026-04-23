@@ -373,41 +373,95 @@ function buildNode(server) {
   };
 }
 
+const INST_ZOOM_THRESHOLD = 1.5;
+let showingInstances = false;
+
+const INST_ICONS = {
+  postgresql: '🗄', docker: '🐳', kubernetes: '☸', hyperv: '🖥',
+  samba: '📁', sftp: '📂', freeipa: '🔑', zabbix: '📊',
+  graylog: '📝', veeam: '💾', minio: '🪣',
+};
+
 function buildInstServerMap() {
   const map = {};
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
-      (svc.instances || []).forEach(inst => { map[inst.id] = {serverId: s.id, name: inst.name, svcType: svc.type}; });
+      (svc.instances || []).forEach(inst => {
+        map[inst.id] = {serverId: s.id, name: inst.name, svcType: svc.type};
+      });
     });
   });
   return map;
 }
 
 function renderGraph() {
-  const nodeData = allServers.map(buildNode);
   const instMap = buildInstServerMap();
-  const edgeData = allRelations.map(r => ({
-    id: 'sr_' + r.id, from: r.source_id, to: r.target_id, label: r.type,
-    arrows: 'to', color: {color: '#4b5563'},
-    font: {color: '#9ca3af', size: 10, align: 'middle'},
-  }));
+  const nodeData = allServers.map(buildNode);
+  const edgeData = [];
+
+  // Instance nodes (hidden until zoom threshold)
+  allServers.forEach(s => {
+    (s.services || []).forEach(svc => {
+      const col = SVC_COLORS[svc.type] || '#4b5563';
+      (svc.instances || []).forEach(inst => {
+        nodeData.push({
+          id: 'inst_' + inst.id,
+          label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
+          shape: 'box',
+          hidden: true,
+          color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
+          font: {color: '#f0f0f0', size: 11, bold: false},
+          margin: {top: 5, bottom: 5, left: 7, right: 7},
+          borderWidth: 1,
+          _serverId: s.id,
+        });
+        // thin dotted edge: server → instance (auto-hidden with node)
+        edgeData.push({
+          id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
+          color: {color: '#374151', opacity: 0.5}, width: 1,
+          dashes: [3, 6], arrows: '',
+        });
+      });
+    });
+  });
+
+  // Server-level relations (always visible)
+  allRelations.forEach(r => {
+    edgeData.push({
+      id: 'sr_' + r.id, from: r.source_id, to: r.target_id, label: r.type,
+      arrows: 'to', color: {color: '#4b5563'},
+      font: {color: '#9ca3af', size: 10, align: 'middle'},
+    });
+  });
+
+  // Instance relations: proxy edge (zoomed-out) + instance edge (zoomed-in)
   allInstanceRelations.forEach(r => {
     const src = instMap[r.source_instance_id];
     const tgt = instMap[r.target_instance_id];
-    if (src && tgt && src.serverId !== tgt.serverId) {
+    if (!src || !tgt) return;
+    if (src.serverId !== tgt.serverId) {
       edgeData.push({
-        id: 'ir_' + r.id, from: src.serverId, to: tgt.serverId,
+        id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
         label: src.name + ' → ' + tgt.name,
         arrows: 'to', dashes: true,
-        color: {color: '#7c3aed'},
-        font: {color: '#a78bfa', size: 9, align: 'middle'},
+        color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 9},
+        hidden: false,
       });
     }
+    edgeData.push({
+      id: 'ir_inst_' + r.id,
+      from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
+      label: r.type, arrows: 'to', width: 2,
+      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 10},
+      hidden: true,
+    });
   });
 
   if (network) {
+    showingInstances = false;
     nodes.clear(); nodes.add(nodeData);
     edges.clear(); edges.add(edgeData);
+    updateInstanceVisibility(network.getScale());
     return;
   }
 
@@ -415,14 +469,53 @@ function renderGraph() {
   nodes = new DataSet(nodeData);
   edges = new DataSet(edgeData);
   network = new Network(document.getElementById('graph'), {nodes, edges}, {
-    physics: {barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150}, stabilization: {iterations: 150}},
+    physics: {
+      barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150},
+      stabilization: {iterations: 150},
+    },
     interaction: {hover: true, tooltipDelay: 200},
     edges: {smooth: {type: 'continuous'}},
   });
   network.on('click', params => {
-    if (params.nodes.length) openSidebar(params.nodes[0]);
-    else closeSidebar();
+    if (!params.nodes.length) return closeSidebar();
+    const nodeId = params.nodes[0];
+    if (typeof nodeId === 'string' && nodeId.startsWith('inst_')) {
+      const info = instMap[parseInt(nodeId.replace('inst_', ''))];
+      if (info) openSidebar(info.serverId);
+    } else {
+      openSidebar(nodeId);
+    }
   });
+  network.on('zoom', params => updateInstanceVisibility(params.scale));
+}
+
+function updateInstanceVisibility(scale) {
+  if (!nodes || !edges) return;
+  const show = scale >= INST_ZOOM_THRESHOLD;
+  if (show === showingInstances) return;
+  showingInstances = show;
+
+  const nodeUpdates = [];
+  allServers.forEach(s => {
+    (s.services || []).forEach(svc => {
+      (svc.instances || []).forEach(inst => {
+        nodeUpdates.push({id: 'inst_' + inst.id, hidden: !show});
+      });
+    });
+  });
+  nodes.update(nodeUpdates);
+
+  const edgeUpdates = [];
+  const im = buildInstServerMap();
+  allInstanceRelations.forEach(r => {
+    const src = im[r.source_instance_id];
+    const tgt = im[r.target_instance_id];
+    if (src && tgt && src.serverId !== tgt.serverId && edges.get('ir_srv_' + r.id)) {
+      edgeUpdates.push({id: 'ir_srv_' + r.id, hidden: show});
+    }
+    if (edges.get('ir_inst_' + r.id)) edgeUpdates.push({id: 'ir_inst_' + r.id, hidden: !show});
+  });
+  edges.update(edgeUpdates);
 }
 
 function updateFilters() {
