@@ -4,7 +4,7 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
@@ -54,6 +54,14 @@ app.include_router(export_excel.router)
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add columns that may be missing in existing DBs
+        migrations = [
+            "ALTER TABLE environments ADD COLUMN IF NOT EXISTS subnet VARCHAR(20)",
+            "ALTER TABLE environments ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
+            "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS ip VARCHAR(45)",
+        ]
+        for sql in migrations:
+            await conn.execute(text(sql))
     await seed_data()
 
 
@@ -106,17 +114,15 @@ async def create_relation(payload: RelationCreate, db: AsyncSession = Depends(ge
 @app.get("/api/export/json")
 async def export_json(db: AsyncSession = Depends(get_db)):
     servers_result = await db.execute(
-        select(Server).options(selectinload(Server.services), selectinload(Server.tags))
+        select(Server).options(selectinload(Server.services))
     )
     srvs = servers_result.scalars().all()
-    tags_result = await db.execute(select(Tag))
     rels_result = await db.execute(select(Relation))
     return {
         "servers": [
             {
                 "id": s.id,
                 "hostname": s.hostname,
-                "fqdn": s.fqdn,
                 "ip": s.ip,
                 "os_type": s.os_type,
                 "description": s.description,
@@ -124,11 +130,9 @@ async def export_json(db: AsyncSession = Depends(get_db)):
                     {"type": sv.type, "version": sv.version, "port": sv.port, "detail": sv.detail}
                     for sv in s.services
                 ],
-                "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in s.tags],
             }
             for s in srvs
         ],
-        "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in tags_result.scalars().all()],
         "relations": [
             {"id": r.id, "source_id": r.source_id, "target_id": r.target_id, "type": r.type}
             for r in rels_result.scalars().all()
@@ -146,7 +150,6 @@ async def import_zabbix(payload: ZabbixImportPayload, db: AsyncSession = Depends
             if server is None:
                 server = Server(
                     hostname=host.hostname,
-                    fqdn=host.fqdn,
                     ip=host.ip,
                     os_type=host.os_type,
                 )
@@ -154,8 +157,6 @@ async def import_zabbix(payload: ZabbixImportPayload, db: AsyncSession = Depends
                 await db.flush()
                 created += 1
             else:
-                if host.fqdn:
-                    server.fqdn = host.fqdn
                 if host.ip:
                     server.ip = host.ip
                 server.os_type = host.os_type
