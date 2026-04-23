@@ -10,7 +10,11 @@ from ..schemas import InternetRouterCreate, InternetRouterOut
 
 router = APIRouter(prefix="/api/internet-routers", tags=["internet"])
 
-_opts = [selectinload(InternetRouter.environments)]
+_opts = [
+    selectinload(InternetRouter.environments),
+    selectinload(InternetRouter.upstream),
+    selectinload(InternetRouter.server),
+]
 
 
 async def get_router_or_404(router_id: int, db: AsyncSession) -> InternetRouter:
