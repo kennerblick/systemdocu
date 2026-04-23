@@ -15,6 +15,9 @@ _server_options = [
     selectinload(Server.services)
         .selectinload(Service.instances)
         .selectinload(ServiceInstance.applications),
+    selectinload(Server.services)
+        .selectinload(Service.instances)
+        .selectinload(ServiceInstance.environments),
     selectinload(Server.environments),
 ]
 

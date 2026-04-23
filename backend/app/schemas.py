@@ -7,10 +7,20 @@ class EnvironmentBase(BaseModel):
     name: str
     description: Optional[str] = None
     color: str = "#3b82f6"
+    subnet: Optional[str] = None
+    gateway: Optional[str] = None
 
 
 class EnvironmentCreate(EnvironmentBase):
     pass
+
+
+class EnvironmentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    subnet: Optional[str] = None
+    gateway: Optional[str] = None
 
 
 class EnvironmentOut(EnvironmentBase):
@@ -40,16 +50,24 @@ class ApplicationOut(ApplicationBase):
 class ServiceInstanceBase(BaseModel):
     name: str
     description: Optional[str] = None
+    ip: Optional[str] = None
 
 
 class ServiceInstanceCreate(ServiceInstanceBase):
     pass
 
 
+class ServiceInstanceUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    ip: Optional[str] = None
+
+
 class ServiceInstanceOut(ServiceInstanceBase):
     id: int
     service_id: int
     applications: List[ApplicationOut] = []
+    environments: List[EnvironmentOut] = []
 
     class Config:
         from_attributes = True

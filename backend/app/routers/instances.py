@@ -6,7 +6,7 @@ from typing import List
 
 from ..database import get_db
 from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
-from ..schemas import ServiceInstanceCreate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut
+from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut
 
 router = APIRouter(tags=["instances"])
 
@@ -55,6 +55,15 @@ async def delete_instance(instance_id: int, db: AsyncSession = Depends(get_db)):
     obj = await get_instance_or_404(instance_id, db)
     await db.delete(obj)
     await db.commit()
+
+
+@router.patch("/api/instances/{instance_id}", response_model=ServiceInstanceOut)
+async def update_instance(instance_id: int, payload: ServiceInstanceUpdate, db: AsyncSession = Depends(get_db)):
+    obj = await get_instance_or_404(instance_id, db)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    await db.commit()
+    return await get_instance_or_404(instance_id, db)
 
 
 @router.post("/api/instances/{instance_id}/environments/{env_id}", response_model=ServiceInstanceOut)

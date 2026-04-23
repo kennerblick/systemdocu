@@ -207,9 +207,11 @@
     <h3>Umgebungen verwalten</h3>
     <div id="env-list"></div>
     <hr style="border-color:#0f3460;margin:8px 0"/>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input type="text" id="new-env-name" placeholder="Name" style="flex:1;min-width:100px"/>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <input type="text" id="new-env-name" placeholder="Name *" style="flex:1;min-width:100px"/>
       <input type="text" id="new-env-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
+      <input type="text" id="new-env-subnet" placeholder="Subnetz z.B. 192.168.1.0/24" style="flex:2;min-width:140px"/>
+      <input type="text" id="new-env-gateway" placeholder="Gateway IP" style="flex:1;min-width:100px"/>
       <button onclick="createEnvironment()">Erstellen</button>
     </div>
     <div class="modal-actions"><button onclick="closeModal('modal-environments')">Schließen</button></div>
@@ -267,6 +269,7 @@ let allEnvironments = [];
 let allApplications = [];
 let allInstanceRelations = [];
 let irSrvEdgeIds = [];
+let hiddenByFilter = new Set();
 let currentServerId = null;
 
 const OS_COLORS = {
@@ -384,6 +387,10 @@ function buildInstanceNodesEdges() {
         instNodes.push({
           id: 'inst_' + inst.id,
           label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
+          title: inst.name +
+                 (inst.ip ? ' — ' + inst.ip : '') +
+                 (inst.environments && inst.environments.length
+                   ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : ''),
           shape: 'box',
           color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
           font: {color: '#f0f0f0', size: 11},
@@ -575,6 +582,7 @@ function updateInstanceVisibility(scale) {
     irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: false}); });
   }
 
+  applyFilters();
   network.redraw();
   updateZoomHint(show);
 }
@@ -610,14 +618,60 @@ function updateFilters() {
 }
 
 function applyFilters() {
-  if (!nodes) return;
+  if (!nodes || !edges) return;
   const envId = parseInt(document.getElementById('env-filter').value) || 0;
   const appId = parseInt(document.getElementById('app-filter').value) || 0;
+
+  hiddenByFilter = new Set();
   allServers.forEach(s => {
-    let vis = true;
-    if (envId && !(s.environments || []).some(e => e.id === envId)) vis = false;
-    if (appId && !s.services.some(sv => sv.instances.some(i => i.applications.some(a => a.id === appId)))) vis = false;
-    nodes.update({id: s.id, opacity: vis ? 1 : 0.15});
+    let visible = true;
+    if (envId) {
+      const srvHasEnv = (s.environments || []).some(e => e.id === envId);
+      const instHasEnv = (s.services || []).some(sv =>
+        (sv.instances || []).some(inst => (inst.environments || []).some(e => e.id === envId))
+      );
+      if (!srvHasEnv && !instHasEnv) visible = false;
+    }
+    if (appId && !(s.services || []).some(sv =>
+      (sv.instances || []).some(i => (i.applications || []).some(a => a.id === appId))
+    )) visible = false;
+
+    nodes.update({id: s.id, hidden: !visible});
+    if (!visible) hiddenByFilter.add(s.id);
+
+    // Hide/show instance nodes and their si-edges for this server
+    (s.services || []).forEach(svc => {
+      (svc.instances || []).forEach(inst => {
+        if (nodes.get('inst_' + inst.id)) nodes.update({id: 'inst_' + inst.id, hidden: !visible});
+        if (edges.get('si_' + inst.id))   edges.update({id: 'si_'   + inst.id, hidden: !visible});
+      });
+    });
+  });
+
+  // Hide/show server–server edges and instance-relation edges
+  edges.forEach(e => {
+    const id = e.id;
+    if (typeof id !== 'string') return;
+    if (id.startsWith('sr_')) {
+      edges.update({id, hidden: hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to)});
+    } else if (id.startsWith('ir_srv_')) {
+      const filterHide = hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to);
+      edges.update({id, hidden: showingInstances || filterHide});
+    } else if (id.startsWith('ir_inst_')) {
+      const rId = parseInt(id.replace('ir_inst_', ''));
+      const rel = allInstanceRelations.find(r => r.id === rId);
+      if (!rel) return;
+      let srcSrvId = null, tgtSrvId = null;
+      for (const s of allServers) {
+        for (const svc of s.services || []) {
+          for (const inst of svc.instances || []) {
+            if (inst.id === rel.source_instance_id) srcSrvId = s.id;
+            if (inst.id === rel.target_instance_id) tgtSrvId = s.id;
+          }
+        }
+      }
+      edges.update({id, hidden: hiddenByFilter.has(srcSrvId) || hiddenByFilter.has(tgtSrvId)});
+    }
   });
 }
 
@@ -761,12 +815,38 @@ function renderServicesSection(server) {
     (svc.instances || []).forEach(inst => {
       const row = document.createElement('div');
       row.className = 'instance-row';
-      row.innerHTML = '<div class="instance-name">' + escHtml(inst.name) +
-        (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '') +
-        ' <button class="xs danger" onclick="deleteInstance(' + inst.id + ')"><i class="fa-solid fa-xmark"></i></button></div>';
 
+      // Name + IP + delete
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'instance-name';
+      nameDiv.style.display = 'flex'; nameDiv.style.alignItems = 'center'; nameDiv.style.gap = '5px';
+      nameDiv.innerHTML = escHtml(inst.name) +
+        (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '');
+      const ipInp = document.createElement('input');
+      ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP';
+      ipInp.style.cssText = 'width:110px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
+      ipInp.title = 'IP dieser Instanz';
+      ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
+      const delBtn = document.createElement('button');
+      delBtn.className = 'xs danger';
+      delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      delBtn.onclick = () => deleteInstance(inst.id);
+      nameDiv.appendChild(ipInp);
+      nameDiv.appendChild(delBtn);
+      row.appendChild(nameDiv);
+
+      // Chips: environments + applications
       const chipRow = document.createElement('div');
       chipRow.className = 'instance-chips';
+
+      (inst.environments || []).forEach(env => {
+        const c = document.createElement('span');
+        c.className = 'chip'; c.style.background = env.color;
+        c.style.outline = '1px solid rgba(255,255,255,0.3)';
+        c.innerHTML = '🌍 ' + escHtml(env.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.onclick = () => removeInstanceEnv(inst.id, env.id);
+        chipRow.appendChild(c);
+      });
 
       (inst.applications || []).forEach(app => {
         const c = document.createElement('span');
@@ -776,9 +856,24 @@ function renderServicesSection(server) {
         chipRow.appendChild(c);
       });
 
+      // Env assign
+      if (allEnvironments.length) {
+        const envSel = document.createElement('select');
+        envSel.style.cssText = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+        allEnvironments.forEach(e => {
+          const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
+        });
+        const envBtn = document.createElement('button');
+        envBtn.className = 'xs'; envBtn.textContent = '+Umgeb.';
+        envBtn.onclick = () => addInstanceEnv(inst.id, parseInt(envSel.value));
+        chipRow.appendChild(envSel);
+        chipRow.appendChild(envBtn);
+      }
+
+      // App assign
       if (allApplications.length) {
         const appSel = document.createElement('select');
-        appSel.style.cssText = 'flex:1;font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+        appSel.style.cssText = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
         allApplications.forEach(a => {
           const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; appSel.appendChild(o);
         });
@@ -859,6 +954,12 @@ async function removeInstanceApp(instanceId, appId) {
   await loadAll();
 }
 
+async function updateInstanceIp(instanceId, ip) {
+  try { await api('PATCH', '/instances/' + instanceId, {ip: ip || null}); }
+  catch (e) { return alert('Fehler beim Speichern der IP: ' + e.message); }
+  await loadAll();
+}
+
 function toggleServerEdit() {
   const form = document.getElementById('sb-edit-form');
   const visible = form.style.display !== 'none';
@@ -923,20 +1024,6 @@ async function removeServerEnv(envId) {
   await loadAll();
 }
 
-async function assignTag() {
-  const tagId = parseInt(document.getElementById('tag-select').value);
-  if (!tagId) return;
-  try { await api('POST', '/servers/' + currentServerId + '/tags/' + tagId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
-  await loadAll();
-}
-
-async function removeTagFromServer(tagId) {
-  try { await api('DELETE', '/servers/' + currentServerId + '/tags/' + tagId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
-  await loadAll();
-}
-
 async function deleteCurrentServer() {
   if (!confirm('Server wirklich löschen?')) return;
   try { await api('DELETE', '/servers/' + currentServerId); }
@@ -984,25 +1071,84 @@ function renderEnvList() {
   const list = document.getElementById('env-list');
   list.innerHTML = '';
   allEnvironments.forEach(e => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border-bottom:1px solid #0f3460;padding:6px 0';
+
+    // Display row
     const row = document.createElement('div');
     row.className = 'list-item';
-    row.innerHTML = '<div class="dot" style="background:' + e.color + '"></div>' +
-      '<span style="flex:1">' + escHtml(e.name) + '</span>' +
-      (e.description ? '<span style="font-size:0.75rem;color:#6b7280">' + escHtml(e.description) + '</span>' : '') +
+    row.style.borderBottom = 'none';
+    row.innerHTML =
+      '<div class="dot" style="background:' + e.color + ';cursor:pointer" title="Farbe ändern" onclick="pickEnvColor(' + e.id + ',this)"></div>' +
+      '<span style="flex:1;font-weight:500">' + escHtml(e.name) + '</span>' +
+      (e.subnet ? '<span style="font-size:0.72rem;color:#60a5fa;margin-right:4px">' + escHtml(e.subnet) + '</span>' : '') +
+      (e.gateway ? '<span style="font-size:0.72rem;color:#34d399">GW: ' + escHtml(e.gateway) + '</span>' : '') +
+      '<button class="xs" onclick="toggleEnvEdit(' + e.id + ')" style="margin-left:6px"><i class="fa-solid fa-pen"></i></button>' +
       '<button class="xs danger" onclick="deleteEnvironment(' + e.id + ')"><i class="fa-solid fa-xmark"></i></button>';
-    list.appendChild(row);
+    wrap.appendChild(row);
+
+    // Inline edit form (hidden)
+    const form = document.createElement('div');
+    form.id = 'env-edit-' + e.id;
+    form.style.cssText = 'display:none;flex-direction:column;gap:5px;padding:6px 0 2px 18px';
+    form.innerHTML =
+      '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
+        '<input type="text" id="ee-name-' + e.id + '" value="' + escHtml(e.name) + '" placeholder="Name" style="flex:1;min-width:100px"/>' +
+        '<input type="text" id="ee-subnet-' + e.id + '" value="' + escHtml(e.subnet||'') + '" placeholder="Subnetz z.B. 192.168.1.0/24" style="flex:2;min-width:130px"/>' +
+        '<input type="text" id="ee-gw-' + e.id + '" value="' + escHtml(e.gateway||'') + '" placeholder="Gateway IP" style="flex:1;min-width:90px"/>' +
+        '<input type="color" id="ee-color-' + e.id + '" value="' + e.color + '" style="width:34px;padding:2px"/>' +
+      '</div>' +
+      '<div style="display:flex;gap:5px">' +
+        '<button class="small" onclick="saveEnvEdit(' + e.id + ')">Speichern</button>' +
+        '<button class="small" onclick="toggleEnvEdit(' + e.id + ')">Abbrechen</button>' +
+      '</div>';
+    wrap.appendChild(form);
+    list.appendChild(wrap);
   });
 }
 
+function toggleEnvEdit(envId) {
+  const f = document.getElementById('env-edit-' + envId);
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+
+function pickEnvColor(envId, dotEl) {
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.value = dotEl.style.background;
+  inp.style.position = 'fixed'; inp.style.opacity = '0';
+  document.body.appendChild(inp);
+  inp.click();
+  inp.addEventListener('change', async () => {
+    try { await api('PUT', '/environments/' + envId, {color: inp.value}); }
+    catch (e) { return alert('Fehler: ' + e.message); }
+    await loadAll(); renderEnvList();
+    document.body.removeChild(inp);
+  });
+  inp.addEventListener('blur', () => { setTimeout(() => document.body.removeChild(inp), 200); });
+}
+
+async function saveEnvEdit(envId) {
+  const name    = document.getElementById('ee-name-'   + envId).value.trim();
+  const subnet  = document.getElementById('ee-subnet-' + envId).value.trim() || null;
+  const gateway = document.getElementById('ee-gw-'     + envId).value.trim() || null;
+  const color   = document.getElementById('ee-color-'  + envId).value;
+  if (!name) return alert('Name fehlt');
+  try { await api('PUT', '/environments/' + envId, {name, subnet, gateway, color}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll(); renderEnvList();
+}
+
 async function createEnvironment() {
-  const name = document.getElementById('new-env-name').value.trim();
+  const name    = document.getElementById('new-env-name').value.trim();
   const description = document.getElementById('new-env-desc').value || null;
+  const subnet  = document.getElementById('new-env-subnet').value.trim() || null;
+  const gateway = document.getElementById('new-env-gateway').value.trim() || null;
   if (!name) return;
   const color = nextColor(allEnvironments.map(e => e.color));
-  try { await api('POST', '/environments', {name, description, color}); }
+  try { await api('POST', '/environments', {name, description, color, subnet, gateway}); }
   catch (e) { return alert('Fehler: ' + e.message); }
-  document.getElementById('new-env-name').value = '';
-  document.getElementById('new-env-desc').value = '';
+  ['new-env-name','new-env-desc','new-env-subnet','new-env-gateway'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
   renderEnvList();
 }

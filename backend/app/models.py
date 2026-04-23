@@ -66,6 +66,7 @@ class ServiceInstance(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
+    ip = Column(String(45))
 
     service = relationship("Service", back_populates="instances")
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
@@ -78,6 +79,8 @@ class Environment(Base):
     name = Column(String(100), unique=True, nullable=False)
     description = Column(Text)
     color = Column(String(7), default="#3b82f6")
+    subnet = Column(String(20))
+    gateway = Column(String(45))
 
     instances = relationship("ServiceInstance", secondary=instance_environments, back_populates="environments")
     servers = relationship("Server", secondary=server_environments, back_populates="environments")

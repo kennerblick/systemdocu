@@ -6,7 +6,7 @@ from typing import List
 
 from ..database import get_db
 from ..models import Environment
-from ..schemas import EnvironmentCreate, EnvironmentOut
+from ..schemas import EnvironmentCreate, EnvironmentUpdate, EnvironmentOut
 
 router = APIRouter(prefix="/api/environments", tags=["environments"])
 
@@ -26,6 +26,23 @@ async def create_environment(payload: EnvironmentCreate, db: AsyncSession = Depe
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Umgebung existiert bereits")
+    await db.refresh(obj)
+    return obj
+
+
+@router.put("/{env_id}", response_model=EnvironmentOut)
+async def update_environment(env_id: int, payload: EnvironmentUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Environment).where(Environment.id == env_id))
+    obj = result.scalar_one_or_none()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Name bereits vergeben")
     await db.refresh(obj)
     return obj
 

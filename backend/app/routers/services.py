@@ -12,6 +12,7 @@ router = APIRouter(tags=["services"])
 
 _svc_options = [
     selectinload(Service.instances).selectinload(ServiceInstance.applications),
+    selectinload(Service.instances).selectinload(ServiceInstance.environments),
 ]
 
 
