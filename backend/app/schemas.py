@@ -151,21 +151,25 @@ class InstanceRelationOut(InstanceRelationCreate):
         from_attributes = True
 
 
-class InternetRouterBase(BaseModel):
+class InternetRouterCreate(BaseModel):
     name: str
     provider: Optional[str] = None
     external_ip: Optional[str] = None
     internal_ip: Optional[str] = None
-    environment_id: Optional[int] = None
     upstream_router_id: Optional[int] = None
+    server_id: Optional[int] = None
+    environment_ids: List[int] = []
 
 
-class InternetRouterCreate(InternetRouterBase):
-    pass
-
-
-class InternetRouterOut(InternetRouterBase):
+class InternetRouterOut(BaseModel):
     id: int
+    name: str
+    provider: Optional[str] = None
+    external_ip: Optional[str] = None
+    internal_ip: Optional[str] = None
+    upstream_router_id: Optional[int] = None
+    server_id: Optional[int] = None
+    environments: List[EnvironmentOut] = []
 
     class Config:
         from_attributes = True

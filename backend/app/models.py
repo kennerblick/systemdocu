@@ -29,6 +29,12 @@ instance_applications = Table(
     Column("application_id", Integer, ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True),
 )
 
+router_environments = Table(
+    "router_environments", Base.metadata,
+    Column("router_id", Integer, ForeignKey("internet_routers.id", ondelete="CASCADE"), primary_key=True),
+    Column("environment_id", Integer, ForeignKey("environments.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class Server(Base):
     __tablename__ = "servers"
@@ -123,11 +129,12 @@ class InternetRouter(Base):
     provider = Column(String(255))
     external_ip = Column(String(100))
     internal_ip = Column(String(100))
-    environment_id = Column(Integer, ForeignKey("environments.id", ondelete="SET NULL"), nullable=True)
     upstream_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
-    environment = relationship("Environment", backref="routers")
+    environments = relationship("Environment", secondary=router_environments)
     upstream = relationship("InternetRouter", remote_side="InternetRouter.id", foreign_keys=[upstream_router_id])
+    server = relationship("Server")
 
 
 class Relation(Base):
