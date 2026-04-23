@@ -380,7 +380,7 @@ function buildNode(server) {
   };
 }
 
-const INST_ZOOM_THRESHOLD = 1.5;
+const INST_ZOOM_THRESHOLD = 0.65;
 let showingInstances = false;
 
 const INST_ICONS = {
@@ -493,7 +493,8 @@ function renderGraph() {
       openSidebar(nodeId);
     }
   });
-  network.on('zoom', params => updateInstanceVisibility(params.scale));
+  network.on('zoom', () => updateInstanceVisibility(network.getScale()));
+  network.on('stabilized', () => updateInstanceVisibility(network.getScale()));
 }
 
 function renderLegend() {
@@ -547,6 +548,24 @@ function updateInstanceVisibility(scale) {
     if (edges.get('ir_inst_' + r.id)) edgeUpdates.push({id: 'ir_inst_' + r.id, hidden: !show});
   });
   edges.update(edgeUpdates);
+
+  if (network) network.redraw();
+  updateZoomHint(show);
+}
+
+function updateZoomHint(instancesVisible) {
+  let hint = document.getElementById('zoom-hint');
+  const hasInstances = allServers.some(s => (s.services || []).some(sv => (sv.instances || []).length));
+  if (!hasInstances) { if (hint) hint.remove(); return; }
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = 'zoom-hint';
+    hint.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);' +
+      'background:rgba(22,33,62,0.85);border:1px solid #0f3460;border-radius:5px;' +
+      'padding:5px 14px;font-size:0.75rem;color:#6b7280;pointer-events:none;z-index:10;white-space:nowrap';
+    document.getElementById('graph').appendChild(hint);
+  }
+  hint.textContent = instancesVisible ? '🔍 Rauszoomen um Instanzen auszublenden' : '🔍 Reinzoomen um Instanzen anzuzeigen';
 }
 
 function updateFilters() {
