@@ -85,9 +85,7 @@
 </div>
 
 <div id="main">
-  <div id="graph">
-    <div id="graph-legend"></div>
-  </div>
+  <div id="graph"></div>
 
   <div id="sidebar">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -401,38 +399,45 @@ function buildInstServerMap() {
   return map;
 }
 
+function buildInstanceNodesEdges() {
+  const instNodes = [], siEdges = [], irInstEdges = [];
+  const im = buildInstServerMap();
+  allServers.forEach(s => {
+    (s.services || []).forEach(svc => {
+      const col = SVC_COLORS[svc.type] || '#4b5563';
+      (svc.instances || []).forEach(inst => {
+        instNodes.push({
+          id: 'inst_' + inst.id,
+          label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
+          shape: 'box',
+          color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
+          font: {color: '#f0f0f0', size: 11},
+          margin: {top: 5, bottom: 5, left: 7, right: 7},
+          borderWidth: 1,
+        });
+        siEdges.push({
+          id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
+          color: {color: col, opacity: 0.45}, width: 1, dashes: [3, 6], arrows: '',
+        });
+      });
+    });
+  });
+  allInstanceRelations.forEach(r => {
+    irInstEdges.push({
+      id: 'ir_inst_' + r.id,
+      from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
+      label: r.type, arrows: 'to', width: 2,
+      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 10},
+    });
+  });
+  return {instNodes, siEdges, irInstEdges};
+}
+
 function renderGraph() {
   const instMap = buildInstServerMap();
   const nodeData = allServers.map(buildNode);
   const edgeData = [];
 
-  // Instance nodes (hidden until zoom threshold)
-  allServers.forEach(s => {
-    (s.services || []).forEach(svc => {
-      const col = SVC_COLORS[svc.type] || '#4b5563';
-      (svc.instances || []).forEach(inst => {
-        nodeData.push({
-          id: 'inst_' + inst.id,
-          label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
-          shape: 'box',
-          hidden: true,
-          color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
-          font: {color: '#f0f0f0', size: 11, bold: false},
-          margin: {top: 5, bottom: 5, left: 7, right: 7},
-          borderWidth: 1,
-          _serverId: s.id,
-        });
-        // thin dotted edge: server → instance (auto-hidden with node)
-        edgeData.push({
-          id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
-          color: {color: col, opacity: 0.45}, width: 1,
-          dashes: [3, 6], arrows: '',
-        });
-      });
-    });
-  });
-
-  // Server-level relations (always visible)
   allRelations.forEach(r => {
     edgeData.push({
       id: 'sr_' + r.id, from: r.source_id, to: r.target_id, label: r.type,
@@ -441,26 +446,16 @@ function renderGraph() {
     });
   });
 
-  // Instance relations: proxy edge (zoomed-out) + instance edge (zoomed-in)
+  // Server-to-server proxy for instance relations (shown when zoomed out)
   allInstanceRelations.forEach(r => {
     const src = instMap[r.source_instance_id];
     const tgt = instMap[r.target_instance_id];
-    if (!src || !tgt) return;
-    if (src.serverId !== tgt.serverId) {
-      edgeData.push({
-        id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
-        label: src.name + ' → ' + tgt.name,
-        arrows: 'to', dashes: true,
-        color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 9},
-        hidden: false,
-      });
-    }
+    if (!src || !tgt || src.serverId === tgt.serverId) return;
     edgeData.push({
-      id: 'ir_inst_' + r.id,
-      from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
-      label: r.type, arrows: 'to', width: 2,
-      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 10},
-      hidden: true,
+      id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
+      label: src.name + ' → ' + tgt.name,
+      arrows: 'to', dashes: true,
+      color: {color: '#7c3aed'}, font: {color: '#a78bfa', size: 9},
     });
   });
 
@@ -483,11 +478,18 @@ function renderGraph() {
     interaction: {hover: true, tooltipDelay: 200},
     edges: {smooth: {type: 'continuous'}},
   });
+
+  // Attach legend after Network() since it clears the container
+  const graphEl = document.getElementById('graph');
+  let leg = document.createElement('div'); leg.id = 'graph-legend';
+  graphEl.appendChild(leg);
+  renderLegend();
+
   network.on('click', params => {
     if (!params.nodes.length) return closeSidebar();
     const nodeId = params.nodes[0];
     if (typeof nodeId === 'string' && nodeId.startsWith('inst_')) {
-      const info = instMap[parseInt(nodeId.replace('inst_', ''))];
+      const info = buildInstServerMap()[parseInt(nodeId.replace('inst_', ''))];
       if (info) openSidebar(info.serverId);
     } else {
       openSidebar(nodeId);
@@ -522,34 +524,39 @@ function renderLegend() {
 }
 
 function updateInstanceVisibility(scale) {
-  if (!nodes || !edges) return;
+  if (!nodes || !edges || !network) return;
   const show = scale >= INST_ZOOM_THRESHOLD;
   if (show === showingInstances) return;
   showingInstances = show;
 
-  const nodeUpdates = [];
-  allServers.forEach(s => {
-    (s.services || []).forEach(svc => {
-      (svc.instances || []).forEach(inst => {
-        nodeUpdates.push({id: 'inst_' + inst.id, hidden: !show});
-      });
+  if (show) {
+    const {instNodes, siEdges, irInstEdges} = buildInstanceNodesEdges();
+    // Safety: remove stale entries first
+    nodes.remove(instNodes.map(n => n.id));
+    edges.remove(siEdges.map(e => e.id));
+    edges.remove(irInstEdges.map(e => e.id));
+    nodes.add(instNodes);
+    edges.add(siEdges);
+    edges.add(irInstEdges);
+    // Hide server-proxy edges for instance relations
+    allInstanceRelations.forEach(r => {
+      if (edges.get('ir_srv_' + r.id)) edges.update({id: 'ir_srv_' + r.id, hidden: true});
     });
-  });
-  nodes.update(nodeUpdates);
+  } else {
+    const instNodeIds = [], siEdgeIds = [];
+    allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+      instNodeIds.push('inst_' + inst.id);
+      siEdgeIds.push('si_' + inst.id);
+    })));
+    nodes.remove(instNodeIds);
+    edges.remove(siEdgeIds);
+    allInstanceRelations.forEach(r => {
+      edges.remove('ir_inst_' + r.id);
+      if (edges.get('ir_srv_' + r.id)) edges.update({id: 'ir_srv_' + r.id, hidden: false});
+    });
+  }
 
-  const edgeUpdates = [];
-  const im = buildInstServerMap();
-  allInstanceRelations.forEach(r => {
-    const src = im[r.source_instance_id];
-    const tgt = im[r.target_instance_id];
-    if (src && tgt && src.serverId !== tgt.serverId && edges.get('ir_srv_' + r.id)) {
-      edgeUpdates.push({id: 'ir_srv_' + r.id, hidden: show});
-    }
-    if (edges.get('ir_inst_' + r.id)) edgeUpdates.push({id: 'ir_inst_' + r.id, hidden: !show});
-  });
-  edges.update(edgeUpdates);
-
-  if (network) network.redraw();
+  network.redraw();
   updateZoomHint(show);
 }
 
