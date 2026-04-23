@@ -401,9 +401,14 @@ function buildInstanceNodesEdges() {
           margin: {top: 5, bottom: 5, left: 7, right: 7},
           borderWidth: 1,
         });
+        const isVM = VM_SVC_TYPES.has(svc.type);
         siEdges.push({
           id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
-          color: {color: col, opacity: 0.45}, width: 1, dashes: [3, 6], arrows: '',
+          color: {color: col, opacity: isVM ? 0.15 : 0.45},
+          width: isVM ? 0.5 : 1,
+          dashes: isVM ? false : [3, 6],
+          arrows: '',
+          length: isVM ? 85 : 140,
           title: s.hostname + ' → ' + svc.type + ': ' + inst.name,
         });
       });
@@ -499,6 +504,48 @@ function renderGraph() {
   let leg = document.createElement('div'); leg.id = 'graph-legend';
   graphEl.appendChild(leg);
   renderLegend();
+
+  network.on('beforeDrawing', ctx => {
+    if (!showingInstances) return;
+    allServers.forEach(server => {
+      const vmInstIds = [];
+      (server.services || []).forEach(svc => {
+        if (VM_SVC_TYPES.has(svc.type))
+          (svc.instances || []).forEach(inst => vmInstIds.push('inst_' + inst.id));
+      });
+      if (!vmInstIds.length) return;
+
+      const positions = [];
+      [server.id, ...vmInstIds].forEach(id => {
+        try { positions.push(network.getPosition(id)); } catch(e) {}
+      });
+      if (positions.length < 2) return;
+
+      const xs = positions.map(p => p.x), ys = positions.map(p => p.y);
+      const pad = 48, r = 22;
+      const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
+      const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+      const col = serverColor(server);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x0 + r, y0);
+      ctx.lineTo(x1 - r, y0); ctx.arcTo(x1, y0, x1, y0 + r, r);
+      ctx.lineTo(x1, y1 - r); ctx.arcTo(x1, y1, x1 - r, y1, r);
+      ctx.lineTo(x0 + r, y1); ctx.arcTo(x0, y1, x0, y1 - r, r);
+      ctx.lineTo(x0, y0 + r); ctx.arcTo(x0, y0, x0 + r, y0, r);
+      ctx.closePath();
+      ctx.globalAlpha = 0.10;
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.globalAlpha = 0.40;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.restore();
+    });
+  });
 
   network.on('click', params => {
     if (!params.nodes.length) return closeSidebar();
