@@ -81,7 +81,8 @@
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
   <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
-  <button onclick="exportJson()"><i class="fa-solid fa-download"></i> Export</button>
+  <button onclick="exportExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
+  <button onclick="exportJson()" title="JSON-Export"><i class="fa-solid fa-download"></i></button>
 </div>
 
 <div id="main">
@@ -1218,6 +1219,13 @@ async function zbxImport() {
   }
   closeModal('modal-zabbix');
   await loadAll();
+}
+
+function exportExcel() {
+  const a = document.createElement('a');
+  a.href = '/api/export/excel';
+  a.download = 'systemdocu.xlsx';
+  a.click();
 }
 
 async function exportJson() {

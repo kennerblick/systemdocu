@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from .database import engine, Base, get_db
 from .models import Server, Service, Tag, Relation, server_tags, Environment, Application
 from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
-from .routers import servers, services, tags, instances, environments, applications, zabbix_scan
+from .routers import servers, services, tags, instances, environments, applications, zabbix_scan, export_excel
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -48,6 +48,7 @@ app.include_router(instances.router)
 app.include_router(environments.router)
 app.include_router(applications.router)
 app.include_router(zabbix_scan.router)
+app.include_router(export_excel.router)
 
 
 @app.on_event("startup")
