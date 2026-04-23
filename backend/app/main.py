@@ -8,9 +8,9 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Relation, Environment, Application
+from .models import Server, Service, Relation, Environment, Application, InternetRouter
 from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
-from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel
+from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -48,6 +48,7 @@ app.include_router(environments.router)
 app.include_router(applications.router)
 app.include_router(zabbix_scan.router)
 app.include_router(export_excel.router)
+app.include_router(internet.router)
 
 
 @app.on_event("startup")

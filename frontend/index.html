@@ -76,6 +76,10 @@
     <label>Anwendung:</label>
     <select id="app-filter"><option value="">Alle</option></select>
   </div>
+  <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;color:#9ca3af;cursor:pointer;padding:5px 10px;background:#0f1b35;border-radius:5px;border:1px solid #0f3460;user-select:none">
+    <input type="checkbox" id="show-internet" onchange="toggleInternet()" style="cursor:pointer;accent-color:#f97316"> 🌐 Internet
+  </label>
+  <button onclick="openManageInternet()"><i class="fa-solid fa-earth-europe"></i> Anschlüsse</button>
   <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
@@ -258,6 +262,31 @@
   </div>
 </div>
 
+<!-- Modal: Internet-Anschlüsse -->
+<div class="modal-backdrop" id="modal-internet">
+  <div class="modal" style="max-width:560px">
+    <h3>🌐 Internetanschlüsse &amp; Router</h3>
+    <div id="internet-router-list"></div>
+    <hr style="border-color:#0f3460;margin:8px 0"/>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input type="text" id="new-router-name" placeholder="Routername / Firewall *" style="flex:1;min-width:140px"/>
+        <input type="text" id="new-router-provider" placeholder="Anbieter (z.B. Telekom)" style="flex:1;min-width:140px"/>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input type="text" id="new-router-ext-ip" placeholder="Externe IP oder DHCP" style="flex:1;min-width:140px"/>
+        <input type="text" id="new-router-int-ip" placeholder="Interne IP (z.B. 192.168.1.1)" style="flex:1;min-width:140px"/>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="new-router-env" style="flex:1"><option value="">— Keine Umgebung —</option></select>
+        <select id="new-router-upstream" style="flex:1"><option value="">— Kein Upstream-Router —</option></select>
+      </div>
+      <button onclick="createInternetRouter()"><i class="fa-solid fa-plus"></i> Hinzufügen</button>
+    </div>
+    <div class="modal-actions"><button onclick="closeModal('modal-internet')">Schließen</button></div>
+  </div>
+</div>
+
 <script>
 const API = '/api';
 let network = null;
@@ -268,7 +297,11 @@ let allRelations = [];
 let allEnvironments = [];
 let allApplications = [];
 let allInstanceRelations = [];
+let allRouters = [];
 let irSrvEdgeIds = [];
+let inetNodeIds = [];
+let inetEdgeIds = [];
+let showInternet = false;
 let hiddenByFilter = new Set();
 let currentServerId = null;
 
@@ -300,12 +333,13 @@ async function api(method, path, body) {
 
 async function loadAll() {
   try {
-    [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations] = await Promise.all([
+    [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations, allRouters] = await Promise.all([
       api('GET', '/servers'),
       api('GET', '/relations'),
       api('GET', '/environments'),
       api('GET', '/applications'),
       api('GET', '/instance-relations'),
+      api('GET', '/internet-routers'),
     ]);
   } catch (e) {
     console.error('loadAll failed:', e);
@@ -434,6 +468,95 @@ function buildInstanceNodesEdges() {
   return {instNodes, siEdges, irInstEdges};
 }
 
+function buildInternetGraph() {
+  inetNodeIds = [];
+  inetEdgeIds = [];
+  const iNodes = [], iEdges = [];
+  if (!allRouters.length) return {iNodes, iEdges};
+
+  const hidden = !showInternet;
+  const n = allRouters.length;
+
+  iNodes.push({
+    id: 'internet_cloud',
+    label: '🌐\nInternet',
+    shape: 'ellipse',
+    x: -950, y: 0,
+    fixed: true,
+    size: 34,
+    color: {background: '#0c2340', border: '#3b82f6', highlight: {background: '#0c2340', border: '#60a5fa'}},
+    font: {color: '#93c5fd', size: 13},
+    hidden,
+  });
+  inetNodeIds.push('internet_cloud');
+
+  allRouters.forEach((r, i) => {
+    const y = (i - (n - 1) / 2) * 170;
+    const envName = r.environment_id ? (allEnvironments.find(e => e.id === r.environment_id) || {}).name : null;
+    const titleParts = [];
+    if (r.provider)     titleParts.push('Anbieter: ' + r.provider);
+    if (r.external_ip)  titleParts.push('Externe IP: ' + r.external_ip);
+    if (r.internal_ip)  titleParts.push('Interne IP: ' + r.internal_ip);
+    if (envName)        titleParts.push('Umgebung: ' + envName);
+
+    iNodes.push({
+      id: 'router_' + r.id,
+      label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
+      shape: 'box',
+      x: -680, y,
+      fixed: {x: true},
+      color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
+      font: {color: '#fed7aa', size: 11},
+      margin: {top: 6, bottom: 6, left: 9, right: 9},
+      borderWidth: 1.5,
+      hidden,
+      title: titleParts.join('<br>') || r.name,
+    });
+    inetNodeIds.push('router_' + r.id);
+
+    if (!r.upstream_router_id) {
+      const edgeId = 'inet_ext_' + r.id;
+      iEdges.push({
+        id: edgeId, from: 'internet_cloud', to: 'router_' + r.id,
+        arrows: 'to', width: 2,
+        color: {color: '#3b82f6'},
+        title: r.provider ? 'Anbieter: ' + r.provider : 'Internetanschluss',
+        hidden,
+      });
+      inetEdgeIds.push(edgeId);
+    } else {
+      const edgeId = 'inet_chain_' + r.id;
+      iEdges.push({
+        id: edgeId, from: 'router_' + r.upstream_router_id, to: 'router_' + r.id,
+        arrows: 'to', width: 1.5, dashes: [5, 3],
+        color: {color: '#f97316'},
+        title: 'Routing → ' + r.name,
+        hidden,
+      });
+      inetEdgeIds.push(edgeId);
+    }
+
+    if (r.environment_id) {
+      const env = allEnvironments.find(e => e.id === r.environment_id);
+      const label = env ? (env.subnet || env.name) : '';
+      allServers.forEach(srv => {
+        if (!(srv.environments || []).some(e => e.id === r.environment_id)) return;
+        const edgeId = 'inet_srv_' + r.id + '_' + srv.id;
+        iEdges.push({
+          id: edgeId, from: 'router_' + r.id, to: srv.id,
+          arrows: 'to', width: 1, dashes: [4, 4],
+          color: {color: '#f97316', opacity: 0.55},
+          title: 'Gateway für ' + (env ? env.name : '') + (env && env.subnet ? ' (' + env.subnet + ')' : ''),
+          hidden,
+        });
+        inetEdgeIds.push(edgeId);
+      });
+    }
+  });
+
+  return {iNodes, iEdges};
+}
+
 function renderGraph() {
   const instMap = buildInstServerMap();
   const nodeData = allServers.map(buildNode);
@@ -478,6 +601,11 @@ function renderGraph() {
     });
     irSrvEdgeIds.push(key);
   });
+
+  // Internet routers
+  const {iNodes, iEdges} = buildInternetGraph();
+  iNodes.forEach(n => nodeData.push(n));
+  iEdges.forEach(e => edgeData.push(e));
 
   if (network) {
     showingInstances = false;
@@ -1256,6 +1384,84 @@ async function deleteApplication(appId) {
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
   renderAppList();
+}
+
+function toggleInternet() {
+  showInternet = document.getElementById('show-internet').checked;
+  if (!nodes || !edges) return;
+  inetNodeIds.forEach(id => { if (nodes.get(id)) nodes.update({id, hidden: !showInternet}); });
+  inetEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: !showInternet}); });
+}
+
+function openManageInternet() {
+  renderInternetList();
+  const envSel = document.getElementById('new-router-env');
+  envSel.innerHTML = '<option value="">— Keine Umgebung —</option>';
+  allEnvironments.forEach(e => {
+    const o = document.createElement('option'); o.value = e.id;
+    o.textContent = e.name + (e.subnet ? ' (' + e.subnet + ')' : ''); envSel.appendChild(o);
+  });
+  const upSel = document.getElementById('new-router-upstream');
+  upSel.innerHTML = '<option value="">— Kein Upstream-Router —</option>';
+  allRouters.forEach(r => {
+    const o = document.createElement('option'); o.value = r.id; o.textContent = r.name; upSel.appendChild(o);
+  });
+  document.getElementById('modal-internet').classList.add('open');
+}
+
+function renderInternetList() {
+  const list = document.getElementById('internet-router-list');
+  list.innerHTML = '';
+  if (!allRouters.length) {
+    list.innerHTML = '<div style="font-size:0.82rem;color:#6b7280;padding:4px 0">Keine Router/Gateways eingetragen</div>';
+    return;
+  }
+  allRouters.forEach(r => {
+    const env = r.environment_id ? allEnvironments.find(e => e.id === r.environment_id) : null;
+    const upstream = r.upstream_router_id ? allRouters.find(u => u.id === r.upstream_router_id) : null;
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.style.flexDirection = 'column';
+    row.style.alignItems = 'flex-start';
+    row.innerHTML =
+      '<div style="display:flex;width:100%;align-items:center;gap:6px">' +
+        '<span style="color:#fed7aa;font-weight:600">🔒 ' + escHtml(r.name) + '</span>' +
+        (r.provider ? '<span style="color:#9ca3af;font-size:0.75rem">' + escHtml(r.provider) + '</span>' : '') +
+        '<button class="xs danger" style="margin-left:auto" onclick="deleteInternetRouter(' + r.id + ')"><i class="fa-solid fa-xmark"></i></button>' +
+      '</div>' +
+      '<div style="font-size:0.75rem;color:#6b7280;display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">' +
+        (r.external_ip ? '<span>Ext: <span style="color:#93c5fd">' + escHtml(r.external_ip) + '</span></span>' : '') +
+        (r.internal_ip ? '<span>Int: <span style="color:#6ee7b7">' + escHtml(r.internal_ip) + '</span></span>' : '') +
+        (env ? '<span>Umgeb: <span style="color:' + env.color + '">' + escHtml(env.name) + '</span>' + (env.subnet ? ' ' + escHtml(env.subnet) : '') + '</span>' : '') +
+        (upstream ? '<span>↑ ' + escHtml(upstream.name) + '</span>' : '') +
+      '</div>';
+    list.appendChild(row);
+  });
+}
+
+async function createInternetRouter() {
+  const name = document.getElementById('new-router-name').value.trim();
+  if (!name) return alert('Routername fehlt');
+  const payload = {
+    name,
+    provider:            document.getElementById('new-router-provider').value.trim() || null,
+    external_ip:         document.getElementById('new-router-ext-ip').value.trim() || null,
+    internal_ip:         document.getElementById('new-router-int-ip').value.trim() || null,
+    environment_id:      parseInt(document.getElementById('new-router-env').value) || null,
+    upstream_router_id:  parseInt(document.getElementById('new-router-upstream').value) || null,
+  };
+  try { await api('POST', '/internet-routers', payload); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  ['new-router-name','new-router-provider','new-router-ext-ip','new-router-int-ip'].forEach(id => document.getElementById(id).value = '');
+  await loadAll();
+  openManageInternet();
+}
+
+async function deleteInternetRouter(id) {
+  try { await api('DELETE', '/internet-routers/' + id); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderInternetList();
 }
 
 const AUTO_COLORS = [

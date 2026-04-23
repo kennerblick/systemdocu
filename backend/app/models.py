@@ -116,6 +116,20 @@ class Tag(Base):
     servers = relationship("Server", secondary=server_tags, back_populates="tags")
 
 
+class InternetRouter(Base):
+    __tablename__ = "internet_routers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    provider = Column(String(255))
+    external_ip = Column(String(100))
+    internal_ip = Column(String(100))
+    environment_id = Column(Integer, ForeignKey("environments.id", ondelete="SET NULL"), nullable=True)
+    upstream_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
+
+    environment = relationship("Environment", backref="routers")
+    upstream = relationship("InternetRouter", remote_side="InternetRouter.id", foreign_keys=[upstream_router_id])
+
+
 class Relation(Base):
     __tablename__ = "relations"
     id = Column(Integer, primary_key=True, index=True)

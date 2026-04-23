@@ -151,6 +151,26 @@ class InstanceRelationOut(InstanceRelationCreate):
         from_attributes = True
 
 
+class InternetRouterBase(BaseModel):
+    name: str
+    provider: Optional[str] = None
+    external_ip: Optional[str] = None
+    internal_ip: Optional[str] = None
+    environment_id: Optional[int] = None
+    upstream_router_id: Optional[int] = None
+
+
+class InternetRouterCreate(InternetRouterBase):
+    pass
+
+
+class InternetRouterOut(InternetRouterBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class ZabbixHost(BaseModel):
     hostname: str
     fqdn: Optional[str] = None
