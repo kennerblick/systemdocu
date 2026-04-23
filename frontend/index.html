@@ -294,6 +294,7 @@ let allRelations = [];
 let allEnvironments = [];
 let allApplications = [];
 let allInstanceRelations = [];
+let irSrvEdgeIds = [];
 let currentServerId = null;
 
 const OS_COLORS = {
@@ -422,6 +423,7 @@ function buildInstanceNodesEdges() {
         siEdges.push({
           id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
           color: {color: col, opacity: 0.45}, width: 1, dashes: [3, 6], arrows: '',
+          title: s.hostname + ' → ' + svc.type + ': ' + inst.name,
         });
       });
     });
@@ -462,22 +464,33 @@ function renderGraph() {
     });
   });
 
-  // Server-to-server proxy for instance relations (shown when zoomed out)
+  // Server-to-server proxy for instance relations — grouped by server pair
+  const srvPairMap = new Map();
   allInstanceRelations.forEach(r => {
     const src = instMap[r.source_instance_id];
     const tgt = instMap[r.target_instance_id];
     if (!src || !tgt || src.serverId === tgt.serverId) return;
+    const key = 'ir_srv_' + src.serverId + '_' + tgt.serverId;
     const srcSrv = allServers.find(s => s.id === src.serverId);
     const tgtSrv = allServers.find(s => s.id === tgt.serverId);
+    if (!srvPairMap.has(key)) {
+      srvPairMap.set(key, {from: src.serverId, to: tgt.serverId, lines: []});
+    }
+    srvPairMap.get(key).lines.push(
+      src.svcType + ': ' + src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' +
+      ' → ' + tgt.svcType + ': ' + tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
+      '<br><em>' + r.type + '</em>'
+    );
+  });
+  irSrvEdgeIds = [];
+  srvPairMap.forEach(({from, to, lines}, key) => {
     edgeData.push({
-      id: 'ir_srv_' + r.id, from: src.serverId, to: tgt.serverId,
+      id: key, from, to,
       arrows: 'to', dashes: true,
       color: {color: '#7c3aed'},
-      title: src.svcType + ': ' + src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' +
-             ' → ' +
-             tgt.svcType + ': ' + tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
-             '<br>' + r.type,
+      title: lines.join('<hr style="border-color:#334155;margin:5px 0">'),
     });
+    irSrvEdgeIds.push(key);
   });
 
   if (network) {
@@ -579,9 +592,7 @@ function updateInstanceVisibility(scale) {
     edges.add(siEdges);
     edges.add(irInstEdges);
     // Hide server-proxy edges for instance relations
-    allInstanceRelations.forEach(r => {
-      if (edges.get('ir_srv_' + r.id)) edges.update({id: 'ir_srv_' + r.id, hidden: true});
-    });
+    irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: true}); });
   } else {
     const instNodeIds = [], siEdgeIds = [];
     allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
@@ -590,10 +601,8 @@ function updateInstanceVisibility(scale) {
     })));
     nodes.remove(instNodeIds);
     edges.remove(siEdgeIds);
-    allInstanceRelations.forEach(r => {
-      edges.remove('ir_inst_' + r.id);
-      if (edges.get('ir_srv_' + r.id)) edges.update({id: 'ir_srv_' + r.id, hidden: false});
-    });
+    allInstanceRelations.forEach(r => { edges.remove('ir_inst_' + r.id); });
+    irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: false}); });
   }
 
   network.redraw();
