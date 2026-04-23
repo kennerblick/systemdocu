@@ -135,6 +135,13 @@
       <button class="small" onclick="addService()">Speichern</button>
     </div>
 
+    <div class="section-label">Umgebungen</div>
+    <div class="chips" id="sb-envs"></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+      <select id="env-select" style="flex:1"></select>
+      <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
+    </div>
+
     <div class="section-label">Tags</div>
     <div class="chips" id="sb-tags"></div>
     <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
@@ -221,7 +228,6 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input type="text" id="new-env-name" placeholder="Name" style="flex:1;min-width:100px"/>
       <input type="text" id="new-env-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
-      <input type="color" id="new-env-color" value="#3b82f6" style="width:40px;padding:2px"/>
       <button onclick="createEnvironment()">Erstellen</button>
     </div>
     <div class="modal-actions"><button onclick="closeModal('modal-environments')">Schließen</button></div>
@@ -262,7 +268,6 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input type="text" id="new-app-name" placeholder="Name" style="flex:1;min-width:100px"/>
       <input type="text" id="new-app-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
-      <input type="color" id="new-app-color" value="#8b5cf6" style="width:40px;padding:2px"/>
       <button onclick="createApplication()">Erstellen</button>
     </div>
     <div class="modal-actions"><button onclick="closeModal('modal-applications')">Schließen</button></div>
@@ -350,6 +355,7 @@ async function checkZabbixStatus() {
 }
 
 function serverColor(server) {
+  if (server.environments && server.environments.length > 0) return server.environments[0].color;
   if (server.tags && server.tags.length > 0) return server.tags[0].color;
   return OS_COLORS[server.os_type] || '#888';
 }
@@ -443,7 +449,7 @@ function applyFilters() {
   allServers.forEach(s => {
     let vis = true;
     if (tagId && !s.tags.some(t => t.id === tagId)) vis = false;
-    if (envId && !s.services.some(sv => sv.instances.some(i => i.environments.some(e => e.id === envId)))) vis = false;
+    if (envId && !(s.environments || []).some(e => e.id === envId)) vis = false;
     if (appId && !s.services.some(sv => sv.instances.some(i => i.applications.some(a => a.id === appId)))) vis = false;
     nodes.update({id: s.id, opacity: vis ? 1 : 0.15});
   });
@@ -465,6 +471,21 @@ function openSidebar(serverId) {
   document.getElementById('sb-desc').textContent = server.description || '—';
 
   renderServicesSection(server);
+
+  const envChips = document.getElementById('sb-envs');
+  envChips.innerHTML = '';
+  (server.environments || []).forEach(env => {
+    const c = document.createElement('span');
+    c.className = 'chip'; c.style.background = env.color;
+    c.innerHTML = escHtml(env.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
+    c.onclick = () => removeServerEnv(env.id);
+    envChips.appendChild(c);
+  });
+  const envSel = document.getElementById('env-select');
+  envSel.innerHTML = '';
+  allEnvironments.forEach(e => {
+    const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
+  });
 
   const chips = document.getElementById('sb-tags');
   chips.innerHTML = '';
@@ -598,14 +619,6 @@ function renderServicesSection(server) {
       const chipRow = document.createElement('div');
       chipRow.className = 'instance-chips';
 
-      (inst.environments || []).forEach(env => {
-        const c = document.createElement('span');
-        c.className = 'chip'; c.style.background = env.color;
-        c.innerHTML = env.name + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
-        c.onclick = () => removeInstanceEnv(inst.id, env.id);
-        chipRow.appendChild(c);
-      });
-
       (inst.applications || []).forEach(app => {
         const c = document.createElement('span');
         c.className = 'chip'; c.style.background = app.color;
@@ -613,19 +626,6 @@ function renderServicesSection(server) {
         c.onclick = () => removeInstanceApp(inst.id, app.id);
         chipRow.appendChild(c);
       });
-
-      if (allEnvironments.length) {
-        const envSel = document.createElement('select');
-        envSel.style.cssText = 'flex:1;font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
-        allEnvironments.forEach(e => {
-          const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
-        });
-        const envBtn = document.createElement('button');
-        envBtn.className = 'xs'; envBtn.textContent = '+Umgeb.';
-        envBtn.onclick = () => addInstanceEnv(inst.id, parseInt(envSel.value));
-        chipRow.appendChild(envSel);
-        chipRow.appendChild(envBtn);
-      }
 
       if (allApplications.length) {
         const appSel = document.createElement('select');
@@ -762,6 +762,20 @@ async function deleteService(serviceId) {
   await loadAll();
 }
 
+async function assignServerEnv() {
+  const envId = parseInt(document.getElementById('env-select').value);
+  if (!envId) return;
+  try { await api('POST', '/servers/' + currentServerId + '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function removeServerEnv(envId) {
+  try { await api('DELETE', '/servers/' + currentServerId + '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
 async function assignTag() {
   const tagId = parseInt(document.getElementById('tag-select').value);
   if (!tagId) return;
@@ -863,8 +877,8 @@ function renderEnvList() {
 async function createEnvironment() {
   const name = document.getElementById('new-env-name').value.trim();
   const description = document.getElementById('new-env-desc').value || null;
-  const color = document.getElementById('new-env-color').value;
   if (!name) return;
+  const color = nextColor(allEnvironments.map(e => e.color));
   try { await api('POST', '/environments', {name, description, color}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('new-env-name').value = '';
@@ -902,8 +916,8 @@ function renderAppList() {
 async function createApplication() {
   const name = document.getElementById('new-app-name').value.trim();
   const description = document.getElementById('new-app-desc').value || null;
-  const color = document.getElementById('new-app-color').value;
   if (!name) return;
+  const color = nextColor(allApplications.map(a => a.color));
   try { await api('POST', '/applications', {name, description, color}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('new-app-name').value = '';
@@ -917,6 +931,19 @@ async function deleteApplication(appId) {
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
   renderAppList();
+}
+
+const AUTO_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
+  '#06b6d4','#84cc16','#f97316','#ec4899','#6366f1',
+  '#14b8a6','#eab308','#a855f7','#0ea5e9','#22c55e',
+];
+
+function nextColor(usedColors) {
+  for (const c of AUTO_COLORS) {
+    if (!usedColors.includes(c)) return c;
+  }
+  return AUTO_COLORS[usedColors.length % AUTO_COLORS.length];
 }
 
 function closeModal(id) {

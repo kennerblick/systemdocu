@@ -11,6 +11,12 @@ server_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
 
+server_environments = Table(
+    "server_environments", Base.metadata,
+    Column("server_id", Integer, ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
+    Column("environment_id", Integer, ForeignKey("environments.id", ondelete="CASCADE"), primary_key=True),
+)
+
 instance_environments = Table(
     "instance_environments", Base.metadata,
     Column("instance_id", Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), primary_key=True),
@@ -36,6 +42,7 @@ class Server(Base):
 
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary=server_tags, back_populates="servers")
+    environments = relationship("Environment", secondary=server_environments, back_populates="servers")
     outgoing_relations = relationship("Relation", foreign_keys="Relation.source_id", back_populates="source", cascade="all, delete-orphan")
     incoming_relations = relationship("Relation", foreign_keys="Relation.target_id", back_populates="target")
 
@@ -73,6 +80,7 @@ class Environment(Base):
     color = Column(String(7), default="#3b82f6")
 
     instances = relationship("ServiceInstance", secondary=instance_environments, back_populates="environments")
+    servers = relationship("Server", secondary=server_environments, back_populates="environments")
 
 
 class Application(Base):

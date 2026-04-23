@@ -117,6 +117,7 @@ class ServerOut(ServerBase):
     created_at: datetime
     services: List[ServiceOut] = []
     tags: List[TagOut] = []
+    environments: List[EnvironmentOut] = []
 
     class Config:
         from_attributes = True
