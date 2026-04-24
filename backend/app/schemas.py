@@ -74,16 +74,6 @@ class ServiceInstanceUpdate(BaseModel):
     service_id: Optional[int] = None
 
 
-class ServiceInstanceOut(ServiceInstanceBase):
-    id: int
-    service_id: int
-    applications: List[ApplicationOut] = []
-    environments: List[EnvironmentOut] = []
-
-    class Config:
-        from_attributes = True
-
-
 class ServiceBase(BaseModel):
     type: str
     version: Optional[str] = None
@@ -95,9 +85,30 @@ class ServiceCreate(ServiceBase):
     pass
 
 
+class ServiceSimpleOut(ServiceBase):
+    id: int
+    server_id: Optional[int] = None
+    instance_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ServiceInstanceOut(ServiceInstanceBase):
+    id: int
+    service_id: int
+    applications: List[ApplicationOut] = []
+    environments: List[EnvironmentOut] = []
+    own_services: List[ServiceSimpleOut] = []
+
+    class Config:
+        from_attributes = True
+
+
 class ServiceOut(ServiceBase):
     id: int
-    server_id: int
+    server_id: Optional[int] = None
+    instance_id: Optional[int] = None
     instances: List[ServiceInstanceOut] = []
 
     class Config:

@@ -139,6 +139,7 @@
           <option value="minio">MinIO</option>
           <option value="gateway">Gateway</option>
           <option value="webserver">Webserver</option>
+          <option value="mqtt">MQTT</option>
         </select>
         <input type="text" id="svc-version" placeholder="Version" style="width:80px"/>
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
@@ -325,6 +326,7 @@ const SVC_COLORS = {
   hyperv:'#00adef', samba:'#d97706', sftp:'#059669',
   freeipa:'#7c3aed', zabbix:'#e53e3e', graylog:'#2d3748',
   veeam:'#00b050', minio:'#c83b0e', gateway:'#0d9488', webserver:'#0ea5e9',
+  mqtt:'#660066',
 };
 
 // Only instances of these service types represent VMs with their own IP addresses
@@ -413,7 +415,13 @@ const INST_ICONS = {
   postgresql: '🗄', docker: '🐳', kubernetes: '☸', hyperv: '🖥',
   samba: '📁', sftp: '📂', freeipa: '🔑', zabbix: '📊',
   graylog: '📝', veeam: '💾', minio: '🪣', gateway: '🔀', webserver: '🌐',
+  mqtt: '📨',
 };
+
+const INST_SVC_TYPES = [
+  'postgresql','mysql','webserver','mqtt','samba','sftp','freeipa',
+  'zabbix','graylog','veeam','minio','gateway',
+];
 
 function buildInstServerMap() {
   const map = {};
@@ -443,7 +451,9 @@ function buildInstanceNodesEdges() {
                  (inst.environments && inst.environments.length
                    ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : '') +
                  (gwR ? '<br>GW: ' + gwR.name : '') +
-                 (gwS ? '<br>GW: ' + gwS.hostname : ''),
+                 (gwS ? '<br>GW: ' + gwS.hostname : '') +
+                 ((inst.own_services || []).length
+                   ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type]||'⚙')+' '+s.type+(s.port?':'+s.port:'')).join('  ') : ''),
           shape: 'box',
           color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
           font: {color: '#f0f0f0', size: 11},
@@ -1232,6 +1242,45 @@ function renderServicesSection(server) {
       }
 
       row.appendChild(chipRow);
+
+      // Own services offered by this instance
+      const ownSvcDiv = document.createElement('div');
+      ownSvcDiv.style.cssText = 'padding:3px 0 3px 8px;border-left:2px solid #1d4ed8;margin:4px 0 2px 4px;display:flex;flex-direction:column;gap:3px';
+      (inst.own_services || []).forEach(isvc => {
+        const isvcRow = document.createElement('div');
+        isvcRow.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:0.75rem';
+        const col = SVC_COLORS[isvc.type] || '#4b5563';
+        isvcRow.innerHTML = '<span style="color:' + col + '">' + (INST_ICONS[isvc.type] || '⚙') + ' ' +
+          escHtml(isvc.type) + (isvc.version ? ' ' + escHtml(isvc.version) : '') +
+          (isvc.port ? ':<b>' + isvc.port + '</b>' : '') + '</span>';
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'xs danger'; rmBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        rmBtn.onclick = () => deleteInstanceService(inst.id, isvc.id);
+        isvcRow.appendChild(rmBtn);
+        ownSvcDiv.appendChild(isvcRow);
+      });
+      // Add-service form for instance
+      const isvcAddRow = document.createElement('div');
+      isvcAddRow.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
+      const isvcTypeSel = document.createElement('select');
+      isvcTypeSel.style.cssText = 'font-size:0.72rem;padding:1px 3px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+      INST_SVC_TYPES.forEach(t => {
+        const o = document.createElement('option'); o.value = t; o.textContent = t; isvcTypeSel.appendChild(o);
+      });
+      const isvcVerInp = document.createElement('input');
+      isvcVerInp.type = 'text'; isvcVerInp.placeholder = 'Version'; isvcVerInp.style.cssText = 'width:70px;font-size:0.72rem;padding:1px 4px';
+      const isvcPortInp = document.createElement('input');
+      isvcPortInp.type = 'number'; isvcPortInp.placeholder = 'Port'; isvcPortInp.style.cssText = 'width:60px;font-size:0.72rem;padding:1px 4px';
+      const isvcAddBtn = document.createElement('button');
+      isvcAddBtn.className = 'xs'; isvcAddBtn.textContent = '+Dienst';
+      isvcAddBtn.onclick = () => addInstanceService(inst.id, isvcTypeSel.value, isvcVerInp.value, isvcPortInp.value);
+      isvcAddRow.appendChild(isvcTypeSel);
+      isvcAddRow.appendChild(isvcVerInp);
+      isvcAddRow.appendChild(isvcPortInp);
+      isvcAddRow.appendChild(isvcAddBtn);
+      ownSvcDiv.appendChild(isvcAddRow);
+      row.appendChild(ownSvcDiv);
+
       block.appendChild(row);
     });
 
@@ -1304,6 +1353,21 @@ async function removeInstanceApp(instanceId, appId) {
 async function updateInstanceIp(instanceId, ip) {
   try { await api('PATCH', '/instances/' + instanceId, {ip: ip || null}); }
   catch (e) { return alert('Fehler beim Speichern der IP: ' + e.message); }
+  await loadAll();
+}
+
+async function addInstanceService(instanceId, type, version, port) {
+  try {
+    await api('POST', '/instances/' + instanceId + '/services', {
+      type, version: version || null, port: parseInt(port) || null,
+    });
+  } catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteInstanceService(instanceId, serviceId) {
+  try { await api('DELETE', '/instances/' + instanceId + '/services/' + serviceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }
 

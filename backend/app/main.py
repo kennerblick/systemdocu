@@ -70,6 +70,8 @@ async def startup():
         "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
         "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
         "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
+        "ALTER TABLE services ALTER COLUMN server_id DROP NOT NULL",
+        "ALTER TABLE services ADD COLUMN IF NOT EXISTS instance_id INTEGER REFERENCES service_instances(id) ON DELETE CASCADE",
         # migrate old single environment_id to M2M table (only if legacy column still exists)
         """
         DO $$ BEGIN

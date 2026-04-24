@@ -60,14 +60,18 @@ class Server(Base):
 class Service(Base):
     __tablename__ = "services"
     id = Column(Integer, primary_key=True, index=True)
-    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=True)
+    instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=True)
     type = Column(String(50), nullable=False)
     version = Column(String(50))
     port = Column(Integer)
     detail = Column(Text)
 
-    server = relationship("Server", back_populates="services")
-    instances = relationship("ServiceInstance", back_populates="service", cascade="all, delete-orphan")
+    server = relationship("Server", back_populates="services", foreign_keys=[server_id])
+    instance = relationship("ServiceInstance", back_populates="own_services", foreign_keys=[instance_id])
+    instances = relationship("ServiceInstance", back_populates="service",
+                             foreign_keys="[ServiceInstance.service_id]",
+                             cascade="all, delete-orphan")
 
 
 class ServiceInstance(Base):
@@ -81,7 +85,10 @@ class ServiceInstance(Base):
     gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
-    service = relationship("Service", back_populates="instances")
+    service = relationship("Service", back_populates="instances", foreign_keys=[service_id])
+    own_services = relationship("Service", back_populates="instance",
+                                foreign_keys="[Service.instance_id]",
+                                cascade="all, delete-orphan")
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
     applications = relationship("Application", secondary=instance_applications, back_populates="instances")
 

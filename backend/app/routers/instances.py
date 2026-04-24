@@ -6,7 +6,7 @@ from typing import List
 
 from ..database import get_db
 from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
-from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut
+from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, ServiceCreate, ServiceSimpleOut
 
 router = APIRouter(tags=["instances"])
 
@@ -17,6 +17,7 @@ async def get_instance_or_404(instance_id: int, db: AsyncSession) -> ServiceInst
         .options(
             selectinload(ServiceInstance.environments),
             selectinload(ServiceInstance.applications),
+            selectinload(ServiceInstance.own_services),
         )
         .where(ServiceInstance.id == instance_id)
     )
@@ -135,4 +136,26 @@ async def delete_instance_relation(rel_id: int, db: AsyncSession = Depends(get_d
     if not rel:
         raise HTTPException(status_code=404, detail="Relation not found")
     await db.delete(rel)
+    await db.commit()
+
+
+@router.post("/api/instances/{instance_id}/services", response_model=ServiceSimpleOut, status_code=201)
+async def create_instance_service(instance_id: int, payload: ServiceCreate, db: AsyncSession = Depends(get_db)):
+    obj = await get_instance_or_404(instance_id, db)
+    svc = Service(instance_id=instance_id, **payload.model_dump())
+    db.add(svc)
+    await db.commit()
+    await db.refresh(svc)
+    return svc
+
+
+@router.delete("/api/instances/{instance_id}/services/{service_id}", status_code=204)
+async def delete_instance_service(instance_id: int, service_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Service).where(Service.id == service_id, Service.instance_id == instance_id)
+    )
+    svc = result.scalar_one_or_none()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await db.delete(svc)
     await db.commit()
