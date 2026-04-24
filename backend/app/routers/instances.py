@@ -75,8 +75,11 @@ async def add_environment(instance_id: int, env_id: int, db: AsyncSession = Depe
         raise HTTPException(status_code=404, detail="Environment not found")
     if env not in obj.environments:
         obj.environments.append(env)
-        if env.default_gateway_router_id and not obj.gateway_router_id and not obj.gateway_server_id:
-            obj.gateway_router_id = env.default_gateway_router_id
+        if not obj.gateway_router_id and not obj.gateway_server_id:
+            if env.default_gateway_router_id:
+                obj.gateway_router_id = env.default_gateway_router_id
+            elif env.default_gateway_server_id:
+                obj.gateway_server_id = env.default_gateway_server_id
         await db.commit()
     return await get_instance_or_404(instance_id, db)
 

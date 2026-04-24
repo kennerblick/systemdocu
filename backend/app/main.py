@@ -64,6 +64,7 @@ async def startup():
         "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
         "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
         "ALTER TABLE environments ADD COLUMN IF NOT EXISTS default_gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
+        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS default_gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
         "ALTER TABLE servers ADD COLUMN IF NOT EXISTS is_gateway BOOLEAN DEFAULT FALSE",
         "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
         "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",

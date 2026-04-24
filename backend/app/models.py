@@ -95,6 +95,7 @@ class Environment(Base):
     subnet = Column(String(20))
     gateway = Column(String(45))
     default_gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
+    default_gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     instances = relationship("ServiceInstance", secondary=instance_environments, back_populates="environments")
     servers = relationship("Server", secondary=server_environments, back_populates="environments")

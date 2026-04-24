@@ -10,6 +10,7 @@ class EnvironmentBase(BaseModel):
     subnet: Optional[str] = None
     gateway: Optional[str] = None
     default_gateway_router_id: Optional[int] = None
+    default_gateway_server_id: Optional[int] = None
 
 
 class EnvironmentCreate(EnvironmentBase):
@@ -23,6 +24,7 @@ class EnvironmentUpdate(BaseModel):
     subnet: Optional[str] = None
     gateway: Optional[str] = None
     default_gateway_router_id: Optional[int] = None
+    default_gateway_server_id: Optional[int] = None
 
 
 class EnvironmentOut(EnvironmentBase):
