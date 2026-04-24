@@ -520,47 +520,59 @@ function buildInternetGraph() {
     inetEdgeIds.push(eid);
   });
 
-  // Router / gateway nodes
-  const pureRouters = allRouters.filter(r => !r.server_id);
-  const n = pureRouters.length;
-  let pureIdx = 0;
+  // Router / gateway nodes — every entry always gets its own node
+  const n = allRouters.length;
 
-  allRouters.forEach(r => {
+  allRouters.forEach((r, idx) => {
     const titleParts = [];
     if (r.provider)    titleParts.push('Anbieter: ' + r.provider);
     if (r.external_ip) titleParts.push('Externe IP: ' + r.external_ip);
     if (r.internal_ip) titleParts.push('Interne IP: ' + r.internal_ip);
+    if (r.server_id) {
+      const srv = allServers.find(s => s.id === r.server_id);
+      if (srv) titleParts.push('Server: ' + srv.hostname);
+    }
     if (r.environments && r.environments.length)
       titleParts.push('Netze: ' + r.environments.map(e => e.subnet || e.name).join(', '));
 
-    const fromNode = r.server_id ? r.server_id : 'router_' + r.id;
-    if (!r.server_id) {
-      const y = (pureIdx - (n - 1) / 2) * 175;
-      pureIdx++;
-      iNodes.push({
-        id: 'router_' + r.id,
-        label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
-        shape: 'box',
-        x: -620, y,
-        fixed: {x: true},
-        color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
-        font: {color: '#fed7aa', size: 11},
-        margin: {top: 6, bottom: 6, left: 9, right: 9},
-        borderWidth: 1.5,
+    const fromNode = 'router_' + r.id;
+    const y = (idx - (n - 1) / 2) * 175;
+    iNodes.push({
+      id: fromNode,
+      label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
+      shape: 'box',
+      x: -620, y,
+      fixed: {x: true},
+      color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
+      font: {color: '#fed7aa', size: 11},
+      margin: {top: 6, bottom: 6, left: 9, right: 9},
+      borderWidth: 1.5,
+      hidden,
+      title: titleParts.join('<br>') || r.name,
+    });
+    inetNodeIds.push(fromNode);
+
+    // If linked to a server, draw a dashed line to the server node
+    if (r.server_id) {
+      const linkId = 'inet_link_' + r.id;
+      iEdges.push({
+        id: linkId, from: fromNode, to: r.server_id,
+        arrows: 'to', width: 1.5, dashes: [4, 2],
+        color: {color: '#6b7280'},
+        title: 'Gateway-Server',
         hidden,
-        title: titleParts.join('<br>') || r.name,
       });
-      inetNodeIds.push('router_' + r.id);
+      inetEdgeIds.push(linkId);
     }
 
     // Upstream edge
     let upFrom;
     if (r.upstream_router_id) {
-      upFrom = allRouters.find(u => u.id === r.upstream_router_id)?.server_id || 'router_' + r.upstream_router_id;
+      upFrom = 'router_' + r.upstream_router_id;
     } else if (r.provider && knownProviders.has(r.provider)) {
-      upFrom = 'provider_' + r.provider;  // root entry with ISP → via provider node
+      upFrom = 'provider_' + r.provider;
     } else {
-      upFrom = 'internet_cloud';           // root entry without ISP → directly to Internet
+      upFrom = 'internet_cloud';
     }
     const edgeId = 'inet_up_' + r.id;
     iEdges.push({
