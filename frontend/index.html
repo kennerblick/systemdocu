@@ -172,7 +172,7 @@
     <div id="sb-inst-rels"></div>
     <div style="display:flex;flex-direction:column;gap:4px;background:#0f1b35;padding:8px;border-radius:6px;margin-top:4px">
       <div style="display:flex;gap:4px">
-        <select id="ir-src" style="flex:1;font-size:0.78rem"></select>
+        <select id="ir-src" style="flex:1;font-size:0.78rem" onchange="renderInstRelSection()"></select>
         <select id="ir-reltype" style="width:105px;font-size:0.78rem">
           <option value="connects_to">connects_to</option>
           <option value="uses">uses</option>
@@ -1021,8 +1021,9 @@ function openSidebar(serverId) {
   const relSel = document.getElementById('rel-target');
   relSel.innerHTML = '';
   [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
-    if (s.id === currentServerId) return;
-    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; relSel.appendChild(o);
+    const o = document.createElement('option'); o.value = s.id;
+    o.textContent = s.hostname + (s.id === currentServerId ? ' (dieser)' : '');
+    relSel.appendChild(o);
   });
 
   // instance relation form
@@ -1051,12 +1052,18 @@ function openSidebar(serverId) {
 }
 
 function renderInstRelSection(server, instMap) {
+  if (!server) server = allServers.find(s => s.id === currentServerId);
+  if (!server) return;
   instMap = instMap || buildInstServerMap();
   const myInstIds = new Set();
   (server.services || []).forEach(svc => (svc.instances || []).forEach(i => myInstIds.add(i.id)));
+  const srcSel = document.getElementById('ir-src');
+  const selectedSrcInstId = srcSel && srcSel.value ? parseInt(srcSel.value) : null;
   const container = document.getElementById('sb-inst-rels');
   container.innerHTML = '';
-  const rels = allInstanceRelations.filter(r => myInstIds.has(r.source_instance_id) || myInstIds.has(r.target_instance_id));
+  const rels = allInstanceRelations.filter(r =>
+    selectedSrcInstId ? r.source_instance_id === selectedSrcInstId
+                      : myInstIds.has(r.source_instance_id));
   if (!rels.length) {
     container.innerHTML = '<div style="font-size:0.78rem;color:#6b7280">Keine</div>';
     return;
