@@ -480,16 +480,13 @@ function buildInternetGraph() {
   if (!allRouters.length) return {iNodes, iEdges};
 
   const hidden = !showInternet;
-  // Pure router nodes (no linked server) need left-side fixed placement
-  const pureRouters = allRouters.filter(r => !r.server_id);
-  const n = pureRouters.length;
 
+  // Internet cloud
   iNodes.push({
     id: 'internet_cloud',
     label: '🌐\nInternet',
     shape: 'ellipse',
-    x: -950, y: 0,
-    fixed: true,
+    x: -950, y: 0, fixed: true,
     size: 34,
     color: {background: '#0c2340', border: '#3b82f6', highlight: {background: '#0c2340', border: '#60a5fa'}},
     font: {color: '#93c5fd', size: 13},
@@ -497,16 +494,45 @@ function buildInternetGraph() {
   });
   inetNodeIds.push('internet_cloud');
 
+  // Provider nodes — one per unique ISP name, only from root entries (no upstream)
+  const rootRouters = allRouters.filter(r => !r.upstream_router_id);
+  const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
+  const nProv = providerNames.length;
+  const knownProviders = new Set(providerNames);
+  providerNames.forEach((prov, i) => {
+    const y = (i - (nProv - 1) / 2) * 175;
+    const nodeId = 'provider_' + prov;
+    iNodes.push({
+      id: nodeId,
+      label: '📡 ' + prov,
+      shape: 'ellipse',
+      x: -790, y,
+      fixed: {x: true},
+      size: 22,
+      color: {background: '#0c1f35', border: '#38bdf8', highlight: {background: '#0f2a45', border: '#7dd3fc'}},
+      font: {color: '#7dd3fc', size: 11},
+      hidden,
+    });
+    inetNodeIds.push(nodeId);
+    const eid = 'inet_prov_' + nodeId;
+    iEdges.push({id: eid, from: 'internet_cloud', to: nodeId, arrows: 'to', width: 2,
+      color: {color: '#3b82f6'}, hidden});
+    inetEdgeIds.push(eid);
+  });
+
+  // Router / gateway nodes
+  const pureRouters = allRouters.filter(r => !r.server_id);
+  const n = pureRouters.length;
   let pureIdx = 0;
+
   allRouters.forEach(r => {
     const titleParts = [];
     if (r.provider)    titleParts.push('Anbieter: ' + r.provider);
     if (r.external_ip) titleParts.push('Externe IP: ' + r.external_ip);
     if (r.internal_ip) titleParts.push('Interne IP: ' + r.internal_ip);
     if (r.environments && r.environments.length)
-      titleParts.push('Netze: ' + r.environments.map(e => (e.subnet || e.name)).join(', '));
+      titleParts.push('Netze: ' + r.environments.map(e => e.subnet || e.name).join(', '));
 
-    // Node only for routers NOT linked to an existing server
     const fromNode = r.server_id ? r.server_id : 'router_' + r.id;
     if (!r.server_id) {
       const y = (pureIdx - (n - 1) / 2) * 175;
@@ -515,7 +541,7 @@ function buildInternetGraph() {
         id: 'router_' + r.id,
         label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
         shape: 'box',
-        x: -680, y,
+        x: -620, y,
         fixed: {x: true},
         color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
         font: {color: '#fed7aa', size: 11},
@@ -527,25 +553,28 @@ function buildInternetGraph() {
       inetNodeIds.push('router_' + r.id);
     }
 
-    // Upstream edge: Internet→Router or Router/Server→Router/Server
-    const upFrom = r.upstream_router_id
-      ? (allRouters.find(u => u.id === r.upstream_router_id)?.server_id || 'router_' + r.upstream_router_id)
-      : 'internet_cloud';
+    // Upstream edge
+    let upFrom;
+    if (r.upstream_router_id) {
+      upFrom = allRouters.find(u => u.id === r.upstream_router_id)?.server_id || 'router_' + r.upstream_router_id;
+    } else if (r.provider && knownProviders.has(r.provider)) {
+      upFrom = 'provider_' + r.provider;  // root entry with ISP → via provider node
+    } else {
+      upFrom = 'internet_cloud';           // root entry without ISP → directly to Internet
+    }
     const edgeId = 'inet_up_' + r.id;
     iEdges.push({
       id: edgeId, from: upFrom, to: fromNode,
       arrows: 'to',
       width: r.upstream_router_id ? 1.5 : 2,
       dashes: r.upstream_router_id ? [5, 3] : false,
-      color: {color: r.upstream_router_id ? '#f97316' : '#3b82f6'},
-      title: r.upstream_router_id
-        ? 'Routing → ' + r.name
-        : (r.provider ? 'Anbieter: ' + r.provider : 'Internetanschluss'),
+      color: {color: r.upstream_router_id ? '#f97316' : '#38bdf8'},
+      title: r.upstream_router_id ? 'Routing → ' + r.name : (r.external_ip || 'Anschluss'),
       hidden,
     });
     inetEdgeIds.push(edgeId);
 
-    // Env edges: Router/Server → servers in each linked environment
+    // Gateway edges: this router → all servers in assigned environments
     (r.environments || []).forEach(env => {
       allServers.forEach(srv => {
         if (r.server_id && srv.id === r.server_id) return; // skip self
