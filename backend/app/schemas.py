@@ -9,6 +9,7 @@ class EnvironmentBase(BaseModel):
     color: str = "#3b82f6"
     subnet: Optional[str] = None
     gateway: Optional[str] = None
+    default_gateway_router_id: Optional[int] = None
 
 
 class EnvironmentCreate(EnvironmentBase):
@@ -21,6 +22,7 @@ class EnvironmentUpdate(BaseModel):
     color: Optional[str] = None
     subnet: Optional[str] = None
     gateway: Optional[str] = None
+    default_gateway_router_id: Optional[int] = None
 
 
 class EnvironmentOut(EnvironmentBase):
@@ -52,6 +54,8 @@ class ServiceInstanceBase(BaseModel):
     description: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
+    gateway_router_id: Optional[int] = None
+    gateway_server_id: Optional[int] = None
 
 
 class ServiceInstanceCreate(ServiceInstanceBase):
@@ -63,6 +67,8 @@ class ServiceInstanceUpdate(BaseModel):
     description: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
+    gateway_router_id: Optional[int] = None
+    gateway_server_id: Optional[int] = None
     service_id: Optional[int] = None
 
 
@@ -102,6 +108,9 @@ class ServerBase(BaseModel):
     gateway: Optional[str] = None
     os_type: str = "linux"
     description: Optional[str] = None
+    is_gateway: bool = False
+    gateway_router_id: Optional[int] = None
+    gateway_server_id: Optional[int] = None
 
 
 class ServerCreate(ServerBase):
@@ -114,6 +123,9 @@ class ServerUpdate(BaseModel):
     gateway: Optional[str] = None
     os_type: Optional[str] = None
     description: Optional[str] = None
+    is_gateway: Optional[bool] = None
+    gateway_router_id: Optional[int] = None
+    gateway_server_id: Optional[int] = None
 
 
 class ServerOut(ServerBase):

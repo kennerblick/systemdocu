@@ -106,7 +106,8 @@
     <div id="sb-edit-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px">
       <div class="modal-row"><label>Hostname</label><input type="text" id="edit-hostname"/></div>
       <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="edit-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
-      <div class="modal-row"><label>Gateway</label><input type="text" id="edit-gateway" placeholder="z.B. 192.168.1.1"/></div>
+      <div class="modal-row"><label>Gateway</label><select id="edit-gateway-device"><option value="">— kein Gateway —</option></select></div>
+      <div class="modal-row"><label>Fungiert als GW</label><input type="checkbox" id="edit-is-gateway" style="width:auto;margin:0"/></div>
       <div class="modal-row"><label>OS-Typ</label>
         <select id="edit-os">
           <option value="linux">Linux</option>
@@ -191,7 +192,7 @@
     <h3>Server hinzufügen</h3>
     <div class="modal-row"><label>Hostname *</label><input type="text" id="new-hostname"/></div>
     <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="new-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
-    <div class="modal-row"><label>Gateway</label><input type="text" id="new-gateway" placeholder="z.B. 192.168.1.1"/></div>
+    <div class="modal-row"><label>Fungiert als GW</label><input type="checkbox" id="new-is-gateway" style="width:auto;margin:0"/></div>
     <div class="modal-row"><label>OS-Typ</label>
       <select id="new-os">
         <option value="linux">Linux</option>
@@ -218,7 +219,6 @@
       <input type="text" id="new-env-name" placeholder="Name *" style="flex:1;min-width:100px"/>
       <input type="text" id="new-env-desc" placeholder="Beschreibung" style="flex:2;min-width:120px"/>
       <input type="text" id="new-env-subnet" placeholder="Subnetz z.B. 192.168.1.0/24" style="flex:2;min-width:140px"/>
-      <input type="text" id="new-env-gateway" placeholder="Gateway IP" style="flex:1;min-width:100px"/>
       <button onclick="createEnvironment()">Erstellen</button>
     </div>
     <div class="modal-actions"><button onclick="closeModal('modal-environments')">Schließen</button></div>
@@ -400,7 +400,9 @@ function buildNode(server) {
     font: {color: '#e0e0e0', size: 13},
     title: '[' + server.os_type + '] ' + server.hostname +
            (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
-           (server.gateway ? '<br>GW: ' + server.gateway : ''),
+           (server.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
+           (server.gateway_router_id ? '<br>GW: ' + ((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
+           (server.gateway_server_id ? '<br>GW: ' + ((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
   };
 }
 
@@ -426,18 +428,22 @@ function buildInstServerMap() {
 }
 
 function buildInstanceNodesEdges() {
-  const instNodes = [], siEdges = [], irInstEdges = [];
+  const instNodes = [], siEdges = [], irInstEdges = [], gwInstEdges = [];
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
       const col = SVC_COLORS[svc.type] || '#4b5563';
       (svc.instances || []).forEach(inst => {
+        const gwR = inst.gateway_router_id ? allRouters.find(r => r.id === inst.gateway_router_id) : null;
+        const gwS = inst.gateway_server_id ? allServers.find(sv => sv.id === inst.gateway_server_id) : null;
         instNodes.push({
           id: 'inst_' + inst.id,
           label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
           title: inst.name +
                  (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
                  (inst.environments && inst.environments.length
-                   ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : ''),
+                   ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : '') +
+                 (gwR ? '<br>GW: ' + gwR.name : '') +
+                 (gwS ? '<br>GW: ' + gwS.hostname : ''),
           shape: 'box',
           color: {background: col + 'bb', border: col, highlight: {background: col, border: '#fff'}},
           font: {color: '#f0f0f0', size: 11},
@@ -454,6 +460,24 @@ function buildInstanceNodesEdges() {
           length: isVM ? 85 : 140,
           title: s.hostname + ' → ' + svc.type + ': ' + inst.name,
         });
+        if (inst.gateway_router_id) {
+          gwInstEdges.push({
+            id: 'gw_inst_' + inst.id,
+            from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            color: {color: '#f97316', opacity: 0.65},
+            title: 'Gateway: ' + ((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
+            hidden: !showInternet,
+          });
+        } else if (inst.gateway_server_id) {
+          gwInstEdges.push({
+            id: 'gw_inst_' + inst.id,
+            from: inst.gateway_server_id, to: 'inst_' + inst.id,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            color: {color: '#22d3ee', opacity: 0.65},
+            title: 'Gateway: ' + ((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
+          });
+        }
       });
     });
   });
@@ -474,7 +498,7 @@ function buildInstanceNodesEdges() {
              '<br>' + r.type,
     });
   });
-  return {instNodes, siEdges, irInstEdges};
+  return {instNodes, siEdges, irInstEdges, gwInstEdges};
 }
 
 function buildInternetGraph() {
@@ -591,23 +615,6 @@ function buildInternetGraph() {
     });
     inetEdgeIds.push(edgeId);
 
-    // Gateway edges: this router → all servers in assigned environments
-    (r.environments || []).forEach(env => {
-      allServers.forEach(srv => {
-        if (r.server_id && srv.id === r.server_id) return; // skip self
-        if (!(srv.environments || []).some(e => e.id === env.id)) return;
-        const eid = 'inet_srv_' + r.id + '_' + env.id + '_' + srv.id;
-        iEdges.push({
-          id: eid, from: fromNode, to: srv.id,
-          arrows: 'to', width: 1, dashes: [4, 4],
-          physics: false,
-          color: {color: '#f97316', opacity: 0.55},
-          title: 'Gateway für ' + env.name + (env.subnet ? ' (' + env.subnet + ')' : ''),
-          hidden,
-        });
-        inetEdgeIds.push(eid);
-      });
-    });
   });
 
   return {iNodes, iEdges};
@@ -662,6 +669,31 @@ function renderGraph() {
   const {iNodes, iEdges} = buildInternetGraph();
   iNodes.forEach(n => nodeData.push(n));
   iEdges.forEach(e => edgeData.push(e));
+
+  // Explicit gateway edges for servers (gateway_router_id or gateway_server_id)
+  allServers.forEach(s => {
+    if (s.gateway_router_id) {
+      const eid = 'gw_srv_' + s.id;
+      const gwR = allRouters.find(r => r.id === s.gateway_router_id);
+      edgeData.push({
+        id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
+        arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+        color: {color: '#f97316', opacity: 0.65},
+        title: 'Gateway: ' + (gwR ? gwR.name : s.gateway_router_id),
+        hidden: !showInternet,
+      });
+      inetEdgeIds.push(eid);
+    } else if (s.gateway_server_id) {
+      const eid = 'gw_srv_' + s.id;
+      const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
+      edgeData.push({
+        id: eid, from: s.gateway_server_id, to: s.id,
+        arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+        color: {color: '#22d3ee', opacity: 0.65},
+        title: 'Gateway: ' + (gwS ? gwS.hostname : s.gateway_server_id),
+      });
+    }
+  });
 
   if (network) {
     showingInstances = false;
@@ -796,14 +828,16 @@ function updateInstanceVisibility(scale) {
   showingInstances = show;
 
   if (show) {
-    const {instNodes, siEdges, irInstEdges} = buildInstanceNodesEdges();
+    const {instNodes, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
     // Safety: remove stale entries first
     nodes.remove(instNodes.map(n => n.id));
     edges.remove(siEdges.map(e => e.id));
     edges.remove(irInstEdges.map(e => e.id));
+    edges.remove(gwInstEdges.map(e => e.id));
     nodes.add(instNodes);
     edges.add(siEdges);
     edges.add(irInstEdges);
+    edges.add(gwInstEdges);
     // Hide server-proxy edges for instance relations
     irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: true}); });
   } else {
@@ -811,6 +845,7 @@ function updateInstanceVisibility(scale) {
     allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
       instNodeIds.push('inst_' + inst.id);
       siEdgeIds.push('si_' + inst.id);
+      edges.remove('gw_inst_' + inst.id);
     })));
     nodes.remove(instNodeIds);
     edges.remove(siEdgeIds);
@@ -907,9 +942,14 @@ function applyFilters() {
       const hide = hiddenByFilter.has(instSrvMap[rel.source_instance_id])
                 || hiddenByFilter.has(instSrvMap[rel.target_instance_id]);
       edgeUpdates.push({id, hidden: hide});
-    } else if (id.startsWith('inet_srv_')) {
-      // gateway edge from router to server — hide when the server is filtered out
-      edgeUpdates.push({id, hidden: hiddenByFilter.has(e.to)});
+    } else if (id.startsWith('gw_srv_')) {
+      const needsInternet = typeof e.from === 'string' && e.from.startsWith('router_');
+      edgeUpdates.push({id, hidden: hiddenByFilter.has(e.to) || (needsInternet && !showInternet)});
+    } else if (id.startsWith('gw_inst_')) {
+      const instId = parseInt(id.replace('gw_inst_', ''));
+      const srvId = instSrvMap[instId];
+      const needsInternet = typeof e.from === 'string' && e.from.startsWith('router_');
+      edgeUpdates.push({id, hidden: (srvId ? hiddenByFilter.has(srvId) : false) || (needsInternet && !showInternet)});
     }
   });
 
@@ -937,7 +977,15 @@ function openSidebar(serverId) {
   document.getElementById('sb-desc').textContent = server.description || '—';
   const gwRow = document.getElementById('sb-gw-row');
   const gwEl = document.getElementById('sb-gw');
-  if (server.gateway) { gwEl.textContent = server.gateway; gwRow.style.display = ''; }
+  let gwText = '';
+  if (server.gateway_router_id) {
+    const r = allRouters.find(r => r.id === server.gateway_router_id);
+    if (r) gwText = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
+  } else if (server.gateway_server_id) {
+    const gs = allServers.find(s => s.id === server.gateway_server_id);
+    if (gs) gwText = gs.hostname + ' [GW-Server]';
+  }
+  if (gwText) { gwEl.textContent = gwText; gwRow.style.display = ''; }
   else { gwRow.style.display = 'none'; }
 
   renderServicesSection(server);
@@ -1097,12 +1145,37 @@ function renderServicesSection(server) {
         ipInp.title = 'IPs dieser VM (kommagetrennt)';
         ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
         nameDiv.appendChild(ipInp);
-        const gwInp = document.createElement('input');
-        gwInp.type = 'text'; gwInp.value = inst.gateway || ''; gwInp.placeholder = 'Gateway';
-        gwInp.style.cssText = 'width:110px;font-size:0.72rem;padding:1px 5px';
-        gwInp.title = 'Gateway dieser VM';
-        gwInp.onblur = () => { if (gwInp.value !== (inst.gateway || '')) updateInstanceGateway(inst.id, gwInp.value || null); };
-        nameDiv.appendChild(gwInp);
+        const gwSel = document.createElement('select');
+        gwSel.style.cssText = 'max-width:140px;font-size:0.72rem;padding:1px 4px';
+        gwSel.title = 'Gateway dieser VM';
+        gwSel.innerHTML = '<option value="">— kein GW —</option>';
+        const instEnvIds = new Set((inst.environments || []).map(e => e.id));
+        allRouters.forEach(r => {
+          if ((r.environments || []).some(e => instEnvIds.has(e.id))) {
+            const opt = document.createElement('option');
+            opt.value = 'router_' + r.id;
+            opt.textContent = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
+            if (inst.gateway_router_id === r.id) opt.selected = true;
+            gwSel.appendChild(opt);
+          }
+        });
+        allServers.forEach(gs => {
+          if (!gs.is_gateway) return;
+          if ((gs.environments || []).some(e => instEnvIds.has(e.id))) {
+            const opt = document.createElement('option');
+            opt.value = 'server_' + gs.id;
+            opt.textContent = gs.hostname + ' [GW]';
+            if (inst.gateway_server_id === gs.id) opt.selected = true;
+            gwSel.appendChild(opt);
+          }
+        });
+        gwSel.onchange = () => {
+          const v = gwSel.value;
+          updateInstanceGateway(inst.id,
+            v.startsWith('router_') ? parseInt(v.replace('router_', '')) : null,
+            v.startsWith('server_') ? parseInt(v.replace('server_', '')) : null);
+        };
+        nameDiv.appendChild(gwSel);
       } else {
         delBtn.style.marginLeft = 'auto';
       }
@@ -1234,8 +1307,8 @@ async function updateInstanceIp(instanceId, ip) {
   await loadAll();
 }
 
-async function updateInstanceGateway(instanceId, gateway) {
-  try { await api('PATCH', '/instances/' + instanceId, {gateway: gateway || null}); }
+async function updateInstanceGateway(instanceId, gateway_router_id, gateway_server_id) {
+  try { await api('PATCH', '/instances/' + instanceId, {gateway_router_id: gateway_router_id || null, gateway_server_id: gateway_server_id || null}); }
   catch (e) { return alert('Fehler beim Speichern des Gateways: ' + e.message); }
   await loadAll();
 }
@@ -1249,20 +1322,45 @@ function toggleServerEdit() {
     if (!s) return;
     document.getElementById('edit-hostname').value = s.hostname || '';
     document.getElementById('edit-ip').value = s.ip || '';
-    document.getElementById('edit-gateway').value = s.gateway || '';
     document.getElementById('edit-os').value = s.os_type || 'linux';
     document.getElementById('edit-desc').value = s.description || '';
+    document.getElementById('edit-is-gateway').checked = s.is_gateway || false;
+    const gwSel = document.getElementById('edit-gateway-device');
+    gwSel.innerHTML = '<option value="">— kein Gateway —</option>';
+    const envIds = new Set((s.environments || []).map(e => e.id));
+    allRouters.forEach(r => {
+      if ((r.environments || []).some(e => envIds.has(e.id))) {
+        const opt = document.createElement('option');
+        opt.value = 'router_' + r.id;
+        opt.textContent = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
+        if (s.gateway_router_id === r.id) opt.selected = true;
+        gwSel.appendChild(opt);
+      }
+    });
+    allServers.forEach(gs => {
+      if (gs.id === s.id || !gs.is_gateway) return;
+      if ((gs.environments || []).some(e => envIds.has(e.id))) {
+        const opt = document.createElement('option');
+        opt.value = 'server_' + gs.id;
+        opt.textContent = gs.hostname + (gs.ip ? ' (' + gs.ip + ')' : '') + ' [GW-Server]';
+        if (s.gateway_server_id === gs.id) opt.selected = true;
+        gwSel.appendChild(opt);
+      }
+    });
   }
 }
 
 async function saveServerEdit() {
   try {
+    const gwVal = document.getElementById('edit-gateway-device').value;
     await api('PUT', '/servers/' + currentServerId, {
       hostname: document.getElementById('edit-hostname').value.trim() || undefined,
       ip: document.getElementById('edit-ip').value || null,
-      gateway: document.getElementById('edit-gateway').value.trim() || null,
       os_type: document.getElementById('edit-os').value,
       description: document.getElementById('edit-desc').value || null,
+      is_gateway: document.getElementById('edit-is-gateway').checked,
+      gateway_router_id: gwVal.startsWith('router_') ? parseInt(gwVal.replace('router_', '')) : null,
+      gateway_server_id: gwVal.startsWith('server_') ? parseInt(gwVal.replace('server_', '')) : null,
     });
   } catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('sb-edit-form').style.display = 'none';
@@ -1348,13 +1446,14 @@ async function createServer() {
     await api('POST', '/servers', {
       hostname,
       ip: document.getElementById('new-ip').value || null,
-      gateway: document.getElementById('new-gateway').value.trim() || null,
       os_type: document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
+      is_gateway: document.getElementById('new-is-gateway').checked,
     });
   } catch (e) { return alert('Fehler: ' + e.message); }
   closeModal('modal-add-server');
-  ['new-hostname','new-ip','new-gateway','new-desc'].forEach(id => document.getElementById(id).value = '');
+  ['new-hostname','new-ip','new-desc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('new-is-gateway').checked = false;
   await loadAll();
 }
 
@@ -1379,7 +1478,7 @@ function renderEnvList() {
       '<div class="dot" style="background:' + e.color + ';cursor:pointer" title="Farbe ändern" onclick="pickEnvColor(' + e.id + ',this)"></div>' +
       '<span style="flex:1;font-weight:500">' + escHtml(e.name) + '</span>' +
       (e.subnet ? '<span style="font-size:0.72rem;color:#60a5fa;margin-right:4px">' + escHtml(e.subnet) + '</span>' : '') +
-      (e.gateway ? '<span style="font-size:0.72rem;color:#34d399">GW: ' + escHtml(e.gateway) + '</span>' : '') +
+      (e.default_gateway_router_id ? (() => { const r = allRouters.find(r => r.id === e.default_gateway_router_id); return r ? '<span style="font-size:0.72rem;color:#fb923c">GW: ' + escHtml(r.name) + '</span>' : ''; })() : '') +
       '<button class="xs" onclick="toggleEnvEdit(' + e.id + ')" style="margin-left:6px"><i class="fa-solid fa-pen"></i></button>' +
       '<button class="xs danger" onclick="deleteEnvironment(' + e.id + ')"><i class="fa-solid fa-xmark"></i></button>';
     wrap.appendChild(row);
@@ -1392,7 +1491,12 @@ function renderEnvList() {
       '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
         '<input type="text" id="ee-name-' + e.id + '" value="' + escHtml(e.name) + '" placeholder="Name" style="flex:1;min-width:100px"/>' +
         '<input type="text" id="ee-subnet-' + e.id + '" value="' + escHtml(e.subnet||'') + '" placeholder="Subnetz z.B. 192.168.1.0/24" style="flex:2;min-width:130px"/>' +
-        '<input type="text" id="ee-gw-' + e.id + '" value="' + escHtml(e.gateway||'') + '" placeholder="Gateway IP" style="flex:1;min-width:90px"/>' +
+        '<select id="ee-gw-router-' + e.id + '" style="flex:1;min-width:120px">' +
+          '<option value="">— kein Standard-GW —</option>' +
+          allRouters.filter(r => (r.environments||[]).some(re => re.id === e.id))
+            .map(r => '<option value="' + r.id + '"' + (e.default_gateway_router_id === r.id ? ' selected' : '') + '>' +
+              escHtml(r.name) + (r.internal_ip ? ' (' + r.internal_ip + ')' : '') + '</option>').join('') +
+        '</select>' +
         '<input type="color" id="ee-color-' + e.id + '" value="' + e.color + '" style="width:34px;padding:2px"/>' +
       '</div>' +
       '<div style="display:flex;gap:5px">' +
@@ -1428,10 +1532,11 @@ function pickEnvColor(envId, dotEl) {
 async function saveEnvEdit(envId) {
   const name    = document.getElementById('ee-name-'   + envId).value.trim();
   const subnet  = document.getElementById('ee-subnet-' + envId).value.trim() || null;
-  const gateway = document.getElementById('ee-gw-'     + envId).value.trim() || null;
   const color   = document.getElementById('ee-color-'  + envId).value;
+  const gwSel   = document.getElementById('ee-gw-router-' + envId);
+  const default_gateway_router_id = gwSel ? (parseInt(gwSel.value) || null) : null;
   if (!name) return alert('Name fehlt');
-  try { await api('PUT', '/environments/' + envId, {name, subnet, gateway, color}); }
+  try { await api('PUT', '/environments/' + envId, {name, subnet, color, default_gateway_router_id}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll(); renderEnvList();
 }
@@ -1440,12 +1545,11 @@ async function createEnvironment() {
   const name    = document.getElementById('new-env-name').value.trim();
   const description = document.getElementById('new-env-desc').value || null;
   const subnet  = document.getElementById('new-env-subnet').value.trim() || null;
-  const gateway = document.getElementById('new-env-gateway').value.trim() || null;
   if (!name) return;
   const color = nextColor(allEnvironments.map(e => e.color));
-  try { await api('POST', '/environments', {name, description, color, subnet, gateway}); }
+  try { await api('POST', '/environments', {name, description, color, subnet}); }
   catch (e) { return alert('Fehler: ' + e.message); }
-  ['new-env-name','new-env-desc','new-env-subnet','new-env-gateway'].forEach(id => document.getElementById(id).value = '');
+  ['new-env-name','new-env-desc','new-env-subnet'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
   renderEnvList();
 }
@@ -1501,6 +1605,12 @@ function toggleInternet() {
   if (!nodes || !edges) return;
   inetNodeIds.forEach(id => { if (nodes.get(id)) nodes.update({id, hidden: !showInternet}); });
   inetEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: !showInternet}); });
+  if (showingInstances) {
+    allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+      if (inst.gateway_router_id && edges.get('gw_inst_' + inst.id))
+        edges.update({id: 'gw_inst_' + inst.id, hidden: !showInternet});
+    })));
+  }
 }
 
 function _buildEnvCheckboxes(containerId, checkedIds) {

@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, Table
+    Column, Integer, String, Text, DateTime, ForeignKey, Table, Boolean
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -46,6 +46,9 @@ class Server(Base):
     os_type = Column(String(50), default="linux")
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_gateway = Column(Boolean, default=False)
+    gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
+    gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary=server_tags, back_populates="servers")
@@ -75,6 +78,8 @@ class ServiceInstance(Base):
     description = Column(Text)
     ip = Column(String(45))
     gateway = Column(String(45))
+    gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
+    gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     service = relationship("Service", back_populates="instances")
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
@@ -89,6 +94,7 @@ class Environment(Base):
     color = Column(String(7), default="#3b82f6")
     subnet = Column(String(20))
     gateway = Column(String(45))
+    default_gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
 
     instances = relationship("ServiceInstance", secondary=instance_environments, back_populates="environments")
     servers = relationship("Server", secondary=server_environments, back_populates="environments")

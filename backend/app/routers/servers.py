@@ -90,6 +90,8 @@ async def add_server_environment(server_id: int, env_id: int, db: AsyncSession =
         raise HTTPException(status_code=404, detail="Environment not found")
     if env not in server.environments:
         server.environments.append(env)
+        if env.default_gateway_router_id and not server.gateway_router_id and not server.gateway_server_id:
+            server.gateway_router_id = env.default_gateway_router_id
         await db.commit()
     return await get_server_or_404(server_id, db)
 
