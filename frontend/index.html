@@ -481,12 +481,12 @@ function buildInternetGraph() {
 
   const hidden = !showInternet;
 
-  // Internet cloud
+  // Internet cloud — fully fixed far left
   iNodes.push({
     id: 'internet_cloud',
     label: '🌐\nInternet',
     shape: 'ellipse',
-    x: -950, y: 0, fixed: true,
+    x: -1400, y: 0, fixed: true,
     size: 34,
     color: {background: '#0c2340', border: '#3b82f6', highlight: {background: '#0c2340', border: '#60a5fa'}},
     font: {color: '#93c5fd', size: 13},
@@ -494,20 +494,20 @@ function buildInternetGraph() {
   });
   inetNodeIds.push('internet_cloud');
 
-  // Provider nodes — one per unique ISP name, only from root entries (no upstream)
+  // Provider nodes — fully fixed, one per unique ISP
   const rootRouters = allRouters.filter(r => !r.upstream_router_id);
   const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
   const nProv = providerNames.length;
   const knownProviders = new Set(providerNames);
   providerNames.forEach((prov, i) => {
-    const y = (i - (nProv - 1) / 2) * 175;
+    const y = (i - (nProv - 1) / 2) * 160;
     const nodeId = 'provider_' + prov;
     iNodes.push({
       id: nodeId,
       label: '📡 ' + prov,
       shape: 'ellipse',
-      x: -790, y,
-      fixed: {x: true},
+      x: -1150, y,
+      fixed: true,
       size: 22,
       color: {background: '#0c1f35', border: '#38bdf8', highlight: {background: '#0f2a45', border: '#7dd3fc'}},
       font: {color: '#7dd3fc', size: 11},
@@ -516,11 +516,11 @@ function buildInternetGraph() {
     inetNodeIds.push(nodeId);
     const eid = 'inet_prov_' + nodeId;
     iEdges.push({id: eid, from: 'internet_cloud', to: nodeId, arrows: 'to', width: 2,
-      color: {color: '#3b82f6'}, hidden});
+      physics: false, color: {color: '#3b82f6'}, hidden});
     inetEdgeIds.push(eid);
   });
 
-  // Router / gateway nodes — every entry always gets its own node
+  // Router / gateway nodes — every entry always gets its own node, fully fixed
   const n = allRouters.length;
 
   allRouters.forEach((r, idx) => {
@@ -536,13 +536,13 @@ function buildInternetGraph() {
       titleParts.push('Netze: ' + r.environments.map(e => e.subnet || e.name).join(', '));
 
     const fromNode = 'router_' + r.id;
-    const y = (idx - (n - 1) / 2) * 175;
+    const y = (idx - (n - 1) / 2) * 160;
     iNodes.push({
       id: fromNode,
       label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
       shape: 'box',
-      x: -620, y,
-      fixed: {x: true},
+      x: -900, y,
+      fixed: true,
       color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
       font: {color: '#fed7aa', size: 11},
       margin: {top: 6, bottom: 6, left: 9, right: 9},
@@ -552,12 +552,13 @@ function buildInternetGraph() {
     });
     inetNodeIds.push(fromNode);
 
-    // If linked to a server, draw a dashed line to the server node
+    // If linked to a server, draw a dashed line to the server node (no physics influence)
     if (r.server_id) {
       const linkId = 'inet_link_' + r.id;
       iEdges.push({
         id: linkId, from: fromNode, to: r.server_id,
         arrows: 'to', width: 1.5, dashes: [4, 2],
+        physics: false,
         color: {color: '#6b7280'},
         title: 'Gateway-Server',
         hidden,
@@ -595,6 +596,7 @@ function buildInternetGraph() {
         iEdges.push({
           id: eid, from: fromNode, to: srv.id,
           arrows: 'to', width: 1, dashes: [4, 4],
+          physics: false,
           color: {color: '#f97316', opacity: 0.55},
           title: 'Gateway für ' + env.name + (env.subnet ? ' (' + env.subnet + ')' : ''),
           hidden,
