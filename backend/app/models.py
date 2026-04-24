@@ -142,7 +142,7 @@ class InternetRouter(Base):
 
     environments = relationship("Environment", secondary=router_environments)
     upstream = relationship("InternetRouter", remote_side="InternetRouter.id", foreign_keys=[upstream_router_id])
-    server = relationship("Server")
+    server = relationship("Server", foreign_keys=[server_id])
 
 
 class Relation(Base):
