@@ -428,7 +428,8 @@ function buildInstServerMap() {
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
       (svc.instances || []).forEach(inst => {
-        map[inst.id] = {serverId: s.id, name: inst.name, svcType: svc.type};
+        map[inst.id] = {serverId: s.id, name: inst.name, svcType: svc.type,
+                        ownServices: inst.own_services || []};
       });
     });
   });
@@ -1030,6 +1031,12 @@ function openSidebar(serverId) {
     (svc.instances || []).forEach(inst => {
       const o = document.createElement('option');
       o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; srcSel.appendChild(o);
+      (inst.own_services || []).forEach(isvc => {
+        const o2 = document.createElement('option');
+        o2.value = inst.id;
+        o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
+        srcSel.appendChild(o2);
+      });
     });
   });
   const tgtSrvSel = document.getElementById('ir-tgt-srv');
@@ -1081,6 +1088,12 @@ function updateIrTgtInst() {
     (svc.instances || []).forEach(inst => {
       const o = document.createElement('option');
       o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; tgtInstSel.appendChild(o);
+      (inst.own_services || []).forEach(isvc => {
+        const o2 = document.createElement('option');
+        o2.value = inst.id;
+        o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
+        tgtInstSel.appendChild(o2);
+      });
     });
   });
 }
