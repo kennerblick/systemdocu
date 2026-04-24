@@ -27,7 +27,9 @@
   #graph-legend .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#d1d5db}
   #graph-legend .leg-dot{width:11px;height:11px;border-radius:2px;flex-shrink:0}
   #edge-tooltip{position:fixed;z-index:200;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:7px 11px;font-size:0.78rem;color:#e2e8f0;pointer-events:none;white-space:pre;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none}
-  #sidebar{width:430px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
+  #sidebar-resizer{width:5px;background:transparent;cursor:col-resize;flex-shrink:0;display:none;transition:background 0.15s}
+  #sidebar-resizer:hover,#sidebar-resizer.dragging{background:#1d4ed8}
+  #sidebar{width:430px;min-width:280px;max-width:700px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
   #sidebar.open{display:flex}
   #sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
   .meta-row{font-size:0.82rem;color:#9ca3af}
@@ -90,7 +92,7 @@
 
 <div id="main">
   <div id="graph"></div>
-
+  <div id="sidebar-resizer"></div>
   <div id="sidebar">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2 id="sb-hostname"></h2>
@@ -2014,6 +2016,47 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
 });
 
 loadAll();
+
+// Sidebar resizer
+(function() {
+  const resizer = document.getElementById('sidebar-resizer');
+  const sidebar = document.getElementById('sidebar');
+  let dragging = false, startX = 0, startW = 0;
+
+  function syncResizer() {
+    resizer.style.display = sidebar.classList.contains('open') ? 'block' : 'none';
+  }
+
+  const origOpen = window.openSidebar;
+  window.openSidebar = function(id) { origOpen(id); syncResizer(); };
+  const origClose = window.closeSidebar;
+  window.closeSidebar = function() { origClose(); syncResizer(); };
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const delta = startX - e.clientX;
+    const newW = Math.min(700, Math.max(280, startW + delta));
+    sidebar.style.width = newW + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
 </script>
 </body>
 </html>
