@@ -27,7 +27,7 @@
   #graph-legend .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#d1d5db}
   #graph-legend .leg-dot{width:11px;height:11px;border-radius:2px;flex-shrink:0}
   #edge-tooltip{position:fixed;z-index:200;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:7px 11px;font-size:0.78rem;color:#e2e8f0;pointer-events:none;white-space:pre;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none}
-  #sidebar{width:360px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:10px}
+  #sidebar{width:360px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
   #sidebar.open{display:flex}
   #sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
   .meta-row{font-size:0.82rem;color:#9ca3af}
@@ -1018,7 +1018,7 @@ function openSidebar(serverId) {
 
   const relSel = document.getElementById('rel-target');
   relSel.innerHTML = '';
-  allServers.forEach(s => {
+  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
     if (s.id === currentServerId) return;
     const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; relSel.appendChild(o);
   });
@@ -1027,11 +1027,11 @@ function openSidebar(serverId) {
   const instMap = buildInstServerMap();
   const srcSel = document.getElementById('ir-src');
   srcSel.innerHTML = '';
-  (server.services || []).forEach(svc => {
-    (svc.instances || []).forEach(inst => {
+  [...(server.services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(svc => {
+    [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const o = document.createElement('option');
       o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; srcSel.appendChild(o);
-      (inst.own_services || []).forEach(isvc => {
+      [...(inst.own_services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(isvc => {
         const o2 = document.createElement('option');
         o2.value = inst.id;
         o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
@@ -1041,7 +1041,7 @@ function openSidebar(serverId) {
   });
   const tgtSrvSel = document.getElementById('ir-tgt-srv');
   tgtSrvSel.innerHTML = '';
-  allServers.filter(s => s.id !== currentServerId).forEach(s => {
+  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).filter(s => s.id !== currentServerId).forEach(s => {
     const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; tgtSrvSel.appendChild(o);
   });
   updateIrTgtInst();
@@ -1084,11 +1084,11 @@ function updateIrTgtInst() {
   tgtInstSel.innerHTML = '';
   const tgtSrv = allServers.find(s => s.id === tgtSrvId);
   if (!tgtSrv) return;
-  (tgtSrv.services || []).forEach(svc => {
-    (svc.instances || []).forEach(inst => {
+  [...(tgtSrv.services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(svc => {
+    [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const o = document.createElement('option');
       o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; tgtInstSel.appendChild(o);
-      (inst.own_services || []).forEach(isvc => {
+      [...(inst.own_services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(isvc => {
         const o2 = document.createElement('option');
         o2.value = inst.id;
         o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
@@ -1117,7 +1117,7 @@ async function deleteInstRel(relId) {
 function renderServicesSection(server) {
   const container = document.getElementById('sb-services');
   container.innerHTML = '';
-  (server.services || []).forEach(svc => {
+  [...(server.services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(svc => {
     const block = document.createElement('div');
     block.className = 'svc-block';
 
@@ -1147,7 +1147,7 @@ function renderServicesSection(server) {
     hdr.appendChild(delBtn);
     block.appendChild(hdr);
 
-    (svc.instances || []).forEach(inst => {
+    [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const row = document.createElement('div');
       row.className = 'instance-row';
 
