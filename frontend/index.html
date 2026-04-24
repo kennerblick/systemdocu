@@ -1493,12 +1493,14 @@ function renderEnvList() {
         '<input type="text" id="ee-subnet-' + e.id + '" value="' + escHtml(e.subnet||'') + '" placeholder="Subnetz z.B. 192.168.1.0/24" style="flex:2;min-width:130px"/>' +
         '<select id="ee-gw-router-' + e.id + '" style="flex:1;min-width:120px">' +
           '<option value="">— kein Standard-GW —</option>' +
-          allRouters.filter(r => (r.environments||[]).some(re => re.id === e.id))
-            .map(r => '<option value="router_' + r.id + '"' + (e.default_gateway_router_id === r.id ? ' selected' : '') + '>' +
+          (allRouters.length ? '<optgroup label="Anschlüsse">' +
+            allRouters.map(r => '<option value="router_' + r.id + '"' + (e.default_gateway_router_id === r.id ? ' selected' : '') + '>' +
               escHtml(r.name) + (r.internal_ip ? ' (' + r.internal_ip + ')' : '') + '</option>').join('') +
-          allServers.filter(s => s.is_gateway && (s.environments||[]).some(se => se.id === e.id))
-            .map(s => '<option value="server_' + s.id + '"' + (e.default_gateway_server_id === s.id ? ' selected' : '') + '>' +
-              escHtml(s.hostname) + (s.ip ? ' (' + s.ip + ')' : '') + ' [GW-Server]</option>').join('') +
+          '</optgroup>' : '') +
+          (allServers.some(s => s.is_gateway) ? '<optgroup label="GW-Server">' +
+            allServers.filter(s => s.is_gateway).map(s => '<option value="server_' + s.id + '"' + (e.default_gateway_server_id === s.id ? ' selected' : '') + '>' +
+              escHtml(s.hostname) + (s.ip ? ' (' + s.ip + ')' : '') + '</option>').join('') +
+          '</optgroup>' : '') +
         '</select>' +
         '<input type="color" id="ee-color-' + e.id + '" value="' + e.color + '" style="width:34px;padding:2px"/>' +
       '</div>' +
