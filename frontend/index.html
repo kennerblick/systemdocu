@@ -854,61 +854,68 @@ function updateFilters() {
 }
 
 function applyFilters() {
-  if (!nodes || !edges) return;
+  if (!nodes || !edges || !network) return;
   const envId = parseInt(document.getElementById('env-filter').value) || 0;
   const appId = parseInt(document.getElementById('app-filter').value) || 0;
 
+  // ── 1. Compute which servers should be hidden ─────────────────────────────
   hiddenByFilter = new Set();
   allServers.forEach(s => {
     let visible = true;
     if (envId) {
-      const srvHasEnv = (s.environments || []).some(e => e.id === envId);
+      const srvHasEnv  = (s.environments || []).some(e => e.id === envId);
       const instHasEnv = (s.services || []).some(sv =>
         (sv.instances || []).some(inst => (inst.environments || []).some(e => e.id === envId))
       );
       if (!srvHasEnv && !instHasEnv) visible = false;
     }
-    if (appId && !(s.services || []).some(sv =>
+    if (visible && appId && !(s.services || []).some(sv =>
       (sv.instances || []).some(i => (i.applications || []).some(a => a.id === appId))
     )) visible = false;
-
-    nodes.update({id: s.id, hidden: !visible});
     if (!visible) hiddenByFilter.add(s.id);
-
-    // Hide/show instance nodes and their si-edges for this server
-    (s.services || []).forEach(svc => {
-      (svc.instances || []).forEach(inst => {
-        if (nodes.get('inst_' + inst.id)) nodes.update({id: 'inst_' + inst.id, hidden: !visible});
-        if (edges.get('si_' + inst.id))   edges.update({id: 'si_'   + inst.id, hidden: !visible});
-      });
-    });
   });
 
-  // Hide/show server–server edges and instance-relation edges
+  // ── 2. Server nodes + their instance nodes / si-edges ────────────────────
+  const nodeUpdates = [], edgeUpdates = [];
+  allServers.forEach(s => {
+    const hidden = hiddenByFilter.has(s.id);
+    nodeUpdates.push({id: s.id, hidden});
+    (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+      if (nodes.get('inst_' + inst.id)) nodeUpdates.push({id: 'inst_' + inst.id, hidden});
+      if (edges.get('si_'  + inst.id)) edgeUpdates.push({id: 'si_'   + inst.id, hidden});
+    }));
+  });
+
+  // ── 3. Named edges ────────────────────────────────────────────────────────
+  // Build instance→server lookup once
+  const instSrvMap = {};
+  allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+    instSrvMap[inst.id] = s.id;
+  })));
+
   edges.forEach(e => {
     const id = e.id;
     if (typeof id !== 'string') return;
     if (id.startsWith('sr_')) {
-      edges.update({id, hidden: hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to)});
+      edgeUpdates.push({id, hidden: hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to)});
     } else if (id.startsWith('ir_srv_')) {
-      const filterHide = hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to);
-      edges.update({id, hidden: showingInstances || filterHide});
+      edgeUpdates.push({id, hidden: showingInstances || hiddenByFilter.has(e.from) || hiddenByFilter.has(e.to)});
     } else if (id.startsWith('ir_inst_')) {
       const rId = parseInt(id.replace('ir_inst_', ''));
       const rel = allInstanceRelations.find(r => r.id === rId);
       if (!rel) return;
-      let srcSrvId = null, tgtSrvId = null;
-      for (const s of allServers) {
-        for (const svc of s.services || []) {
-          for (const inst of svc.instances || []) {
-            if (inst.id === rel.source_instance_id) srcSrvId = s.id;
-            if (inst.id === rel.target_instance_id) tgtSrvId = s.id;
-          }
-        }
-      }
-      edges.update({id, hidden: hiddenByFilter.has(srcSrvId) || hiddenByFilter.has(tgtSrvId)});
+      const hide = hiddenByFilter.has(instSrvMap[rel.source_instance_id])
+                || hiddenByFilter.has(instSrvMap[rel.target_instance_id]);
+      edgeUpdates.push({id, hidden: hide});
+    } else if (id.startsWith('inet_srv_')) {
+      // gateway edge from router to server — hide when the server is filtered out
+      edgeUpdates.push({id, hidden: hiddenByFilter.has(e.to)});
     }
   });
+
+  nodes.update(nodeUpdates);
+  edges.update(edgeUpdates);
+  network.redraw();
 }
 
 ['env-filter', 'app-filter'].forEach(id => {
