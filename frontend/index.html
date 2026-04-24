@@ -27,7 +27,7 @@
   #graph-legend .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#d1d5db}
   #graph-legend .leg-dot{width:11px;height:11px;border-radius:2px;flex-shrink:0}
   #edge-tooltip{position:fixed;z-index:200;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:7px 11px;font-size:0.78rem;color:#e2e8f0;pointer-events:none;white-space:pre;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none}
-  #sidebar{width:360px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
+  #sidebar{width:430px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
   #sidebar.open{display:flex}
   #sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
   .meta-row{font-size:0.82rem;color:#9ca3af}
@@ -1154,7 +1154,7 @@ function renderServicesSection(server) {
       // Name + IP + delete
       const nameDiv = document.createElement('div');
       nameDiv.className = 'instance-name';
-      nameDiv.style.display = 'flex'; nameDiv.style.alignItems = 'center'; nameDiv.style.gap = '5px';
+      nameDiv.style.display = 'flex'; nameDiv.style.alignItems = 'center'; nameDiv.style.gap = '5px'; nameDiv.style.flexWrap = 'wrap';
       nameDiv.innerHTML = escHtml(inst.name) +
         (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '');
       const delBtn = document.createElement('button');
