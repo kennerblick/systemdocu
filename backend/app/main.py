@@ -55,17 +55,34 @@ app.include_router(internet.router)
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Add columns that may be missing in existing DBs
-        migrations = [
-            "ALTER TABLE environments ADD COLUMN IF NOT EXISTS subnet VARCHAR(20)",
-            "ALTER TABLE environments ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
-            "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS ip VARCHAR(45)",
-            "ALTER TABLE internet_routers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
-            # migrate old single environment_id to M2M table
-            "INSERT INTO router_environments (router_id, environment_id) SELECT id, environment_id FROM internet_routers WHERE environment_id IS NOT NULL ON CONFLICT DO NOTHING",
-        ]
-        for sql in migrations:
-            await conn.execute(text(sql))
+
+    migrations = [
+        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS subnet VARCHAR(20)",
+        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
+        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS ip VARCHAR(45)",
+        "ALTER TABLE internet_routers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
+        # migrate old single environment_id to M2M table (only if legacy column still exists)
+        """
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='internet_routers' AND column_name='environment_id'
+          ) THEN
+            INSERT INTO router_environments (router_id, environment_id)
+            SELECT id, environment_id FROM internet_routers
+            WHERE environment_id IS NOT NULL
+            ON CONFLICT DO NOTHING;
+          END IF;
+        END $$
+        """,
+    ]
+    for sql in migrations:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            logger.error("startup migration failed: %s | %s", sql.strip()[:80], e)
+
     await seed_data()
 
 

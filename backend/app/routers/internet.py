@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete, insert
 from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
-from ..models import InternetRouter, Environment
+from ..models import InternetRouter, Environment, router_environments
 from ..schemas import InternetRouterCreate, InternetRouterOut
 
 router = APIRouter(prefix="/api/internet-routers", tags=["internet"])
@@ -27,14 +27,15 @@ async def get_router_or_404(router_id: int, db: AsyncSession) -> InternetRouter:
     return obj
 
 
-async def _apply_environments(obj: InternetRouter, env_ids: List[int], db: AsyncSession):
+async def _apply_environments(router_id: int, env_ids: List[int], db: AsyncSession):
+    await db.execute(
+        delete(router_environments).where(router_environments.c.router_id == router_id)
+    )
     if env_ids:
-        envs = (await db.execute(
-            select(Environment).where(Environment.id.in_(env_ids))
-        )).scalars().all()
-        obj.environments = list(envs)
-    else:
-        obj.environments = []
+        await db.execute(
+            insert(router_environments),
+            [{"router_id": router_id, "environment_id": eid} for eid in env_ids],
+        )
 
 
 @router.get("", response_model=List[InternetRouterOut])
@@ -49,7 +50,7 @@ async def create_router(payload: InternetRouterCreate, db: AsyncSession = Depend
     obj = InternetRouter(**payload.model_dump(exclude={"environment_ids"}))
     db.add(obj)
     await db.flush()
-    await _apply_environments(obj, env_ids, db)
+    await _apply_environments(obj.id, env_ids, db)
     await db.commit()
     return await get_router_or_404(obj.id, db)
 
@@ -59,7 +60,7 @@ async def update_router(router_id: int, payload: InternetRouterCreate, db: Async
     obj = await get_router_or_404(router_id, db)
     for field, value in payload.model_dump(exclude={"environment_ids"}).items():
         setattr(obj, field, value)
-    await _apply_environments(obj, payload.environment_ids, db)
+    await _apply_environments(router_id, payload.environment_ids, db)
     await db.commit()
     return await get_router_or_404(router_id, db)
 

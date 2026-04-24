@@ -130,6 +130,7 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
     ])
     _col_widths(ws, [22, 10, 16, 22, 14, 10, 7, 22, 35])
 
+    servers = sorted(servers, key=lambda s: s.hostname.lower())
     row = 2
     for si, srv in enumerate(servers):
         envs = ", ".join(e.name for e in srv.environments)
@@ -232,7 +233,7 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
                     no_app.append((inst, svc, srv, envs))
 
     row = 2
-    for ai, (_, entry) in enumerate(app_map.items()):
+    for ai, entry in enumerate(sorted(app_map.values(), key=lambda e: e["app"].name.lower())):
         app   = entry["app"]
         band  = BANDS2[ai % 2]
         app_r0 = row
