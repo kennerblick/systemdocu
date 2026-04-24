@@ -100,11 +100,13 @@
       </div>
     </div>
     <div class="meta-row">IP: <span id="sb-ip"></span></div>
+    <div class="meta-row" id="sb-gw-row">GW: <span id="sb-gw"></span></div>
     <div class="meta-row">OS: <span id="sb-os"></span></div>
     <div class="meta-row">Beschreibung: <span id="sb-desc">—</span></div>
     <div id="sb-edit-form" style="display:none;flex-direction:column;gap:6px;background:#0f1b35;padding:10px;border-radius:6px">
       <div class="modal-row"><label>Hostname</label><input type="text" id="edit-hostname"/></div>
       <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="edit-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
+      <div class="modal-row"><label>Gateway</label><input type="text" id="edit-gateway" placeholder="z.B. 192.168.1.1"/></div>
       <div class="modal-row"><label>OS-Typ</label>
         <select id="edit-os">
           <option value="linux">Linux</option>
@@ -189,6 +191,7 @@
     <h3>Server hinzufügen</h3>
     <div class="modal-row"><label>Hostname *</label><input type="text" id="new-hostname"/></div>
     <div class="modal-row"><label>IP(s) — kommagetrennt</label><input type="text" id="new-ip" placeholder="z.B. 192.168.1.10, 10.0.0.5"/></div>
+    <div class="modal-row"><label>Gateway</label><input type="text" id="new-gateway" placeholder="z.B. 192.168.1.1"/></div>
     <div class="modal-row"><label>OS-Typ</label>
       <select id="new-os">
         <option value="linux">Linux</option>
@@ -396,7 +399,8 @@ function buildNode(server) {
     color: {background: col, border: col, highlight: {background: col, border: '#fff'}},
     font: {color: '#e0e0e0', size: 13},
     title: '[' + server.os_type + '] ' + server.hostname +
-           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : ''),
+           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
+           (server.gateway ? '<br>GW: ' + server.gateway : ''),
   };
 }
 
@@ -924,6 +928,10 @@ function openSidebar(serverId) {
     : '—';
   document.getElementById('sb-os').textContent = server.os_type;
   document.getElementById('sb-desc').textContent = server.description || '—';
+  const gwRow = document.getElementById('sb-gw-row');
+  const gwEl = document.getElementById('sb-gw');
+  if (server.gateway) { gwEl.textContent = server.gateway; gwRow.style.display = ''; }
+  else { gwRow.style.display = 'none'; }
 
   renderServicesSection(server);
 
@@ -1078,10 +1086,16 @@ function renderServicesSection(server) {
       if (VM_SVC_TYPES.has(svc.type)) {
         const ipInp = document.createElement('input');
         ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
-        ipInp.style.cssText = 'width:140px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
+        ipInp.style.cssText = 'width:130px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
         ipInp.title = 'IPs dieser VM (kommagetrennt)';
         ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
         nameDiv.appendChild(ipInp);
+        const gwInp = document.createElement('input');
+        gwInp.type = 'text'; gwInp.value = inst.gateway || ''; gwInp.placeholder = 'Gateway';
+        gwInp.style.cssText = 'width:110px;font-size:0.72rem;padding:1px 5px';
+        gwInp.title = 'Gateway dieser VM';
+        gwInp.onblur = () => { if (gwInp.value !== (inst.gateway || '')) updateInstanceGateway(inst.id, gwInp.value || null); };
+        nameDiv.appendChild(gwInp);
       } else {
         delBtn.style.marginLeft = 'auto';
       }
@@ -1213,6 +1227,12 @@ async function updateInstanceIp(instanceId, ip) {
   await loadAll();
 }
 
+async function updateInstanceGateway(instanceId, gateway) {
+  try { await api('PATCH', '/instances/' + instanceId, {gateway: gateway || null}); }
+  catch (e) { return alert('Fehler beim Speichern des Gateways: ' + e.message); }
+  await loadAll();
+}
+
 function toggleServerEdit() {
   const form = document.getElementById('sb-edit-form');
   const visible = form.style.display !== 'none';
@@ -1222,6 +1242,7 @@ function toggleServerEdit() {
     if (!s) return;
     document.getElementById('edit-hostname').value = s.hostname || '';
     document.getElementById('edit-ip').value = s.ip || '';
+    document.getElementById('edit-gateway').value = s.gateway || '';
     document.getElementById('edit-os').value = s.os_type || 'linux';
     document.getElementById('edit-desc').value = s.description || '';
   }
@@ -1232,6 +1253,7 @@ async function saveServerEdit() {
     await api('PUT', '/servers/' + currentServerId, {
       hostname: document.getElementById('edit-hostname').value.trim() || undefined,
       ip: document.getElementById('edit-ip').value || null,
+      gateway: document.getElementById('edit-gateway').value.trim() || null,
       os_type: document.getElementById('edit-os').value,
       description: document.getElementById('edit-desc').value || null,
     });
@@ -1319,12 +1341,13 @@ async function createServer() {
     await api('POST', '/servers', {
       hostname,
       ip: document.getElementById('new-ip').value || null,
+      gateway: document.getElementById('new-gateway').value.trim() || null,
       os_type: document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
     });
   } catch (e) { return alert('Fehler: ' + e.message); }
   closeModal('modal-add-server');
-  ['new-hostname','new-ip','new-desc'].forEach(id => document.getElementById(id).value = '');
+  ['new-hostname','new-ip','new-gateway','new-desc'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
 }
 

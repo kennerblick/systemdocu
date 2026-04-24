@@ -51,6 +51,7 @@ class ServiceInstanceBase(BaseModel):
     name: str
     description: Optional[str] = None
     ip: Optional[str] = None
+    gateway: Optional[str] = None
 
 
 class ServiceInstanceCreate(ServiceInstanceBase):
@@ -61,6 +62,7 @@ class ServiceInstanceUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     ip: Optional[str] = None
+    gateway: Optional[str] = None
     service_id: Optional[int] = None
 
 
@@ -97,6 +99,7 @@ class ServiceOut(ServiceBase):
 class ServerBase(BaseModel):
     hostname: str
     ip: Optional[str] = None
+    gateway: Optional[str] = None
     os_type: str = "linux"
     description: Optional[str] = None
 
@@ -108,6 +111,7 @@ class ServerCreate(ServerBase):
 class ServerUpdate(BaseModel):
     hostname: Optional[str] = None
     ip: Optional[str] = None
+    gateway: Optional[str] = None
     os_type: Optional[str] = None
     description: Optional[str] = None
 

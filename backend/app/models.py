@@ -42,6 +42,7 @@ class Server(Base):
     hostname = Column(String(255), unique=True, nullable=False)
     fqdn = Column(String(255))
     ip = Column(String(45))
+    gateway = Column(String(45))
     os_type = Column(String(50), default="linux")
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -73,6 +74,7 @@ class ServiceInstance(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text)
     ip = Column(String(45))
+    gateway = Column(String(45))
 
     service = relationship("Service", back_populates="instances")
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
