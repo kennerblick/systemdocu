@@ -749,7 +749,11 @@ function renderGraph() {
     showingInstances = layoutMode === 'hierarchical';
     nodes.clear(); nodes.add(nodeData);
     edges.clear(); edges.add(edgeData);
-    if (layoutMode !== 'hierarchical') updateInstanceVisibility(network.getScale());
+    if (layoutMode === 'hierarchical') {
+      irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: true}); });
+    } else {
+      updateInstanceVisibility(network.getScale());
+    }
     return;
   }
 
@@ -760,14 +764,14 @@ function renderGraph() {
     ? {
         layout: {
           hierarchical: {
-            enabled: true, direction: 'LR', sortMethod: 'directed',
-            levelSeparation: 160, nodeSpacing: 80, treeSpacing: 130,
+            enabled: true, direction: 'UD', sortMethod: 'directed',
+            levelSeparation: 110, nodeSpacing: 160, treeSpacing: 180,
             blockShifting: true, edgeMinimization: true, parentCentralization: true,
           },
         },
         physics: { enabled: false },
         interaction: { hover: true, tooltipDelay: 200 },
-        edges: { smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 } },
+        edges: { smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 } },
       }
     : {
         physics: {
@@ -780,6 +784,7 @@ function renderGraph() {
   network = new Network(document.getElementById('graph'), {nodes, edges}, netOpts);
   if (layoutMode === 'hierarchical') {
     showingInstances = true;
+    irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: true}); });
     network.once('afterDrawing', () => network.fit());
   }
 
