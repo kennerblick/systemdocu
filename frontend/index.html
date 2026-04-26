@@ -88,6 +88,14 @@
   <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button onclick="exportExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
   <button onclick="exportJson()" title="JSON-Export"><i class="fa-solid fa-download"></i></button>
+  <label id="damping-control" style="display:flex;align-items:center;gap:5px;font-size:0.82rem;color:#9ca3af;padding:5px 10px;background:#0f1b35;border-radius:5px;border:1px solid #0f3460;user-select:none" title="Physik-Dämpfung: höher = ruhiger">
+    <i class="fa-solid fa-wave-square" style="font-size:0.75rem"></i>
+    <input type="range" id="damping-slider" min="5" max="92" value="9" step="1"
+      style="width:64px;cursor:pointer;accent-color:#7c3aed" oninput="applyDamping(this.value)">
+  </label>
+  <button id="layout-toggle-btn" onclick="toggleLayout()" title="Layout wechseln" style="min-width:120px">
+    <i class="fa-solid fa-sitemap"></i> Hierarchisch
+  </button>
 </div>
 
 <div id="main">
@@ -309,6 +317,8 @@ let allEnvironments = [];
 let allApplications = [];
 let allInstanceRelations = [];
 let allRouters = [];
+let layoutMode = 'physics';
+let physicsDamping = 0.09;
 let irSrvEdgeIds = [];
 let inetNodeIds = [];
 let inetEdgeIds = [];
@@ -521,13 +531,14 @@ function buildInternetGraph() {
   if (!allRouters.length) return {iNodes, iEdges};
 
   const hidden = !showInternet;
+  const isHier = layoutMode === 'hierarchical';
 
-  // Internet cloud — fully fixed far left
+  // Internet cloud — fixed far left in physics mode
   iNodes.push({
     id: 'internet_cloud',
     label: '🌐\nInternet',
     shape: 'ellipse',
-    x: -1400, y: 0, fixed: true,
+    ...(isHier ? {} : {x: -1400, y: 0, fixed: true}),
     size: 34,
     color: {background: '#0c2340', border: '#3b82f6', highlight: {background: '#0c2340', border: '#60a5fa'}},
     font: {color: '#93c5fd', size: 13},
@@ -547,8 +558,7 @@ function buildInternetGraph() {
       id: nodeId,
       label: '📡 ' + prov,
       shape: 'ellipse',
-      x: -1150, y,
-      fixed: true,
+      ...(isHier ? {} : {x: -1150, y, fixed: true}),
       size: 22,
       color: {background: '#0c1f35', border: '#38bdf8', highlight: {background: '#0f2a45', border: '#7dd3fc'}},
       font: {color: '#7dd3fc', size: 11},
@@ -582,8 +592,7 @@ function buildInternetGraph() {
       id: fromNode,
       label: '🔒 ' + r.name + (r.external_ip ? '\n' + r.external_ip : ''),
       shape: 'box',
-      x: -900, y,
-      fixed: true,
+      ...(isHier ? {} : {x: -900, y, fixed: true}),
       color: {background: '#1c1508', border: '#f97316', highlight: {background: '#2d1f0a', border: '#fb923c'}},
       font: {color: '#fed7aa', size: 11},
       margin: {top: 6, bottom: 6, left: 9, right: 9},
@@ -631,6 +640,25 @@ function buildInternetGraph() {
   });
 
   return {iNodes, iEdges};
+}
+
+function toggleLayout() {
+  layoutMode = layoutMode === 'physics' ? 'hierarchical' : 'physics';
+  const btn = document.getElementById('layout-toggle-btn');
+  btn.innerHTML = layoutMode === 'hierarchical'
+    ? '<i class="fa-solid fa-circle-nodes"></i> Physik'
+    : '<i class="fa-solid fa-sitemap"></i> Hierarchisch';
+  document.getElementById('damping-control').style.display = layoutMode === 'hierarchical' ? 'none' : 'flex';
+  if (network) { network.destroy(); network = null; showingInstances = false; }
+  renderGraph();
+  if (currentServerId) openSidebar(currentServerId);
+}
+
+function applyDamping(val) {
+  physicsDamping = val / 100;
+  if (network && layoutMode === 'physics') {
+    network.setOptions({ physics: { barnesHut: { damping: physicsDamping } } });
+  }
 }
 
 function renderGraph() {
@@ -719,14 +747,28 @@ function renderGraph() {
   const {DataSet, Network} = vis;
   nodes = new DataSet(nodeData);
   edges = new DataSet(edgeData);
-  network = new Network(document.getElementById('graph'), {nodes, edges}, {
-    physics: {
-      barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150},
-      stabilization: {iterations: 150},
-    },
-    interaction: {hover: true, tooltipDelay: 200},
-    edges: {smooth: {type: 'continuous'}},
-  });
+  const netOpts = layoutMode === 'hierarchical'
+    ? {
+        layout: {
+          hierarchical: {
+            enabled: true, direction: 'LR', sortMethod: 'directed',
+            levelSeparation: 230, nodeSpacing: 130, treeSpacing: 220,
+            blockShifting: true, edgeMinimization: true, parentCentralization: true,
+          },
+        },
+        physics: { enabled: false },
+        interaction: { hover: true, tooltipDelay: 200 },
+        edges: { smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 } },
+      }
+    : {
+        physics: {
+          barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: physicsDamping },
+          stabilization: { iterations: 150 },
+        },
+        interaction: { hover: true, tooltipDelay: 200 },
+        edges: { smooth: { type: 'continuous' } },
+      };
+  network = new Network(document.getElementById('graph'), {nodes, edges}, netOpts);
 
   // Attach legend after Network() since it clears the container
   const graphEl = document.getElementById('graph');
@@ -836,6 +878,7 @@ function renderLegend() {
 
 function updateInstanceVisibility(scale) {
   if (!nodes || !edges || !network) return;
+  if (layoutMode === 'hierarchical') return;
   const show = scale >= INST_ZOOM_THRESHOLD;
   if (show === showingInstances) return;
   showingInstances = show;
