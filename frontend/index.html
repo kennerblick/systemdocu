@@ -528,7 +528,7 @@ function buildInternetGraph() {
   inetNodeIds = [];
   inetEdgeIds = [];
   const iNodes = [], iEdges = [];
-  if (!allRouters.length) return {iNodes, iEdges};
+  if (!allRouters.length || layoutMode === 'hierarchical') return {iNodes, iEdges};
 
   const hidden = !showInternet;
   const isHier = layoutMode === 'hierarchical';
@@ -713,7 +713,7 @@ function renderGraph() {
 
   // Explicit gateway edges for servers (gateway_router_id or gateway_server_id)
   allServers.forEach(s => {
-    if (s.gateway_router_id) {
+    if (s.gateway_router_id && layoutMode !== 'hierarchical') {
       const eid = 'gw_srv_' + s.id;
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
@@ -736,11 +736,20 @@ function renderGraph() {
     }
   });
 
+  // In hierarchical mode: include all instances up-front (no zoom-based toggle)
+  if (layoutMode === 'hierarchical') {
+    const {instNodes, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
+    instNodes.forEach(n => nodeData.push(n));
+    siEdges.forEach(e => edgeData.push(e));
+    irInstEdges.forEach(e => edgeData.push(e));
+    gwInstEdges.filter(e => !String(e.from).startsWith('router_')).forEach(e => edgeData.push(e));
+  }
+
   if (network) {
-    showingInstances = false;
+    showingInstances = layoutMode === 'hierarchical';
     nodes.clear(); nodes.add(nodeData);
     edges.clear(); edges.add(edgeData);
-    updateInstanceVisibility(network.getScale());
+    if (layoutMode !== 'hierarchical') updateInstanceVisibility(network.getScale());
     return;
   }
 
@@ -752,7 +761,7 @@ function renderGraph() {
         layout: {
           hierarchical: {
             enabled: true, direction: 'LR', sortMethod: 'directed',
-            levelSeparation: 230, nodeSpacing: 130, treeSpacing: 220,
+            levelSeparation: 160, nodeSpacing: 80, treeSpacing: 130,
             blockShifting: true, edgeMinimization: true, parentCentralization: true,
           },
         },
@@ -769,6 +778,10 @@ function renderGraph() {
         edges: { smooth: { type: 'continuous' } },
       };
   network = new Network(document.getElementById('graph'), {nodes, edges}, netOpts);
+  if (layoutMode === 'hierarchical') {
+    showingInstances = true;
+    network.once('afterDrawing', () => network.fit());
+  }
 
   // Attach legend after Network() since it clears the container
   const graphEl = document.getElementById('graph');
