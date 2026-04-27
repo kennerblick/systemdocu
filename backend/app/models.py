@@ -68,6 +68,7 @@ class Service(Base):
     id = Column(Integer, primary_key=True, index=True)
     server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=True)
     instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=True)
+    cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=True)
     type = Column(String(50), nullable=False)
     version = Column(String(50))
     port = Column(Integer)
@@ -75,6 +76,7 @@ class Service(Base):
 
     server = relationship("Server", back_populates="services", foreign_keys=[server_id])
     instance = relationship("ServiceInstance", back_populates="own_services", foreign_keys=[instance_id])
+    cluster = relationship("Cluster", back_populates="own_services", foreign_keys=[cluster_id])
     instances = relationship("ServiceInstance", back_populates="service",
                              foreign_keys="[ServiceInstance.service_id]",
                              cascade="all, delete-orphan")
@@ -133,6 +135,9 @@ class Cluster(Base):
     service_type = Column(String(50), nullable=False)
     domain = Column(String(255), nullable=True)
     members = relationship("ServiceInstance", secondary=cluster_members, back_populates="clusters")
+    own_services = relationship("Service", back_populates="cluster",
+                                foreign_keys="[Service.cluster_id]",
+                                cascade="all, delete-orphan")
 
 
 class InstanceRelation(Base):

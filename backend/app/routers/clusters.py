@@ -5,15 +5,20 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
-from ..models import Cluster, ServiceInstance
-from ..schemas import ClusterCreate, ClusterUpdate, ClusterOut
+from ..models import Cluster, Service, ServiceInstance
+from ..schemas import ClusterCreate, ClusterUpdate, ClusterOut, ServiceCreate, ServiceSimpleOut
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
 
 async def get_cluster_or_404(cluster_id: int, db: AsyncSession) -> Cluster:
     result = await db.execute(
-        select(Cluster).options(selectinload(Cluster.members)).where(Cluster.id == cluster_id)
+        select(Cluster)
+        .options(
+            selectinload(Cluster.members),
+            selectinload(Cluster.own_services).selectinload(Service.instances),
+        )
+        .where(Cluster.id == cluster_id)
     )
     obj = result.scalar_one_or_none()
     if not obj:
@@ -23,7 +28,12 @@ async def get_cluster_or_404(cluster_id: int, db: AsyncSession) -> Cluster:
 
 @router.get("", response_model=List[ClusterOut])
 async def list_clusters(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Cluster).options(selectinload(Cluster.members)))
+    result = await db.execute(
+        select(Cluster).options(
+            selectinload(Cluster.members),
+            selectinload(Cluster.own_services).selectinload(Service.instances),
+        )
+    )
     return result.scalars().all()
 
 
@@ -69,3 +79,24 @@ async def remove_cluster_member(cluster_id: int, instance_id: int, db: AsyncSess
     obj.members = [m for m in obj.members if m.id != instance_id]
     await db.commit()
     return await get_cluster_or_404(cluster_id, db)
+
+
+@router.post("/{cluster_id}/services", response_model=ClusterOut, status_code=201)
+async def add_cluster_service(cluster_id: int, payload: ServiceCreate, db: AsyncSession = Depends(get_db)):
+    await get_cluster_or_404(cluster_id, db)
+    svc = Service(cluster_id=cluster_id, **payload.model_dump())
+    db.add(svc)
+    await db.commit()
+    return await get_cluster_or_404(cluster_id, db)
+
+
+@router.delete("/{cluster_id}/services/{service_id}", status_code=204)
+async def remove_cluster_service(cluster_id: int, service_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Service).where(Service.id == service_id, Service.cluster_id == cluster_id)
+    )
+    svc = result.scalar_one_or_none()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await db.delete(svc)
+    await db.commit()

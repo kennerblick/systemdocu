@@ -197,6 +197,24 @@ class ClusterMemberOut(BaseModel):
         from_attributes = True
 
 
+class ClusterHostedInstanceOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    ip: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ClusterServiceOut(ServiceBase):
+    id: int
+    instances: List[ClusterHostedInstanceOut] = []
+
+    class Config:
+        from_attributes = True
+
+
 class ClusterCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -214,6 +232,7 @@ class ClusterUpdate(BaseModel):
 class ClusterOut(ClusterCreate):
     id: int
     members: List[ClusterMemberOut] = []
+    own_services: List[ClusterServiceOut] = []
 
     class Config:
         from_attributes = True

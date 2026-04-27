@@ -492,7 +492,28 @@ function buildInstServerMap() {
       });
     });
   });
+  allClusters.forEach(cl => {
+    (cl.own_services || []).forEach(svc => {
+      (svc.instances || []).forEach(inst => {
+        map[inst.id] = {clusterId: cl.id, name: inst.name, svcType: svc.type, ownServices: []};
+      });
+    });
+  });
   return map;
+}
+
+function instDisplayLabel(instMap, instanceId) {
+  const info = instMap[instanceId];
+  if (!info) return '?';
+  if (info.serverId) {
+    const srv = allServers.find(s => s.id === info.serverId);
+    return info.name + ' (' + (srv ? srv.hostname : '?') + ')';
+  }
+  if (info.clusterId) {
+    const cl = allClusters.find(c => c.id === info.clusterId);
+    return info.name + ' [' + (cl ? cl.name : '?') + ']';
+  }
+  return info.name;
 }
 
 function buildInstanceNodesEdges() {
@@ -1485,6 +1506,23 @@ function renderClusterList() {
       wrap.appendChild(chips);
     }
 
+    // Own-services chips
+    if (cl.own_services && cl.own_services.length) {
+      const svcChips = document.createElement('div');
+      svcChips.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;padding-left:20px';
+      cl.own_services.forEach(svc => {
+        const c = document.createElement('span');
+        c.className = 'chip';
+        c.style.cssText = 'background:#1e3a5f;outline:1px solid #3b82f6;font-size:0.72rem';
+        const icon = (INST_ICONS[svc.type] || '⚙');
+        c.innerHTML = icon + ' ' + escHtml(svc.type) + (svc.port ? ':' + svc.port : '') + (svc.version ? ' v'+escHtml(svc.version) : '') + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.title = 'Service entfernen';
+        c.onclick = () => removeClusterService(cl.id, svc.id);
+        svcChips.appendChild(c);
+      });
+      wrap.appendChild(svcChips);
+    }
+
     // Edit form (hidden)
     const form = document.createElement('div');
     form.id = 'cluster-edit-' + cl.id;
@@ -1519,6 +1557,31 @@ function renderClusterList() {
     addMemberBtn.onclick = () => addClusterMember(cl.id, parseInt(instSel.value));
     memberRow.appendChild(addMemberBtn);
     form.appendChild(memberRow);
+
+    // Add own-service row
+    const svcRow = document.createElement('div');
+    svcRow.style.cssText = 'display:flex;gap:5px;align-items:center;flex-wrap:wrap';
+    const svcTypeSel = document.createElement('select');
+    svcTypeSel.id = 'ce-svctype-' + cl.id;
+    svcTypeSel.style.cssText = 'flex:1;font-size:0.78rem';
+    Object.keys(SVC_COLORS).forEach(t => {
+      const o = document.createElement('option'); o.value = t; o.textContent = t; svcTypeSel.appendChild(o);
+    });
+    if (SVC_COLORS[cl.service_type]) svcTypeSel.value = cl.service_type;
+    const svcVerIn = document.createElement('input');
+    svcVerIn.type = 'text'; svcVerIn.id = 'ce-svcver-' + cl.id;
+    svcVerIn.placeholder = 'Version'; svcVerIn.style.cssText = 'width:70px;font-size:0.78rem';
+    const svcPortIn = document.createElement('input');
+    svcPortIn.type = 'number'; svcPortIn.id = 'ce-svcport-' + cl.id;
+    svcPortIn.placeholder = 'Port'; svcPortIn.style.cssText = 'width:60px;font-size:0.78rem';
+    const addSvcBtn = document.createElement('button');
+    addSvcBtn.className = 'xs'; addSvcBtn.textContent = '+ Service';
+    addSvcBtn.onclick = () => addClusterService(cl.id, svcTypeSel.value, svcVerIn.value.trim() || null, svcPortIn.value ? parseInt(svcPortIn.value) : null);
+    svcRow.appendChild(svcTypeSel);
+    svcRow.appendChild(svcVerIn);
+    svcRow.appendChild(svcPortIn);
+    svcRow.appendChild(addSvcBtn);
+    form.appendChild(svcRow);
 
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:5px';
@@ -1600,6 +1663,22 @@ async function addClusterMember(clusterId, instanceId) {
 
 async function removeClusterMember(clusterId, instanceId) {
   try { await api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
+}
+
+async function addClusterService(clusterId, type, version, port) {
+  if (!type) return alert('Bitte Service-Typ auswählen');
+  try { await api('POST', '/clusters/' + clusterId + '/services', {type, version, port}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
+  toggleClusterEdit(clusterId);
+}
+
+async function removeClusterService(clusterId, serviceId) {
+  try { await api('DELETE', '/clusters/' + clusterId + '/services/' + serviceId); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
   renderClusterList();
