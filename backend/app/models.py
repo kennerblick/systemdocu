@@ -131,6 +131,7 @@ class Cluster(Base):
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text, nullable=True)
     service_type = Column(String(50), nullable=False)
+    domain = Column(String(255), nullable=True)
     members = relationship("ServiceInstance", secondary=cluster_members, back_populates="clusters")
 
 

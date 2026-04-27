@@ -201,12 +201,14 @@ class ClusterCreate(BaseModel):
     name: str
     description: Optional[str] = None
     service_type: str
+    domain: Optional[str] = None
 
 
 class ClusterUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     service_type: Optional[str] = None
+    domain: Optional[str] = None
 
 
 class ClusterOut(ClusterCreate):

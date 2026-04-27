@@ -78,6 +78,7 @@ async def startup():
         "ALTER TABLE instance_relations ALTER COLUMN target_instance_id DROP NOT NULL",
         "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS source_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
         "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS target_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
+        "ALTER TABLE clusters ADD COLUMN IF NOT EXISTS domain VARCHAR(255)",
         # migrate old single environment_id to M2M table (only if legacy column still exists)
         """
         DO $$ BEGIN

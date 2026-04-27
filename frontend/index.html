@@ -296,6 +296,7 @@
           <input type="text" id="new-cluster-name" placeholder="Name *" style="flex:1;min-width:120px"/>
           <input type="text" id="new-cluster-desc" placeholder="Beschreibung" style="flex:2;min-width:140px"/>
         </div>
+        <input type="text" id="new-cluster-domain" placeholder="Domain / FQDN (z.B. db.example.com)" style="width:100%"/>
         <select id="new-cluster-type" style="width:100%">
           <option value="postgresql">PostgreSQL</option>
           <option value="docker">Docker</option>
@@ -559,8 +560,9 @@ function buildInstanceNodesEdges() {
     const col = SVC_COLORS[cl.service_type] || '#4b5563';
     clusterNodes.push({
       id: 'cluster_' + cl.id,
-      label: '◆ ' + cl.name,
+      label: '◆ ' + cl.name + (cl.domain ? '\n' + cl.domain : ''),
       title: cl.name + ' [' + cl.service_type + ']' +
+             (cl.domain ? '<br>🌐 ' + cl.domain : '') +
              (cl.description ? '<br>' + cl.description : '') +
              (cl.members && cl.members.length ? '<br>Mitglieder: ' + cl.members.map(m => m.name).join(', ') : ''),
       shape: 'diamond',
@@ -1266,7 +1268,8 @@ function openSidebar(serverId) {
     const grp = document.createElement('optgroup'); grp.label = 'Cluster';
     allClusters.forEach(cl => {
       const o = document.createElement('option');
-      o.value = 'cluster_' + cl.id; o.textContent = '◆ ' + cl.name + ' [' + cl.service_type + ']';
+      o.value = 'cluster_' + cl.id;
+      o.textContent = '◆ ' + cl.name + (cl.domain ? ' (' + cl.domain + ')' : ' [' + cl.service_type + ']');
       grp.appendChild(o);
     });
     srcSel.appendChild(grp);
@@ -1284,7 +1287,8 @@ function openSidebar(serverId) {
   tgtSrvSel.innerHTML = '<option value="">— Cluster als Ziel —</option>';
   allClusters.forEach(cl => {
     const o = document.createElement('option');
-    o.value = 'cluster_' + cl.id; o.textContent = '◆ ' + cl.name + ' [' + cl.service_type + ']';
+    o.value = 'cluster_' + cl.id;
+    o.textContent = '◆ ' + cl.name + (cl.domain ? ' (' + cl.domain + ')' : ' [' + cl.service_type + ']');
     tgtSrvSel.appendChild(o);
   });
   const srvGroup = document.createElement('optgroup'); srvGroup.label = 'Server';
@@ -1455,6 +1459,7 @@ function renderClusterList() {
     row.innerHTML =
       '<span style="color:' + col + ';font-size:0.9rem">◆</span>' +
       '<span style="flex:1;font-weight:500">' + escHtml(cl.name) + '</span>' +
+      (cl.domain ? '<span style="font-size:0.72rem;color:#60a5fa;margin-right:4px;font-family:monospace">' + escHtml(cl.domain) + '</span>' : '') +
       '<span style="font-size:0.72rem;color:#9ca3af;margin-right:4px">' + escHtml(cl.service_type) + '</span>' +
       '<button class="xs" onclick="toggleClusterEdit(' + cl.id + ')"><i class="fa-solid fa-pen"></i></button>' +
       '<button class="xs danger" onclick="deleteCluster(' + cl.id + ')"><i class="fa-solid fa-xmark"></i></button>';
@@ -1490,7 +1495,8 @@ function renderClusterList() {
     nameRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap';
     nameRow.innerHTML =
       '<input type="text" id="ce-name-' + cl.id + '" value="' + escHtml(cl.name) + '" placeholder="Name" style="flex:1;min-width:100px"/>' +
-      '<input type="text" id="ce-desc-' + cl.id + '" value="' + escHtml(cl.description || '') + '" placeholder="Beschreibung" style="flex:2;min-width:130px"/>';
+      '<input type="text" id="ce-desc-' + cl.id + '" value="' + escHtml(cl.description || '') + '" placeholder="Beschreibung" style="flex:2;min-width:130px"/>' +
+      '<input type="text" id="ce-domain-' + cl.id + '" value="' + escHtml(cl.domain || '') + '" placeholder="Domain / FQDN" style="flex:2;min-width:160px"/>';
     form.appendChild(nameRow);
 
     // Add member row
@@ -1552,12 +1558,14 @@ function toggleClusterEdit(clusterId) {
 async function createCluster() {
   const name = document.getElementById('new-cluster-name').value.trim();
   const description = document.getElementById('new-cluster-desc').value.trim() || null;
+  const domain = document.getElementById('new-cluster-domain').value.trim() || null;
   const service_type = document.getElementById('new-cluster-type').value;
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/clusters', {name, description, service_type}); }
+  try { await api('POST', '/clusters', {name, description, service_type, domain}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('new-cluster-name').value = '';
   document.getElementById('new-cluster-desc').value = '';
+  document.getElementById('new-cluster-domain').value = '';
   await loadAll();
   renderClusterList();
 }
@@ -1565,8 +1573,9 @@ async function createCluster() {
 async function saveClusterEdit(clusterId) {
   const name = document.getElementById('ce-name-' + clusterId).value.trim();
   const description = document.getElementById('ce-desc-' + clusterId).value.trim() || null;
+  const domain = document.getElementById('ce-domain-' + clusterId).value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('PATCH', '/clusters/' + clusterId, {name, description}); }
+  try { await api('PATCH', '/clusters/' + clusterId, {name, description, domain}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
   renderClusterList();
