@@ -833,6 +833,38 @@ function computeHierarchicalPositions() {
     if (!seenEnvs.has(env.id)) { seenEnvs.add(env.id); envOrder.push(env.id); }
   });
 
+  // ── Re-sort so gateway-connected environments are adjacent columns ────────────
+  // Build adjacency: if server in env A uses a gateway-server in env B → A adj B
+  if (envOrder.length > 1) {
+    const envAdj = new Map(allEnvironments.map(e => [e.id, new Set()]));
+    const gwSrvEnvs = new Map(); // gateway server id → [envId]
+    allServers.forEach(s => {
+      if (s.is_gateway && (s.environments||[]).length)
+        gwSrvEnvs.set(s.id, s.environments.map(e => e.id));
+    });
+    allServers.forEach(s => {
+      if (!s.gateway_server_id) return;
+      const srcEnvIds = (s.environments||[]).map(e => e.id);
+      const gwEnvIds  = gwSrvEnvs.get(s.gateway_server_id) || [];
+      srcEnvIds.forEach(a => gwEnvIds.forEach(b => {
+        if (a !== b) { envAdj.get(a)?.add(b); envAdj.get(b)?.add(a); }
+      }));
+    });
+    // Greedy nearest-neighbour starting from the first environment
+    const remaining = new Set(envOrder);
+    const ordered   = [envOrder[0]];
+    remaining.delete(envOrder[0]);
+    while (remaining.size) {
+      const last = ordered[ordered.length - 1];
+      const adj  = [...(envAdj.get(last) || [])].filter(id => remaining.has(id));
+      const next = adj.length ? adj[0] : [...remaining][0];
+      ordered.push(next);
+      remaining.delete(next);
+    }
+    envOrder.length = 0;
+    ordered.forEach(id => envOrder.push(id));
+  }
+
   // ── Server → environment mapping ────────────────────────────────────────────
   const envServerMap = new Map(envOrder.map(id => [id, []]));
   const noEnvServers = [];
