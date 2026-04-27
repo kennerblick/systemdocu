@@ -819,88 +819,108 @@ function buildInternetGraph() {
 function computeHierarchicalPositions() {
   const NODE_W = 150, NODE_H = 80, GROUP_GAP = 90, CLUSTER_GAP = 50;
   const pos = {};
-
-  const sort = arr => [...arr].sort((a,b) => a.hostname.localeCompare(b.hostname));
-  const isVmHost = s => (s.services||[]).some(svc => VM_SVC_TYPES.has(svc.type) && (svc.instances||[]).length);
-
-  const gwSrvs  = sort(allServers.filter(s =>  s.is_gateway && !isVmHost(s)));
-  const regSrvs = sort(allServers.filter(s => !s.is_gateway && !isVmHost(s)));
-  const vmHosts = sort(allServers.filter(s => isVmHost(s)));
-
-  const nonVmInsts = [];
-  sort(allServers).forEach(s =>
-    (s.services||[]).forEach(svc => {
-      if (!VM_SVC_TYPES.has(svc.type))
-        [...(svc.instances||[])].sort((a,b) => a.name.localeCompare(b.name))
-          .forEach(inst => nonVmInsts.push('inst_' + inst.id));
-    })
-  );
-
   let y = 0;
 
-  // helper: place N ids in a sqrt-square grid centred on x=0
+  const sortByName = arr => [...arr].sort((a, b) => a.hostname.localeCompare(b.hostname));
+  const isVmHost   = s => (s.services||[]).some(svc => VM_SVC_TYPES.has(svc.type) && (svc.instances||[]).length);
+
+  // Place N node-ids in a sqrt grid centred on x=0, returns height used
   function placeGrid(ids, startY) {
     if (!ids.length) return 0;
     const cols = Math.ceil(Math.sqrt(ids.length));
     ids.forEach((id, i) => {
-      pos[id] = { x: (i % cols - (cols-1)/2) * NODE_W, y: startY + Math.floor(i/cols) * NODE_H };
+      pos[id] = { x: (i % cols - (cols - 1) / 2) * NODE_W, y: startY + Math.floor(i / cols) * NODE_H };
     });
     return Math.ceil(ids.length / cols) * NODE_H;
   }
 
-  if (gwSrvs.length)  { y += placeGrid(gwSrvs.map(s=>s.id),  y) + GROUP_GAP; }
-  if (regSrvs.length) { y += placeGrid(regSrvs.map(s=>s.id), y) + GROUP_GAP; }
-
-  // VM-host clusters: each host + its VMs as one block, blocks in sqrt-grid
-  if (vmHosts.length) {
-    const clusters = vmHosts.map(host => {
+  // Place VM-host servers (+ their VM instances below each host), returns height used
+  function placeVmHosts(hosts, startY) {
+    if (!hosts.length) return 0;
+    const clusters = hosts.map(host => {
       const vms = [];
       (host.services||[]).forEach(svc => {
         if (VM_SVC_TYPES.has(svc.type))
-          [...(svc.instances||[])].sort((a,b) => a.name.localeCompare(b.name))
+          [...(svc.instances||[])].sort((a, b) => a.name.localeCompare(b.name))
             .forEach(inst => vms.push('inst_' + inst.id));
       });
       const vmCols = vms.length ? Math.ceil(Math.sqrt(vms.length)) : 0;
       const vmRows = vms.length ? Math.ceil(vms.length / Math.max(1, vmCols)) : 0;
       return {host, vms, vmCols, vmRows};
     });
-
-    // uniform cell size across all clusters
     const maxVmCols = Math.max(1, ...clusters.map(c => c.vmCols));
     const maxVmRows = Math.max(0, ...clusters.map(c => c.vmRows));
     const cellW = (maxVmCols + 0.5) * NODE_W + CLUSTER_GAP;
     const cellH = (1 + maxVmRows) * NODE_H + CLUSTER_GAP;
-    const cpr   = Math.ceil(Math.sqrt(clusters.length));   // clusters per row
-
+    const cpr   = Math.ceil(Math.sqrt(clusters.length));
     clusters.forEach(({host, vms, vmCols}, ci) => {
       const col = ci % cpr, row = Math.floor(ci / cpr);
-      const cx = (col - (cpr-1)/2) * cellW;
-      const cy = y + row * cellH;
+      const cx = (col - (cpr - 1) / 2) * cellW;
+      const cy = startY + row * cellH;
       pos[host.id] = {x: cx, y: cy};
       vms.forEach((vmId, vi) => {
         pos[vmId] = {
-          x: cx + (vi % Math.max(1,vmCols) - (vmCols-1)/2) * NODE_W,
-          y: cy + NODE_H + Math.floor(vi / Math.max(1,vmCols)) * NODE_H,
+          x: cx + (vi % Math.max(1, vmCols) - (vmCols - 1) / 2) * NODE_W,
+          y: cy + NODE_H + Math.floor(vi / Math.max(1, vmCols)) * NODE_H,
         };
       });
     });
-    y += Math.ceil(clusters.length / cpr) * cellH + GROUP_GAP;
+    return Math.ceil(clusters.length / cpr) * cellH;
   }
 
+  // Place one group of servers (plain + VM-hosts), returns height used
+  function placeServerGroup(servers, startY) {
+    let h = 0;
+    const plain   = sortByName(servers.filter(s => !isVmHost(s)));
+    const vmHosts = sortByName(servers.filter(isVmHost));
+    if (plain.length)   h += placeGrid(plain.map(s => s.id), startY + h) + (vmHosts.length ? GROUP_GAP / 2 : 0);
+    if (vmHosts.length) h += placeVmHosts(vmHosts, startY + h);
+    return h;
+  }
+
+  // Build environment → server mapping (each server assigned to its first environment)
+  const envMap = new Map();
+  allEnvironments.forEach(env => envMap.set(env.id, []));
+  const noEnvServers = [];
+  sortByName(allServers).forEach(s => {
+    const envId = s.environments && s.environments.length ? s.environments[0].id : null;
+    if (envId && envMap.has(envId)) envMap.get(envId).push(s);
+    else noEnvServers.push(s);
+  });
+
+  // Place each environment as its own horizontal band
+  allEnvironments.forEach(env => {
+    const srvs = envMap.get(env.id) || [];
+    if (!srvs.length) return;
+    y += placeServerGroup(srvs, y) + GROUP_GAP;
+  });
+
+  // Servers without any environment
+  if (noEnvServers.length) y += placeServerGroup(noEnvServers, y) + GROUP_GAP;
+
+  // Cluster nodes
   const clusterIds = allClusters.map(c => 'cluster_' + c.id);
   if (clusterIds.length) { y += placeGrid(clusterIds, y) + GROUP_GAP; }
+
+  // Non-VM service instances
+  const nonVmInsts = [];
+  sortByName(allServers).forEach(s => (s.services||[]).forEach(svc => {
+    if (!VM_SVC_TYPES.has(svc.type))
+      [...(svc.instances||[])].sort((a, b) => a.name.localeCompare(b.name))
+        .forEach(inst => nonVmInsts.push('inst_' + inst.id));
+  }));
   if (nonVmInsts.length) placeGrid(nonVmInsts, y);
 
-  // Internet nodes in hierarchical mode: placed above the servers
+  // Internet nodes: above the servers
   if (allRouters.length) {
-    const rootRouters = allRouters.filter(r => !r.upstream_router_id);
+    const rootRouters  = allRouters.filter(r => !r.upstream_router_id);
     const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
     const spread = (items, yVal) => items.forEach((id, i) => {
       pos[id] = {x: (i - (items.length - 1) / 2) * NODE_W, y: yVal};
     });
-    spread(['internet_cloud'], -3 * NODE_H);
+    spread(['internet_cloud'],              -3 * NODE_H);
     spread(providerNames.map(p => 'provider_' + p), -2 * NODE_H);
-    spread(allRouters.map(r => 'router_' + r.id), -NODE_H);
+    spread(allRouters.map(r => 'router_' + r.id),   -NODE_H);
   }
 
   return pos;
