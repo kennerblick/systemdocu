@@ -405,7 +405,7 @@ function serverColor(server) {
 
 function buildNode(server) {
   const col = serverColor(server);
-  return {
+  const node = {
     id: server.id,
     label: server.hostname,
     shape: 'dot',
@@ -418,6 +418,8 @@ function buildNode(server) {
            (server.gateway_router_id ? '<br>GW: ' + ((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
            (server.gateway_server_id ? '<br>GW: ' + ((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
   };
+  if (layoutMode === 'hierarchical') node.level = server.is_gateway ? 0 : 1;
+  return node;
 }
 
 const INST_ZOOM_THRESHOLD = 0.65;
@@ -472,6 +474,7 @@ function buildInstanceNodesEdges() {
           font: {color: '#f0f0f0', size: 11},
           margin: {top: 5, bottom: 5, left: 7, right: 7},
           borderWidth: 1,
+          ...(layoutMode === 'hierarchical' ? {level: VM_SVC_TYPES.has(svc.type) ? 2 : 3} : {}),
         });
         const isVM = VM_SVC_TYPES.has(svc.type);
         siEdges.push({
@@ -764,8 +767,8 @@ function renderGraph() {
     ? {
         layout: {
           hierarchical: {
-            enabled: true, direction: 'UD', sortMethod: 'directed',
-            levelSeparation: 60, nodeSpacing: 120, treeSpacing: 40,
+            enabled: true, direction: 'UD', sortMethod: 'hubsize',
+            levelSeparation: 90, nodeSpacing: 130, treeSpacing: 30,
             blockShifting: true, edgeMinimization: true, parentCentralization: true,
           },
         },
