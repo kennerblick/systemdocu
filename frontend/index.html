@@ -1804,25 +1804,42 @@ function renderServicesSection(server) {
         gwSel.title = 'Gateway dieser VM';
         gwSel.innerHTML = '<option value="">— kein GW —</option>';
         const instEnvIds = new Set((inst.environments || []).map(e => e.id));
-        allRouters.forEach(r => {
-          if ((r.environments || []).some(e => instEnvIds.has(e.id))) {
-            const opt = document.createElement('option');
-            opt.value = 'router_' + r.id;
-            opt.textContent = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
-            if (inst.gateway_router_id === r.id) opt.selected = true;
-            gwSel.appendChild(opt);
+        const matchedRouters = allRouters.filter(r => (r.environments || []).some(e => instEnvIds.has(e.id)));
+        const otherRouters  = allRouters.filter(r => !(r.environments || []).some(e => instEnvIds.has(e.id)));
+        const matchedGwSrvs = allServers.filter(gs => gs.is_gateway && (gs.environments || []).some(e => instEnvIds.has(e.id)));
+        const otherGwSrvs   = allServers.filter(gs => gs.is_gateway && !(gs.environments || []).some(e => instEnvIds.has(e.id)));
+        const addRouterOpt = (r) => {
+          const opt = document.createElement('option');
+          opt.value = 'router_' + r.id;
+          opt.textContent = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
+          if (inst.gateway_router_id === r.id) opt.selected = true;
+          gwSel.appendChild(opt);
+        };
+        const addServerOpt = (gs) => {
+          const opt = document.createElement('option');
+          opt.value = 'server_' + gs.id;
+          opt.textContent = gs.hostname + ' [GW]';
+          if (inst.gateway_server_id === gs.id) opt.selected = true;
+          gwSel.appendChild(opt);
+        };
+        const addSep = (label) => {
+          const sep = document.createElement('option');
+          sep.disabled = true; sep.textContent = '── ' + label + ' ──';
+          gwSel.appendChild(sep);
+        };
+        if (matchedRouters.length || matchedGwSrvs.length) {
+          if (otherRouters.length || otherGwSrvs.length) addSep('Selbe Umgebung');
+          matchedRouters.forEach(addRouterOpt);
+          matchedGwSrvs.forEach(addServerOpt);
+          if (otherRouters.length || otherGwSrvs.length) {
+            addSep('Andere Umgebungen');
+            otherRouters.forEach(addRouterOpt);
+            otherGwSrvs.forEach(addServerOpt);
           }
-        });
-        allServers.forEach(gs => {
-          if (!gs.is_gateway) return;
-          if ((gs.environments || []).some(e => instEnvIds.has(e.id))) {
-            const opt = document.createElement('option');
-            opt.value = 'server_' + gs.id;
-            opt.textContent = gs.hostname + ' [GW]';
-            if (inst.gateway_server_id === gs.id) opt.selected = true;
-            gwSel.appendChild(opt);
-          }
-        });
+        } else {
+          allRouters.forEach(addRouterOpt);
+          allServers.filter(gs => gs.is_gateway).forEach(addServerOpt);
+        }
         gwSel.onchange = () => {
           const v = gwSel.value;
           updateInstanceGateway(inst.id,
