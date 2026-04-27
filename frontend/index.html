@@ -2893,10 +2893,18 @@ async function openZabbixScan() {
       sel.innerHTML = '<option value="">Keine Hosts gefunden</option>';
       return;
     }
+    const existingHostnames = new Set(allServers.map(s => s.hostname.toLowerCase()));
     hosts.forEach(h => {
       const o = document.createElement('option');
       o.value = h.hostid;
-      o.textContent = h.hostname + (h.ip ? ' (' + h.ip + ')' : '');
+      const exists = existingHostnames.has(h.hostname.toLowerCase());
+      if (exists) {
+        o.textContent = '✓ ' + h.hostname + (h.ip ? ' (' + h.ip + ')' : '') + ' — bereits vorhanden';
+        o.disabled = true;
+        o.style.color = '#6b7280';
+      } else {
+        o.textContent = h.hostname + (h.ip ? ' (' + h.ip + ')' : '');
+      }
       sel.appendChild(o);
     });
   } catch (e) {
