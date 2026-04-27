@@ -187,6 +187,11 @@
           <option value="depends_on">depends_on</option>
           <option value="hosts">hosts</option>
         </select>
+        <select id="ir-direction" style="width:52px;font-size:0.78rem" title="Datenrichtung">
+          <option value="to">→</option>
+          <option value="both">↔</option>
+          <option value="none">—</option>
+        </select>
       </div>
       <div style="display:flex;gap:4px">
         <select id="ir-tgt-srv" style="flex:1;font-size:0.78rem" onchange="updateIrTgtInst()"></select>
@@ -511,13 +516,17 @@ function buildInstanceNodesEdges() {
     const tgt = im[r.target_instance_id];
     const srcSrv = allServers.find(s => s.id === (src && src.serverId));
     const tgtSrv = allServers.find(s => s.id === (tgt && tgt.serverId));
+    const dir = r.direction || 'to';
     irInstEdges.push({
       id: 'ir_inst_' + r.id,
       from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
-      arrows: 'to', width: 2,
+      arrows: dir === 'both' ? {to: {enabled:true}, from: {enabled:true}}
+            : dir === 'none' ? {to: {enabled:false}, from: {enabled:false}}
+            : 'to',
+      width: 2,
       color: {color: '#7c3aed'},
       title: (src ? src.svcType + ': ' + src.name : '?') + ' @ ' + (srcSrv ? srcSrv.hostname : '?') +
-             ' → ' +
+             (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : ' → ') +
              (tgt ? tgt.svcType + ': ' + tgt.name : '?') + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') +
              '<br>' + r.type,
     });
@@ -1208,10 +1217,11 @@ function renderInstRelSection(server, instMap) {
     const row = document.createElement('div');
     row.className = 'list-item';
     row.style.fontSize = '0.78rem';
+    const dirIcon = r.direction === 'both' ? '↔' : r.direction === 'none' ? '—' : '→';
     row.innerHTML =
       '<span style="color:#a78bfa;flex:1">' +
       escHtml((src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')') +
-      ' <i class="fa-solid fa-arrow-right" style="font-size:0.65rem"></i> ' +
+      ' <span style="color:#94a3b8">' + dirIcon + '</span> ' +
       escHtml((tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')') +
       '</span><span style="color:#6b7280;margin:0 6px">' + escHtml(r.type) + '</span>' +
       '<button class="xs danger" onclick="deleteInstRel(' + r.id + ')"><i class="fa-solid fa-xmark"></i></button>';
@@ -1243,8 +1253,9 @@ async function addInstRel() {
   const source_instance_id = parseInt(document.getElementById('ir-src').value);
   const target_instance_id = parseInt(document.getElementById('ir-tgt').value);
   const type = document.getElementById('ir-reltype').value;
+  const direction = document.getElementById('ir-direction').value;
   if (!source_instance_id || !target_instance_id) return alert('Bitte Instanzen auswählen');
-  try { await api('POST', '/instance-relations', {source_instance_id, target_instance_id, type}); }
+  try { await api('POST', '/instance-relations', {source_instance_id, target_instance_id, type, direction}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }

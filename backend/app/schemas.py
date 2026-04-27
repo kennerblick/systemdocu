@@ -172,6 +172,7 @@ class InstanceRelationCreate(BaseModel):
     source_instance_id: int
     target_instance_id: int
     type: str = "connects_to"
+    direction: str = "to"
 
 
 class InstanceRelationOut(InstanceRelationCreate):

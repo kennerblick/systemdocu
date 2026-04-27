@@ -124,6 +124,7 @@ class InstanceRelation(Base):
     source_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
     target_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
     type = Column(String(50), default="connects_to")
+    direction = Column(String(10), nullable=False, default="to")
 
     source_instance = relationship("ServiceInstance", foreign_keys=[source_instance_id])
     target_instance = relationship("ServiceInstance", foreign_keys=[target_instance_id])
