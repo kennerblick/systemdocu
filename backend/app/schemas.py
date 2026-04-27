@@ -54,6 +54,7 @@ class ApplicationOut(ApplicationBase):
 class ServiceInstanceBase(BaseModel):
     name: str
     description: Optional[str] = None
+    fqdn: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
@@ -67,6 +68,7 @@ class ServiceInstanceCreate(ServiceInstanceBase):
 class ServiceInstanceUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    fqdn: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
@@ -96,7 +98,8 @@ class ServiceSimpleOut(ServiceBase):
 
 class ServiceInstanceOut(ServiceInstanceBase):
     id: int
-    service_id: int
+    service_id: Optional[int] = None
+    cluster_id: Optional[int] = None
     applications: List[ApplicationOut] = []
     environments: List[EnvironmentOut] = []
     own_services: List[ServiceSimpleOut] = []
@@ -197,19 +200,20 @@ class ClusterMemberOut(BaseModel):
         from_attributes = True
 
 
-class ClusterHostedInstanceOut(BaseModel):
+class ClusterOwnInstanceCreate(BaseModel):
+    name: str
+    fqdn: Optional[str] = None
+    ip: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ClusterOwnInstanceOut(BaseModel):
     id: int
     name: str
-    description: Optional[str] = None
+    fqdn: Optional[str] = None
     ip: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ClusterServiceOut(ServiceBase):
-    id: int
-    instances: List[ClusterHostedInstanceOut] = []
+    description: Optional[str] = None
+    environments: List[EnvironmentOut] = []
 
     class Config:
         from_attributes = True
@@ -232,7 +236,7 @@ class ClusterUpdate(BaseModel):
 class ClusterOut(ClusterCreate):
     id: int
     members: List[ClusterMemberOut] = []
-    own_services: List[ClusterServiceOut] = []
+    own_instances: List[ClusterOwnInstanceOut] = []
 
     class Config:
         from_attributes = True

@@ -79,7 +79,9 @@ async def startup():
         "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS source_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
         "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS target_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
         "ALTER TABLE clusters ADD COLUMN IF NOT EXISTS domain VARCHAR(255)",
-        "ALTER TABLE services ADD COLUMN IF NOT EXISTS cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
+        "ALTER TABLE service_instances ALTER COLUMN service_id DROP NOT NULL",
+        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
+        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS fqdn VARCHAR(255)",
         # migrate old single environment_id to M2M table (only if legacy column still exists)
         """
         DO $$ BEGIN
