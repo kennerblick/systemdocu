@@ -758,8 +758,6 @@ function computeHierarchicalPositions() {
     return Math.ceil(ids.length / cols) * NODE_H;
   }
 
-  const clusterIds = allClusters.map(c => 'cluster_' + c.id);
-  if (clusterIds.length) { y += placeGrid(clusterIds, y) + GROUP_GAP; }
   if (gwSrvs.length)  { y += placeGrid(gwSrvs.map(s=>s.id),  y) + GROUP_GAP; }
   if (regSrvs.length) { y += placeGrid(regSrvs.map(s=>s.id), y) + GROUP_GAP; }
 
@@ -799,6 +797,8 @@ function computeHierarchicalPositions() {
     y += Math.ceil(clusters.length / cpr) * cellH + GROUP_GAP;
   }
 
+  const clusterIds = allClusters.map(c => 'cluster_' + c.id);
+  if (clusterIds.length) { y += placeGrid(clusterIds, y) + GROUP_GAP; }
   if (nonVmInsts.length) placeGrid(nonVmInsts, y);
   return pos;
 }
@@ -1000,7 +1000,9 @@ function renderGraph() {
   network.on('click', params => {
     if (!params.nodes.length) return closeSidebar();
     const nodeId = params.nodes[0];
-    if (typeof nodeId === 'string' && nodeId.startsWith('inst_')) {
+    if (typeof nodeId === 'string' && nodeId.startsWith('cluster_')) {
+      openClusterEdit(parseInt(nodeId.replace('cluster_', '')));
+    } else if (typeof nodeId === 'string' && nodeId.startsWith('inst_')) {
       const info = buildInstServerMap()[parseInt(nodeId.replace('inst_', ''))];
       if (info) openSidebar(info.serverId);
     } else {
@@ -1428,6 +1430,14 @@ function openManageClusters() {
   document.getElementById('modal-clusters').classList.add('open');
 }
 
+function openClusterEdit(clusterId) {
+  renderClusterList();
+  document.getElementById('modal-clusters').classList.add('open');
+  const f = document.getElementById('cluster-edit-' + clusterId);
+  if (f && f.style.display === 'none') toggleClusterEdit(clusterId);
+  if (f) f.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
 function renderClusterList() {
   const list = document.getElementById('cluster-list');
   list.innerHTML = '';
@@ -1452,13 +1462,18 @@ function renderClusterList() {
 
     // Member chips
     if (cl.members && cl.members.length) {
+      const instMap = buildInstServerMap();
       const chips = document.createElement('div');
       chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;padding-left:20px';
       cl.members.forEach(m => {
+        const info = instMap[m.id];
+        const srv = info ? allServers.find(s => s.id === info.serverId) : null;
+        const label = srv ? srv.hostname : m.name;
         const c = document.createElement('span');
         c.className = 'chip'; c.style.background = col + '99';
         c.style.outline = '1px solid ' + col;
-        c.innerHTML = escHtml(m.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.title = m.name;
+        c.innerHTML = escHtml(label) + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
         c.onclick = () => removeClusterMember(cl.id, m.id);
         chips.appendChild(c);
       });
@@ -1571,6 +1586,7 @@ async function addClusterMember(clusterId, instanceId) {
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
   renderClusterList();
+  toggleClusterEdit(clusterId);
 }
 
 async function removeClusterMember(clusterId, instanceId) {
