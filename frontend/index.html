@@ -891,18 +891,16 @@ function computeHierarchicalPositions() {
   if (clusterIds.length) { y += placeGrid(clusterIds, y) + GROUP_GAP; }
   if (nonVmInsts.length) placeGrid(nonVmInsts, y);
 
-  // Internet nodes in hierarchical mode: placed to the left of servers
+  // Internet nodes in hierarchical mode: placed above the servers
   if (allRouters.length) {
-    const midY = y / 2;
     const rootRouters = allRouters.filter(r => !r.upstream_router_id);
     const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
-    pos['internet_cloud'] = {x: -900, y: midY};
-    providerNames.forEach((prov, i) => {
-      pos['provider_' + prov] = {x: -620, y: midY + (i - (providerNames.length - 1) / 2) * 110};
+    const spread = (items, yVal) => items.forEach((id, i) => {
+      pos[id] = {x: (i - (items.length - 1) / 2) * NODE_W, y: yVal};
     });
-    allRouters.forEach((r, i) => {
-      pos['router_' + r.id] = {x: -370, y: midY + (i - (allRouters.length - 1) / 2) * 110};
-    });
+    spread(['internet_cloud'], -3 * NODE_H);
+    spread(providerNames.map(p => 'provider_' + p), -2 * NODE_H);
+    spread(allRouters.map(r => 'router_' + r.id), -NODE_H);
   }
 
   return pos;
