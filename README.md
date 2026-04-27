@@ -1,6 +1,6 @@
 # systemdocu
 
-Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle Server, Services, Instanzen, Anwendungen, Umgebungen/Subnetze und Internetanschlüsse — inklusive Zabbix-Integration und Excel-Export.
+Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle Server, Services, Instanzen, Cluster, Anwendungen, Umgebungen/Subnetze und Internetanschlüsse — inklusive Zabbix-Integration und Excel-Export.
 
 ![Graph-Ansicht](docs/screenshot.png)
 
@@ -18,6 +18,7 @@ Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle 
 - [Export](#export)
 - [Backup & Restore](#backup--restore)
 - [Architektur](#architektur)
+- [API-Übersicht](#api-übersicht)
 
 ---
 
@@ -115,9 +116,14 @@ Internetanschluss / Router / Gateway
 ├── Verknüpfter Server           — wenn Gateway ein vorhandener Server ist
 └── Environments (M:N)           — Netze, für die dieser Eintrag Gateway ist
 
+Cluster
+├── Name, Beschreibung, Service-Typ (z. B. postgresql, kubernetes)
+└── Mitglieder (M:N)               — Instanzen gleichen Typs von beliebigen Servern
+
 Relationen
-├── Server–Server (connects_to, hosts, depends_on)
-└── Instanz–Instanz  (connects_to, uses, depends_on, hosts)
+├── Server–Server   (connects_to, hosts, depends_on)
+└── Instanz/Cluster → Instanz/Cluster  (connects_to, uses, depends_on, hosts)
+    └── Datenrichtung: → (to), ← (from), ↔ (both), — (none)
 ```
 
 ---
@@ -211,14 +217,27 @@ In der Sidebar unter **Server-Relation**:
 - Zielserver aus Dropdown wählen (alle Server inkl. des aktuellen — dieser ist mit `(dieser)` gekennzeichnet)
 - Relationstyp: `connects_to`, `hosts`, `depends_on`
 
+### Cluster verwalten
+
+Schaltfläche **Cluster**:
+
+- **Neuen Cluster erstellen**: Name, Beschreibung (optional) und Service-Typ wählen → **Erstellen**
+- **Mitglieder hinzufügen**: Stift-Icon → Server wählen → Instanzen des passenden Typs erscheinen → **+ Mitglied**. Mitglieder können von beliebig vielen Servern sein.
+- **Mitglied entfernen**: Chip mit × anklicken
+- **Cluster löschen**: × in der Kopfzeile
+- Im Graph erscheinen Cluster als **◆ Raute** in der Farbe des Service-Typs, verbunden mit ihren Mitglied-Instanzen durch gestrichelte Kanten
+- In der **hierarchischen Ansicht** werden Cluster als eigene Gruppe ganz oben angezeigt
+
 ### Instanz-Relationen
 
 Unter **Instanz-Relationen**:
 
 - **Liste**: Zeigt ausgehende Verbindungen des aktuell gewählten Quell-Eintrags. Beim Wechsel der Quelle im Dropdown aktualisiert sich die Liste automatisch.
-- **Quelle** (`ir-src`): Instanzen und VM-eigene Dienste des aktuellen Servers, sortiert nach Typ
-- **Zielserver + Instanz**: Zuerst Server wählen, dann die Ziel-Instanz oder deren Dienst
+- **Quelle** (`ir-src`): Cluster (◆) und Instanzen des aktuellen Servers, gruppiert nach Typ
+- **Ziel**: Entweder einen Cluster direkt auswählen — oder Server wählen und dann die Ziel-Instanz
 - Relationstypen: `connects_to`, `uses`, `depends_on`, `hosts`
+- **Datenrichtung**: → (zum Ziel), ← (zur Quelle), ↔ (beidseitig), — (kein Pfeil)
+- **Bearbeiten**: Stift-Icon in der Zeile → Typ und Richtung inline ändern
 
 ---
 
@@ -327,3 +346,34 @@ Backend-Logs (Warnungen und Fehler) unter `/opt/docker/systemdocu/logs/backend.l
 ```bash
 tail -f /opt/docker/systemdocu/logs/backend.log
 ```
+
+---
+
+## API-Übersicht
+
+Interaktive Swagger-Doku: `http://<server-ip>:9191/api/docs`
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| GET/POST | `/api/servers` | Server auflisten / anlegen |
+| GET/PUT/DELETE | `/api/servers/{id}` | Server abrufen / aktualisieren / löschen |
+| GET/POST | `/api/servers/{id}/services` | Services eines Servers |
+| GET/POST | `/api/services/{id}/instances` | Instanzen eines Services |
+| PATCH/DELETE | `/api/instances/{id}` | Instanz aktualisieren / löschen |
+| POST/DELETE | `/api/instances/{id}/environments/{env_id}` | Umgebung zuordnen / entfernen |
+| POST/DELETE | `/api/instances/{id}/applications/{app_id}` | Anwendung zuordnen / entfernen |
+| GET/POST | `/api/clusters` | Cluster auflisten / anlegen |
+| PATCH/DELETE | `/api/clusters/{id}` | Cluster aktualisieren / löschen |
+| POST/DELETE | `/api/clusters/{id}/instances/{inst_id}` | Mitglied hinzufügen / entfernen |
+| GET/POST | `/api/instance-relations` | Instanz/Cluster-Relationen |
+| PATCH/DELETE | `/api/instance-relations/{id}` | Relation aktualisieren / löschen |
+| GET/POST | `/api/relations` | Server-Relationen |
+| GET/POST/PUT/DELETE | `/api/environments` | Umgebungen verwalten |
+| GET/POST/DELETE | `/api/applications` | Anwendungen verwalten |
+| GET/POST/PUT/DELETE | `/api/internet-routers` | Internetanschlüsse verwalten |
+| GET | `/api/export/json` | JSON-Rohdaten-Export |
+| GET | `/api/export/excel` | Excel-Export |
+| GET | `/api/zabbix/ping` | Zabbix-Verbindungsstatus |
+| GET | `/api/zabbix/hosts` | Zabbix-Hosts auflisten |
+| POST | `/api/zabbix/scan` | Host scannen |
+| POST | `/api/import/zabbix` | Scan-Ergebnis importieren |
