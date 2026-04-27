@@ -644,34 +644,77 @@ function buildInternetGraph() {
 }
 
 function computeHierarchicalPositions() {
-  const NODE_W = 150, NODE_H = 80, GROUP_GAP = 80;
+  const NODE_W = 150, NODE_H = 80, GROUP_GAP = 90, CLUSTER_GAP = 50;
   const pos = {};
 
-  const gwSrvs   = [...allServers].filter(s => s.is_gateway)
-                    .sort((a,b) => a.hostname.localeCompare(b.hostname));
-  const regSrvs  = [...allServers].filter(s => !s.is_gateway)
-                    .sort((a,b) => a.hostname.localeCompare(b.hostname));
-  const vmInsts  = [], nonVmInsts = [];
-  [...allServers].sort((a,b) => a.hostname.localeCompare(b.hostname)).forEach(s =>
-    [...(s.services||[])].sort((a,b) => a.type.localeCompare(b.type)).forEach(svc =>
-      [...(svc.instances||[])].sort((a,b) => a.name.localeCompare(b.name)).forEach(inst => {
-        (VM_SVC_TYPES.has(svc.type) ? vmInsts : nonVmInsts).push('inst_' + inst.id);
-      })
-    )
+  const sort = arr => [...arr].sort((a,b) => a.hostname.localeCompare(b.hostname));
+  const isVmHost = s => (s.services||[]).some(svc => VM_SVC_TYPES.has(svc.type) && (svc.instances||[]).length);
+
+  const gwSrvs  = sort(allServers.filter(s =>  s.is_gateway && !isVmHost(s)));
+  const regSrvs = sort(allServers.filter(s => !s.is_gateway && !isVmHost(s)));
+  const vmHosts = sort(allServers.filter(s => isVmHost(s)));
+
+  const nonVmInsts = [];
+  sort(allServers).forEach(s =>
+    (s.services||[]).forEach(svc => {
+      if (!VM_SVC_TYPES.has(svc.type))
+        [...(svc.instances||[])].sort((a,b) => a.name.localeCompare(b.name))
+          .forEach(inst => nonVmInsts.push('inst_' + inst.id));
+    })
   );
 
-  const groups = [gwSrvs.map(s=>s.id), regSrvs.map(s=>s.id), vmInsts, nonVmInsts]
-                  .filter(g => g.length);
   let y = 0;
-  groups.forEach(ids => {
-    const N = ids.length;
-    const cols = Math.ceil(Math.sqrt(N));
+
+  // helper: place N ids in a sqrt-square grid centred on x=0
+  function placeGrid(ids, startY) {
+    if (!ids.length) return 0;
+    const cols = Math.ceil(Math.sqrt(ids.length));
     ids.forEach((id, i) => {
-      const col = i % cols, row = Math.floor(i / cols);
-      pos[id] = { x: (col - (cols - 1) / 2) * NODE_W, y: y + row * NODE_H };
+      pos[id] = { x: (i % cols - (cols-1)/2) * NODE_W, y: startY + Math.floor(i/cols) * NODE_H };
     });
-    y += Math.ceil(N / cols) * NODE_H + GROUP_GAP;
-  });
+    return Math.ceil(ids.length / cols) * NODE_H;
+  }
+
+  if (gwSrvs.length)  { y += placeGrid(gwSrvs.map(s=>s.id),  y) + GROUP_GAP; }
+  if (regSrvs.length) { y += placeGrid(regSrvs.map(s=>s.id), y) + GROUP_GAP; }
+
+  // VM-host clusters: each host + its VMs as one block, blocks in sqrt-grid
+  if (vmHosts.length) {
+    const clusters = vmHosts.map(host => {
+      const vms = [];
+      (host.services||[]).forEach(svc => {
+        if (VM_SVC_TYPES.has(svc.type))
+          [...(svc.instances||[])].sort((a,b) => a.name.localeCompare(b.name))
+            .forEach(inst => vms.push('inst_' + inst.id));
+      });
+      const vmCols = vms.length ? Math.ceil(Math.sqrt(vms.length)) : 0;
+      const vmRows = vms.length ? Math.ceil(vms.length / Math.max(1, vmCols)) : 0;
+      return {host, vms, vmCols, vmRows};
+    });
+
+    // uniform cell size across all clusters
+    const maxVmCols = Math.max(1, ...clusters.map(c => c.vmCols));
+    const maxVmRows = Math.max(0, ...clusters.map(c => c.vmRows));
+    const cellW = (maxVmCols + 0.5) * NODE_W + CLUSTER_GAP;
+    const cellH = (1 + maxVmRows) * NODE_H + CLUSTER_GAP;
+    const cpr   = Math.ceil(Math.sqrt(clusters.length));   // clusters per row
+
+    clusters.forEach(({host, vms, vmCols}, ci) => {
+      const col = ci % cpr, row = Math.floor(ci / cpr);
+      const cx = (col - (cpr-1)/2) * cellW;
+      const cy = y + row * cellH;
+      pos[host.id] = {x: cx, y: cy};
+      vms.forEach((vmId, vi) => {
+        pos[vmId] = {
+          x: cx + (vi % Math.max(1,vmCols) - (vmCols-1)/2) * NODE_W,
+          y: cy + NODE_H + Math.floor(vi / Math.max(1,vmCols)) * NODE_H,
+        };
+      });
+    });
+    y += Math.ceil(clusters.length / cpr) * cellH + GROUP_GAP;
+  }
+
+  if (nonVmInsts.length) placeGrid(nonVmInsts, y);
   return pos;
 }
 
