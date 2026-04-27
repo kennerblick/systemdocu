@@ -189,6 +189,7 @@
         </select>
         <select id="ir-direction" style="width:52px;font-size:0.78rem" title="Datenrichtung">
           <option value="to">→</option>
+          <option value="from">←</option>
           <option value="both">↔</option>
           <option value="none">—</option>
         </select>
@@ -520,13 +521,14 @@ function buildInstanceNodesEdges() {
     irInstEdges.push({
       id: 'ir_inst_' + r.id,
       from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
-      arrows: dir === 'both' ? {to: {enabled:true}, from: {enabled:true}}
+      arrows: dir === 'both' ? {to: {enabled:true},  from: {enabled:true}}
             : dir === 'none' ? {to: {enabled:false}, from: {enabled:false}}
+            : dir === 'from' ? {to: {enabled:false}, from: {enabled:true}}
             : 'to',
       width: 2,
       color: {color: '#7c3aed'},
       title: (src ? src.svcType + ': ' + src.name : '?') + ' @ ' + (srcSrv ? srcSrv.hostname : '?') +
-             (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : ' → ') +
+             (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : dir === 'from' ? ' ← ' : ' → ') +
              (tgt ? tgt.svcType + ': ' + tgt.name : '?') + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') +
              '<br>' + r.type,
     });
@@ -1217,13 +1219,17 @@ function renderInstRelSection(server, instMap) {
     const row = document.createElement('div');
     row.className = 'list-item';
     row.style.fontSize = '0.78rem';
-    const dirIcon = r.direction === 'both' ? '↔' : r.direction === 'none' ? '—' : '→';
+    const dir = r.direction || 'to';
+    const dirIcon = dir === 'both' ? '↔' : dir === 'none' ? '—' : dir === 'from' ? '←' : '→';
+    const srcLabel = escHtml((src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')');
+    const tgtLabel = escHtml((tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')');
+
+    // display mode
     row.innerHTML =
-      '<span style="color:#a78bfa;flex:1">' +
-      escHtml((src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')') +
-      ' <span style="color:#94a3b8">' + dirIcon + '</span> ' +
-      escHtml((tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')') +
-      '</span><span style="color:#6b7280;margin:0 6px">' + escHtml(r.type) + '</span>' +
+      '<span style="color:#a78bfa;flex:1">' + srcLabel +
+      ' <span style="color:#94a3b8">' + dirIcon + '</span> ' + tgtLabel +
+      '</span><span style="color:#6b7280;margin:0 4px;font-size:0.72rem">' + escHtml(r.type) + '</span>' +
+      '<button class="xs" onclick="startEditInstRel(this,' + r.id + ',\'' + escHtml(r.type) + '\',\'' + dir + '\')" title="Bearbeiten"><i class="fa-solid fa-pen"></i></button>' +
       '<button class="xs danger" onclick="deleteInstRel(' + r.id + ')"><i class="fa-solid fa-xmark"></i></button>';
     container.appendChild(row);
   });
@@ -1262,6 +1268,29 @@ async function addInstRel() {
 
 async function deleteInstRel(relId) {
   try { await api('DELETE', '/instance-relations/' + relId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+function startEditInstRel(btn, relId, currentType, currentDir) {
+  const row = btn.closest('.list-item');
+  row.innerHTML =
+    '<select style="font-size:0.75rem;width:95px" id="ire-type-' + relId + '">' +
+    ['connects_to','uses','depends_on','hosts'].map(t =>
+      '<option' + (t === currentType ? ' selected' : '') + '>' + t + '</option>').join('') +
+    '</select>' +
+    '<select style="font-size:0.75rem;width:48px" id="ire-dir-' + relId + '">' +
+    [['to','→'],['from','←'],['both','↔'],['none','—']].map(([v,l]) =>
+      '<option value="' + v + '"' + (v === currentDir ? ' selected' : '') + '>' + l + '</option>').join('') +
+    '</select>' +
+    '<button class="xs" onclick="saveEditInstRel(' + relId + ')"><i class="fa-solid fa-check"></i></button>' +
+    '<button class="xs" onclick="renderInstRelSection()"><i class="fa-solid fa-xmark"></i></button>';
+}
+
+async function saveEditInstRel(relId) {
+  const type      = document.getElementById('ire-type-' + relId).value;
+  const direction = document.getElementById('ire-dir-'  + relId).value;
+  try { await api('PATCH', '/instance-relations/' + relId, {type, direction}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }

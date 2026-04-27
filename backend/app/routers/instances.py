@@ -6,7 +6,7 @@ from typing import List
 
 from ..database import get_db
 from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
-from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, ServiceCreate, ServiceSimpleOut
+from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, InstanceRelationUpdate, ServiceCreate, ServiceSimpleOut
 
 router = APIRouter(tags=["instances"])
 
@@ -124,6 +124,19 @@ async def list_instance_relations(db: AsyncSession = Depends(get_db)):
 async def create_instance_relation(payload: InstanceRelationCreate, db: AsyncSession = Depends(get_db)):
     rel = InstanceRelation(**payload.model_dump())
     db.add(rel)
+    await db.commit()
+    await db.refresh(rel)
+    return rel
+
+
+@router.patch("/api/instance-relations/{rel_id}", response_model=InstanceRelationOut)
+async def update_instance_relation(rel_id: int, payload: InstanceRelationUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(InstanceRelation).where(InstanceRelation.id == rel_id))
+    rel = result.scalar_one_or_none()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Relation not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(rel, field, value)
     await db.commit()
     await db.refresh(rel)
     return rel

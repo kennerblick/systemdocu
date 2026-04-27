@@ -182,6 +182,11 @@ class InstanceRelationOut(InstanceRelationCreate):
         from_attributes = True
 
 
+class InstanceRelationUpdate(BaseModel):
+    type: Optional[str] = None
+    direction: Optional[str] = None
+
+
 class InternetRouterCreate(BaseModel):
     name: str
     provider: Optional[str] = None
