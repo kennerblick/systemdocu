@@ -85,6 +85,7 @@
   <button onclick="openAddServer()"><i class="fa-solid fa-plus"></i> Server</button>
   <button onclick="openManageEnvironments()"><i class="fa-solid fa-layer-group"></i> Umgebungen</button>
   <button onclick="openManageApplications()"><i class="fa-solid fa-cubes"></i> Anwendungen</button>
+  <button onclick="openManageClusters()"><i class="fa-solid fa-object-group"></i> Cluster</button>
   <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button onclick="exportExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
   <button onclick="exportJson()" title="JSON-Export"><i class="fa-solid fa-download"></i></button>
@@ -282,6 +283,42 @@
   </div>
 </div>
 
+<!-- Modal: Cluster -->
+<div class="modal-backdrop" id="modal-clusters">
+  <div class="modal" style="max-width:580px">
+    <h3><i class="fa-solid fa-object-group"></i> Cluster verwalten</h3>
+    <div id="cluster-list"></div>
+    <hr style="border-color:#0f3460;margin:8px 0"/>
+    <details style="background:#0f1b35;border-radius:6px;padding:8px">
+      <summary style="cursor:pointer;font-size:0.82rem;color:#9ca3af">Neuen Cluster erstellen</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="text" id="new-cluster-name" placeholder="Name *" style="flex:1;min-width:120px"/>
+          <input type="text" id="new-cluster-desc" placeholder="Beschreibung" style="flex:2;min-width:140px"/>
+        </div>
+        <select id="new-cluster-type" style="width:100%">
+          <option value="postgresql">PostgreSQL</option>
+          <option value="docker">Docker</option>
+          <option value="kubernetes">Kubernetes</option>
+          <option value="hyperv">Hyper-V</option>
+          <option value="samba">Samba</option>
+          <option value="sftp">SFTP</option>
+          <option value="freeipa">FreeIPA</option>
+          <option value="zabbix">Zabbix</option>
+          <option value="graylog">Graylog</option>
+          <option value="veeam">Veeam</option>
+          <option value="minio">MinIO</option>
+          <option value="gateway">Gateway</option>
+          <option value="webserver">Webserver</option>
+          <option value="mqtt">MQTT</option>
+        </select>
+        <button onclick="createCluster()"><i class="fa-solid fa-plus"></i> Erstellen</button>
+      </div>
+    </details>
+    <div class="modal-actions"><button onclick="closeModal('modal-clusters')">Schließen</button></div>
+  </div>
+</div>
+
 <!-- Modal: Internet-Anschlüsse -->
 <div class="modal-backdrop" id="modal-internet">
   <div class="modal" style="max-width:600px">
@@ -323,6 +360,7 @@ let allEnvironments = [];
 let allApplications = [];
 let allInstanceRelations = [];
 let allRouters = [];
+let allClusters = [];
 let layoutMode = 'physics';
 let physicsDamping = 0.09;
 let irSrvEdgeIds = [];
@@ -361,13 +399,14 @@ async function api(method, path, body) {
 
 async function loadAll() {
   try {
-    [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations, allRouters] = await Promise.all([
+    [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations, allRouters, allClusters] = await Promise.all([
       api('GET', '/servers'),
       api('GET', '/relations'),
       api('GET', '/environments'),
       api('GET', '/applications'),
       api('GET', '/instance-relations'),
       api('GET', '/internet-routers'),
+      api('GET', '/clusters'),
     ]);
   } catch (e) {
     console.error('loadAll failed:', e);
@@ -512,28 +551,61 @@ function buildInstanceNodesEdges() {
     });
   });
   const im = buildInstServerMap();
+
+  // Cluster nodes
+  const clusterNodes = [];
+  const clusterEdges = [];
+  allClusters.forEach(cl => {
+    const col = SVC_COLORS[cl.service_type] || '#4b5563';
+    clusterNodes.push({
+      id: 'cluster_' + cl.id,
+      label: '◆ ' + cl.name,
+      title: cl.name + ' [' + cl.service_type + ']' +
+             (cl.description ? '<br>' + cl.description : '') +
+             (cl.members && cl.members.length ? '<br>Mitglieder: ' + cl.members.map(m => m.name).join(', ') : ''),
+      shape: 'diamond',
+      size: 20,
+      color: {background: col + 'cc', border: col, highlight: {background: col, border: '#fff'}},
+      font: {color: '#f0f0f0', size: 12},
+    });
+    (cl.members || []).forEach(m => {
+      clusterEdges.push({
+        id: 'cl_member_' + cl.id + '_' + m.id,
+        from: 'cluster_' + cl.id, to: 'inst_' + m.id,
+        arrows: '', width: 1, dashes: [4, 4],
+        color: {color: col, opacity: 0.6},
+        title: cl.name + ' → ' + m.name,
+      });
+    });
+  });
+
   allInstanceRelations.forEach(r => {
-    const src = im[r.source_instance_id];
-    const tgt = im[r.target_instance_id];
-    const srcSrv = allServers.find(s => s.id === (src && src.serverId));
-    const tgtSrv = allServers.find(s => s.id === (tgt && tgt.serverId));
+    const srcNode = r.source_cluster_id ? 'cluster_' + r.source_cluster_id : 'inst_' + r.source_instance_id;
+    const tgtNode = r.target_cluster_id ? 'cluster_' + r.target_cluster_id : 'inst_' + r.target_instance_id;
+    const src = r.source_instance_id ? im[r.source_instance_id] : null;
+    const tgt = r.target_instance_id ? im[r.target_instance_id] : null;
+    const srcCl = r.source_cluster_id ? allClusters.find(c => c.id === r.source_cluster_id) : null;
+    const tgtCl = r.target_cluster_id ? allClusters.find(c => c.id === r.target_cluster_id) : null;
+    const srcSrv = src ? allServers.find(s => s.id === src.serverId) : null;
+    const tgtSrv = tgt ? allServers.find(s => s.id === tgt.serverId) : null;
+    const srcLabel = srcCl ? srcCl.name : (src ? src.svcType + ': ' + src.name + ' @ ' + (srcSrv ? srcSrv.hostname : '?') : '?');
+    const tgtLabel = tgtCl ? tgtCl.name : (tgt ? tgt.svcType + ': ' + tgt.name + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') : '?');
     const dir = r.direction || 'to';
     irInstEdges.push({
       id: 'ir_inst_' + r.id,
-      from: 'inst_' + r.source_instance_id, to: 'inst_' + r.target_instance_id,
+      from: srcNode, to: tgtNode,
       arrows: dir === 'both' ? {to: {enabled:true},  from: {enabled:true}}
             : dir === 'none' ? {to: {enabled:false}, from: {enabled:false}}
             : dir === 'from' ? {to: {enabled:false}, from: {enabled:true}}
             : 'to',
       width: 2,
       color: {color: '#7c3aed'},
-      title: (src ? src.svcType + ': ' + src.name : '?') + ' @ ' + (srcSrv ? srcSrv.hostname : '?') +
+      title: srcLabel +
              (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : dir === 'from' ? ' ← ' : ' → ') +
-             (tgt ? tgt.svcType + ': ' + tgt.name : '?') + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') +
-             '<br>' + r.type,
+             tgtLabel + '<br>' + r.type,
     });
   });
-  return {instNodes, siEdges, irInstEdges, gwInstEdges};
+  return {instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges};
 }
 
 function buildInternetGraph() {
@@ -686,6 +758,8 @@ function computeHierarchicalPositions() {
     return Math.ceil(ids.length / cols) * NODE_H;
   }
 
+  const clusterIds = allClusters.map(c => 'cluster_' + c.id);
+  if (clusterIds.length) { y += placeGrid(clusterIds, y) + GROUP_GAP; }
   if (gwSrvs.length)  { y += placeGrid(gwSrvs.map(s=>s.id),  y) + GROUP_GAP; }
   if (regSrvs.length) { y += placeGrid(regSrvs.map(s=>s.id), y) + GROUP_GAP; }
 
@@ -767,6 +841,8 @@ function renderGraph() {
   // Server-to-server proxy for instance relations — grouped by server pair
   const srvPairMap = new Map();
   allInstanceRelations.forEach(r => {
+    // Skip cluster-based relations (no server pair)
+    if (r.source_cluster_id || r.target_cluster_id) return;
     const src = instMap[r.source_instance_id];
     const tgt = instMap[r.target_instance_id];
     if (!src || !tgt || src.serverId === tgt.serverId) return;
@@ -825,9 +901,11 @@ function renderGraph() {
 
   // In hierarchical mode: include all instances up-front, apply fixed grid positions
   if (layoutMode === 'hierarchical') {
-    const {instNodes, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
+    const {instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
     instNodes.forEach(n => nodeData.push(n));
+    clusterNodes.forEach(n => nodeData.push(n));
     siEdges.forEach(e => edgeData.push(e));
+    clusterEdges.forEach(e => edgeData.push(e));
     irInstEdges.forEach(e => edgeData.push(e));
     gwInstEdges.filter(e => !String(e.from).startsWith('router_')).forEach(e => edgeData.push(e));
     const pos = computeHierarchicalPositions();
@@ -984,14 +1062,18 @@ function updateInstanceVisibility(scale) {
   showingInstances = show;
 
   if (show) {
-    const {instNodes, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
+    const {instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges} = buildInstanceNodesEdges();
     // Safety: remove stale entries first
     nodes.remove(instNodes.map(n => n.id));
+    nodes.remove(clusterNodes.map(n => n.id));
     edges.remove(siEdges.map(e => e.id));
+    edges.remove(clusterEdges.map(e => e.id));
     edges.remove(irInstEdges.map(e => e.id));
     edges.remove(gwInstEdges.map(e => e.id));
     nodes.add(instNodes);
+    nodes.add(clusterNodes);
     edges.add(siEdges);
+    edges.add(clusterEdges);
     edges.add(irInstEdges);
     edges.add(gwInstEdges);
     // Hide server-proxy edges for instance relations
@@ -1004,6 +1086,10 @@ function updateInstanceVisibility(scale) {
       edges.remove('gw_inst_' + inst.id);
     })));
     nodes.remove(instNodeIds);
+    allClusters.forEach(cl => {
+      nodes.remove('cluster_' + cl.id);
+      (cl.members || []).forEach(m => edges.remove('cl_member_' + cl.id + '_' + m.id));
+    });
     edges.remove(siEdgeIds);
     allInstanceRelations.forEach(r => { edges.remove('ir_inst_' + r.id); });
     irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: false}); });
@@ -1173,23 +1259,37 @@ function openSidebar(serverId) {
   const instMap = buildInstServerMap();
   const srcSel = document.getElementById('ir-src');
   srcSel.innerHTML = '';
+  // Clusters as sources
+  if (allClusters.length) {
+    const grp = document.createElement('optgroup'); grp.label = 'Cluster';
+    allClusters.forEach(cl => {
+      const o = document.createElement('option');
+      o.value = 'cluster_' + cl.id; o.textContent = '◆ ' + cl.name + ' [' + cl.service_type + ']';
+      grp.appendChild(o);
+    });
+    srcSel.appendChild(grp);
+  }
+  const instGrp = document.createElement('optgroup'); instGrp.label = 'Instanzen';
   [...(server.services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(svc => {
     [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const o = document.createElement('option');
-      o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; srcSel.appendChild(o);
-      [...(inst.own_services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(isvc => {
-        const o2 = document.createElement('option');
-        o2.value = inst.id;
-        o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
-        srcSel.appendChild(o2);
-      });
+      o.value = 'inst_' + inst.id; o.textContent = svc.type + ': ' + inst.name; instGrp.appendChild(o);
     });
   });
+  srcSel.appendChild(instGrp);
+
   const tgtSrvSel = document.getElementById('ir-tgt-srv');
-  tgtSrvSel.innerHTML = '';
-  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).filter(s => s.id !== currentServerId).forEach(s => {
-    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; tgtSrvSel.appendChild(o);
+  tgtSrvSel.innerHTML = '<option value="">— Cluster als Ziel —</option>';
+  allClusters.forEach(cl => {
+    const o = document.createElement('option');
+    o.value = 'cluster_' + cl.id; o.textContent = '◆ ' + cl.name + ' [' + cl.service_type + ']';
+    tgtSrvSel.appendChild(o);
   });
+  const srvGroup = document.createElement('optgroup'); srvGroup.label = 'Server';
+  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
+    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; srvGroup.appendChild(o);
+  });
+  tgtSrvSel.appendChild(srvGroup);
   updateIrTgtInst();
   renderInstRelSection(server, instMap);
 }
@@ -1201,30 +1301,42 @@ function renderInstRelSection(server, instMap) {
   const myInstIds = new Set();
   (server.services || []).forEach(svc => (svc.instances || []).forEach(i => myInstIds.add(i.id)));
   const srcSel = document.getElementById('ir-src');
-  const selectedSrcInstId = srcSel && srcSel.value ? parseInt(srcSel.value) : null;
+  const selectedSrcVal = srcSel && srcSel.value ? srcSel.value : null;
   const container = document.getElementById('sb-inst-rels');
   container.innerHTML = '';
-  const rels = allInstanceRelations.filter(r =>
-    selectedSrcInstId ? r.source_instance_id === selectedSrcInstId
-                      : myInstIds.has(r.source_instance_id));
+
+  let rels;
+  if (selectedSrcVal && selectedSrcVal.startsWith('cluster_')) {
+    const cid = parseInt(selectedSrcVal.replace('cluster_', ''));
+    rels = allInstanceRelations.filter(r => r.source_cluster_id === cid);
+  } else if (selectedSrcVal && selectedSrcVal.startsWith('inst_')) {
+    const iid = parseInt(selectedSrcVal.replace('inst_', ''));
+    rels = allInstanceRelations.filter(r => r.source_instance_id === iid);
+  } else {
+    rels = allInstanceRelations.filter(r =>
+      myInstIds.has(r.source_instance_id) ||
+      allClusters.some(cl => cl.id === r.source_cluster_id && (cl.members || []).some(m => myInstIds.has(m.id))));
+  }
+
   if (!rels.length) {
     container.innerHTML = '<div style="font-size:0.78rem;color:#6b7280">Keine</div>';
     return;
   }
   rels.forEach(r => {
-    const src = instMap[r.source_instance_id];
-    const tgt = instMap[r.target_instance_id];
-    const srcSrv = allServers.find(s => s.id === (src && src.serverId));
-    const tgtSrv = allServers.find(s => s.id === (tgt && tgt.serverId));
+    const src = r.source_instance_id ? instMap[r.source_instance_id] : null;
+    const tgt = r.target_instance_id ? instMap[r.target_instance_id] : null;
+    const srcCl = r.source_cluster_id ? allClusters.find(c => c.id === r.source_cluster_id) : null;
+    const tgtCl = r.target_cluster_id ? allClusters.find(c => c.id === r.target_cluster_id) : null;
+    const srcSrv = src ? allServers.find(s => s.id === src.serverId) : null;
+    const tgtSrv = tgt ? allServers.find(s => s.id === tgt.serverId) : null;
     const row = document.createElement('div');
     row.className = 'list-item';
     row.style.fontSize = '0.78rem';
     const dir = r.direction || 'to';
     const dirIcon = dir === 'both' ? '↔' : dir === 'none' ? '—' : dir === 'from' ? '←' : '→';
-    const srcLabel = escHtml((src ? src.name : '?') + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')');
-    const tgtLabel = escHtml((tgt ? tgt.name : '?') + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')');
+    const srcLabel = escHtml(srcCl ? '◆ ' + srcCl.name : (src ? src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' : '?'));
+    const tgtLabel = escHtml(tgtCl ? '◆ ' + tgtCl.name : (tgt ? tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' : '?'));
 
-    // display mode
     row.innerHTML =
       '<span style="color:#a78bfa;flex:1">' + srcLabel +
       ' <span style="color:#94a3b8">' + dirIcon + '</span> ' + tgtLabel +
@@ -1236,32 +1348,47 @@ function renderInstRelSection(server, instMap) {
 }
 
 function updateIrTgtInst() {
-  const tgtSrvId = parseInt(document.getElementById('ir-tgt-srv').value);
+  const tgtVal = document.getElementById('ir-tgt-srv').value;
   const tgtInstSel = document.getElementById('ir-tgt');
   tgtInstSel.innerHTML = '';
+  if (!tgtVal || tgtVal.startsWith('cluster_')) {
+    tgtInstSel.style.display = 'none';
+    return;
+  }
+  tgtInstSel.style.display = '';
+  const tgtSrvId = parseInt(tgtVal);
   const tgtSrv = allServers.find(s => s.id === tgtSrvId);
   if (!tgtSrv) return;
   [...(tgtSrv.services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(svc => {
     [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const o = document.createElement('option');
-      o.value = inst.id; o.textContent = svc.type + ': ' + inst.name; tgtInstSel.appendChild(o);
-      [...(inst.own_services || [])].sort((a, b) => a.type.localeCompare(b.type)).forEach(isvc => {
-        const o2 = document.createElement('option');
-        o2.value = inst.id;
-        o2.textContent = '  ↳ ' + isvc.type + (isvc.port ? ':' + isvc.port : '') + ' (' + inst.name + ')';
-        tgtInstSel.appendChild(o2);
-      });
+      o.value = 'inst_' + inst.id; o.textContent = svc.type + ': ' + inst.name; tgtInstSel.appendChild(o);
     });
   });
 }
 
 async function addInstRel() {
-  const source_instance_id = parseInt(document.getElementById('ir-src').value);
-  const target_instance_id = parseInt(document.getElementById('ir-tgt').value);
+  const srcVal = document.getElementById('ir-src').value;
+  const tgtSrvVal = document.getElementById('ir-tgt-srv').value;
+  const tgtInstVal = document.getElementById('ir-tgt').value;
   const type = document.getElementById('ir-reltype').value;
   const direction = document.getElementById('ir-direction').value;
-  if (!source_instance_id || !target_instance_id) return alert('Bitte Instanzen auswählen');
-  try { await api('POST', '/instance-relations', {source_instance_id, target_instance_id, type, direction}); }
+
+  const payload = {type, direction};
+  if (srcVal.startsWith('cluster_')) {
+    payload.source_cluster_id = parseInt(srcVal.replace('cluster_', ''));
+  } else {
+    payload.source_instance_id = parseInt(srcVal.replace('inst_', ''));
+  }
+  if (tgtSrvVal.startsWith('cluster_')) {
+    payload.target_cluster_id = parseInt(tgtSrvVal.replace('cluster_', ''));
+  } else if (tgtInstVal && tgtInstVal.startsWith('inst_')) {
+    payload.target_instance_id = parseInt(tgtInstVal.replace('inst_', ''));
+  } else {
+    return alert('Bitte Ziel auswählen');
+  }
+  if (!payload.source_cluster_id && !payload.source_instance_id) return alert('Bitte Quelle auswählen');
+  try { await api('POST', '/instance-relations', payload); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }
@@ -1293,6 +1420,164 @@ async function saveEditInstRel(relId) {
   try { await api('PATCH', '/instance-relations/' + relId, {type, direction}); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
+}
+
+// ── Cluster management ────────────────────────────────────────────────────────
+function openManageClusters() {
+  renderClusterList();
+  document.getElementById('modal-clusters').classList.add('open');
+}
+
+function renderClusterList() {
+  const list = document.getElementById('cluster-list');
+  list.innerHTML = '';
+  if (!allClusters.length) {
+    list.innerHTML = '<div style="font-size:0.82rem;color:#6b7280;padding:4px 0">Keine Cluster vorhanden</div>';
+    return;
+  }
+  allClusters.forEach(cl => {
+    const col = SVC_COLORS[cl.service_type] || '#4b5563';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border-bottom:1px solid #0f3460;padding:7px 0';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px';
+    row.innerHTML =
+      '<span style="color:' + col + ';font-size:0.9rem">◆</span>' +
+      '<span style="flex:1;font-weight:500">' + escHtml(cl.name) + '</span>' +
+      '<span style="font-size:0.72rem;color:#9ca3af;margin-right:4px">' + escHtml(cl.service_type) + '</span>' +
+      '<button class="xs" onclick="toggleClusterEdit(' + cl.id + ')"><i class="fa-solid fa-pen"></i></button>' +
+      '<button class="xs danger" onclick="deleteCluster(' + cl.id + ')"><i class="fa-solid fa-xmark"></i></button>';
+    wrap.appendChild(row);
+
+    // Member chips
+    if (cl.members && cl.members.length) {
+      const chips = document.createElement('div');
+      chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;padding-left:20px';
+      cl.members.forEach(m => {
+        const c = document.createElement('span');
+        c.className = 'chip'; c.style.background = col + '99';
+        c.style.outline = '1px solid ' + col;
+        c.innerHTML = escHtml(m.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.6rem"></i>';
+        c.onclick = () => removeClusterMember(cl.id, m.id);
+        chips.appendChild(c);
+      });
+      wrap.appendChild(chips);
+    }
+
+    // Edit form (hidden)
+    const form = document.createElement('div');
+    form.id = 'cluster-edit-' + cl.id;
+    form.style.cssText = 'display:none;flex-direction:column;gap:6px;padding:6px 0 2px 4px;margin-top:4px';
+
+    // Inline edit
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap';
+    nameRow.innerHTML =
+      '<input type="text" id="ce-name-' + cl.id + '" value="' + escHtml(cl.name) + '" placeholder="Name" style="flex:1;min-width:100px"/>' +
+      '<input type="text" id="ce-desc-' + cl.id + '" value="' + escHtml(cl.description || '') + '" placeholder="Beschreibung" style="flex:2;min-width:130px"/>';
+    form.appendChild(nameRow);
+
+    // Add member row
+    const memberRow = document.createElement('div');
+    memberRow.style.cssText = 'display:flex;gap:5px;align-items:center;flex-wrap:wrap';
+    const srvSel = document.createElement('select');
+    srvSel.id = 'ce-srv-' + cl.id;
+    srvSel.style.cssText = 'flex:1;font-size:0.78rem';
+    [...allServers].sort((a,b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
+      const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; srvSel.appendChild(o);
+    });
+    const instSel = document.createElement('select');
+    instSel.id = 'ce-inst-' + cl.id;
+    instSel.style.cssText = 'flex:2;font-size:0.78rem';
+    srvSel.onchange = () => populateClusterInstSel(cl.id, parseInt(srvSel.value), cl.service_type);
+    memberRow.appendChild(srvSel);
+    memberRow.appendChild(instSel);
+    const addMemberBtn = document.createElement('button');
+    addMemberBtn.className = 'xs'; addMemberBtn.textContent = '+ Mitglied';
+    addMemberBtn.onclick = () => addClusterMember(cl.id, parseInt(instSel.value));
+    memberRow.appendChild(addMemberBtn);
+    form.appendChild(memberRow);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:5px';
+    btnRow.innerHTML =
+      '<button class="small" onclick="saveClusterEdit(' + cl.id + ')">Speichern</button>' +
+      '<button class="small" onclick="toggleClusterEdit(' + cl.id + ')">Abbrechen</button>';
+    form.appendChild(btnRow);
+    wrap.appendChild(form);
+    list.appendChild(wrap);
+  });
+}
+
+function populateClusterInstSel(clusterId, srvId, svcType) {
+  const sel = document.getElementById('ce-inst-' + clusterId);
+  sel.innerHTML = '';
+  const srv = allServers.find(s => s.id === srvId);
+  if (!srv) return;
+  [...(srv.services || [])].filter(svc => svc.type === svcType).forEach(svc => {
+    [...(svc.instances || [])].sort((a,b) => a.name.localeCompare(b.name)).forEach(inst => {
+      const o = document.createElement('option'); o.value = inst.id; o.textContent = inst.name; sel.appendChild(o);
+    });
+  });
+}
+
+function toggleClusterEdit(clusterId) {
+  const f = document.getElementById('cluster-edit-' + clusterId);
+  if (f.style.display === 'none') {
+    f.style.display = 'flex';
+    const cl = allClusters.find(c => c.id === clusterId);
+    const srvSel = document.getElementById('ce-srv-' + clusterId);
+    if (srvSel && srvSel.value) populateClusterInstSel(clusterId, parseInt(srvSel.value), cl.service_type);
+  } else {
+    f.style.display = 'none';
+  }
+}
+
+async function createCluster() {
+  const name = document.getElementById('new-cluster-name').value.trim();
+  const description = document.getElementById('new-cluster-desc').value.trim() || null;
+  const service_type = document.getElementById('new-cluster-type').value;
+  if (!name) return alert('Name fehlt');
+  try { await api('POST', '/clusters', {name, description, service_type}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  document.getElementById('new-cluster-name').value = '';
+  document.getElementById('new-cluster-desc').value = '';
+  await loadAll();
+  renderClusterList();
+}
+
+async function saveClusterEdit(clusterId) {
+  const name = document.getElementById('ce-name-' + clusterId).value.trim();
+  const description = document.getElementById('ce-desc-' + clusterId).value.trim() || null;
+  if (!name) return alert('Name fehlt');
+  try { await api('PATCH', '/clusters/' + clusterId, {name, description}); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
+}
+
+async function deleteCluster(clusterId) {
+  if (!confirm('Cluster löschen?')) return;
+  try { await api('DELETE', '/clusters/' + clusterId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
+}
+
+async function addClusterMember(clusterId, instanceId) {
+  if (!instanceId) return alert('Bitte Instanz auswählen');
+  try { await api('POST', '/clusters/' + clusterId + '/instances/' + instanceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
+}
+
+async function removeClusterMember(clusterId, instanceId) {
+  try { await api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+  renderClusterList();
 }
 
 function renderServicesSection(server) {

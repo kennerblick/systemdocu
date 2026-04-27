@@ -169,8 +169,10 @@ class RelationOut(RelationBase):
 
 
 class InstanceRelationCreate(BaseModel):
-    source_instance_id: int
-    target_instance_id: int
+    source_instance_id: Optional[int] = None
+    source_cluster_id:  Optional[int] = None
+    target_instance_id: Optional[int] = None
+    target_cluster_id:  Optional[int] = None
     type: str = "connects_to"
     direction: str = "to"
 
@@ -185,6 +187,34 @@ class InstanceRelationOut(InstanceRelationCreate):
 class InstanceRelationUpdate(BaseModel):
     type: Optional[str] = None
     direction: Optional[str] = None
+
+
+class ClusterMemberOut(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class ClusterCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    service_type: str
+
+
+class ClusterUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    service_type: Optional[str] = None
+
+
+class ClusterOut(ClusterCreate):
+    id: int
+    members: List[ClusterMemberOut] = []
+
+    class Config:
+        from_attributes = True
 
 
 class InternetRouterCreate(BaseModel):

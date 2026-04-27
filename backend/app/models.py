@@ -35,6 +35,12 @@ router_environments = Table(
     Column("environment_id", Integer, ForeignKey("environments.id", ondelete="CASCADE"), primary_key=True),
 )
 
+cluster_members = Table(
+    "cluster_members", Base.metadata,
+    Column("cluster_id", Integer, ForeignKey("clusters.id", ondelete="CASCADE"), primary_key=True),
+    Column("instance_id", Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class Server(Base):
     __tablename__ = "servers"
@@ -91,6 +97,7 @@ class ServiceInstance(Base):
                                 cascade="all, delete-orphan")
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
     applications = relationship("Application", secondary=instance_applications, back_populates="instances")
+    clusters = relationship("Cluster", secondary=cluster_members, back_populates="members")
 
 
 class Environment(Base):
@@ -118,16 +125,24 @@ class Application(Base):
     instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="applications")
 
 
+class Cluster(Base):
+    __tablename__ = "clusters"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    service_type = Column(String(50), nullable=False)
+    members = relationship("ServiceInstance", secondary=cluster_members, back_populates="clusters")
+
+
 class InstanceRelation(Base):
     __tablename__ = "instance_relations"
     id = Column(Integer, primary_key=True, index=True)
-    source_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
-    target_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
+    source_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=True)
+    source_cluster_id  = Column(Integer, ForeignKey("clusters.id",           ondelete="CASCADE"), nullable=True)
+    target_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=True)
+    target_cluster_id  = Column(Integer, ForeignKey("clusters.id",           ondelete="CASCADE"), nullable=True)
     type = Column(String(50), default="connects_to")
     direction = Column(String(10), nullable=False, default="to")
-
-    source_instance = relationship("ServiceInstance", foreign_keys=[source_instance_id])
-    target_instance = relationship("ServiceInstance", foreign_keys=[target_instance_id])
 
 
 class Tag(Base):
