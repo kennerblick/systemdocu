@@ -2751,7 +2751,7 @@ function openManageEnvironments() {
 function renderEnvList() {
   const list = document.getElementById('env-list');
   list.innerHTML = '';
-  allEnvironments.forEach(e => {
+  [...allEnvironments].sort((a, b) => a.name.localeCompare(b.name)).forEach(e => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'border-bottom:1px solid #0f3460;padding:6px 0';
 
@@ -2861,7 +2861,7 @@ function openManageApplications() {
 function renderAppList() {
   const list = document.getElementById('app-list');
   list.innerHTML = '';
-  allApplications.forEach(a => {
+  [...allApplications].sort((a, b) => a.name.localeCompare(b.name)).forEach(a => {
     const row = document.createElement('div');
     row.className = 'list-item';
     row.innerHTML = '<div class="dot" style="background:' + a.color + '"></div>' +
