@@ -132,6 +132,13 @@
       <button class="small" onclick="saveServerEdit()"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
     </div>
 
+    <div class="section-label">Umgebungen</div>
+    <div class="chips" id="sb-envs"></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+      <select id="env-select" style="flex:1"></select>
+      <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
+    </div>
+
     <div class="section-label">Services &amp; Instanzen</div>
     <div id="sb-services"></div>
     <button class="small" style="margin-top:4px" onclick="toggleAddService()"><i class="fa-solid fa-plus"></i> Service hinzufügen</button>
@@ -158,13 +165,6 @@
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
       </div>
       <button class="small" onclick="addService()">Speichern</button>
-    </div>
-
-    <div class="section-label">Umgebungen</div>
-    <div class="chips" id="sb-envs"></div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-      <select id="env-select" style="flex:1"></select>
-      <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
     </div>
 
 
