@@ -484,6 +484,7 @@ async function loadAll() {
   renderGraph();
   renderLegend();
   updateFilters();
+  applyFilters();
   if (currentServerId) openSidebar(currentServerId);
   else if (currentClusterId) openClusterSidebar(currentClusterId);
   checkZabbixStatus();
@@ -995,6 +996,7 @@ function toggleLayout() {
   document.getElementById('damping-control').style.display = layoutMode === 'hierarchical' ? 'none' : 'flex';
   if (network) { network.destroy(); network = null; showingInstances = false; }
   renderGraph();
+  applyFilters();
   if (currentServerId) openSidebar(currentServerId);
   else if (currentClusterId) openClusterSidebar(currentClusterId);
 }
