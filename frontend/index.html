@@ -53,7 +53,7 @@
   .svc-block{background:#0f1b35;border-radius:6px;padding:8px;margin-top:4px}
   .svc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .svc-title{font-size:0.82rem;font-weight:600;color:#93c5fd}
-  .instance-row{display:flex;flex-direction:column;gap:3px;padding:5px 0;border-top:1px solid #1e3a5f}
+  .instance-row{display:flex;flex-direction:column;gap:3px;padding:9px 0 5px;border-top:1px solid #1e3a5f}
   .instance-name{font-size:0.8rem;color:#e0e0e0;font-weight:500}
   .instance-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
   .add-instance-form{display:flex;gap:5px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid #1e3a5f}
@@ -1827,10 +1827,15 @@ function renderServicesSection(server) {
       if (VM_SVC_TYPES.has(svc.type)) {
         const ipInp = document.createElement('input');
         ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
-        ipInp.style.cssText = 'width:130px;font-size:0.72rem;padding:1px 5px;margin-left:auto';
+        ipInp.style.cssText = 'width:115px;font-size:0.72rem;padding:1px 5px';
         ipInp.title = 'IPs dieser VM (kommagetrennt)';
-        ipInp.onblur = () => { if (ipInp.value !== (inst.ip || '')) updateInstanceIp(inst.id, ipInp.value || null); };
-        nameDiv.appendChild(ipInp);
+        const ipBtn = document.createElement('button');
+        ipBtn.className = 'xs'; ipBtn.textContent = '+IP';
+        ipBtn.onclick = () => updateInstanceIp(inst.id, ipInp.value || null);
+        const ipWrap = document.createElement('div');
+        ipWrap.style.cssText = 'display:flex;gap:3px;align-items:center;margin-left:auto';
+        ipWrap.appendChild(ipInp); ipWrap.appendChild(ipBtn);
+        nameDiv.appendChild(ipWrap);
         const gwSel = document.createElement('select');
         gwSel.style.cssText = 'max-width:140px;font-size:0.72rem;padding:1px 4px';
         gwSel.title = 'Gateway dieser VM';
@@ -1888,7 +1893,6 @@ function renderServicesSection(server) {
       // Chips: environments + applications
       const chipRow = document.createElement('div');
       chipRow.className = 'instance-chips';
-
       (inst.environments || []).forEach(env => {
         const c = document.createElement('span');
         c.className = 'chip'; c.style.background = env.color;
@@ -1897,7 +1901,6 @@ function renderServicesSection(server) {
         c.onclick = () => removeInstanceEnv(inst.id, env.id);
         chipRow.appendChild(c);
       });
-
       (inst.applications || []).forEach(app => {
         const c = document.createElement('span');
         c.className = 'chip'; c.style.background = app.color;
@@ -1905,74 +1908,69 @@ function renderServicesSection(server) {
         c.onclick = () => removeInstanceApp(inst.id, app.id);
         chipRow.appendChild(c);
       });
+      row.appendChild(chipRow);
 
-      // Env assign
-      if (allEnvironments.length) {
-        const envSel = document.createElement('select');
-        envSel.style.cssText = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
-        allEnvironments.forEach(e => {
-          const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
+      // Own services list
+      if ((inst.own_services || []).length) {
+        const ownSvcDiv = document.createElement('div');
+        ownSvcDiv.style.cssText = 'padding:3px 0 3px 8px;border-left:2px solid #1d4ed8;margin:2px 0 0 4px;display:flex;flex-direction:column;gap:3px';
+        (inst.own_services || []).forEach(isvc => {
+          const isvcRow = document.createElement('div');
+          isvcRow.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:0.75rem';
+          const col = SVC_COLORS[isvc.type] || '#4b5563';
+          isvcRow.innerHTML = '<span style="color:' + col + '">' + (INST_ICONS[isvc.type] || '⚙') + ' ' +
+            escHtml(isvc.type) + (isvc.version ? ' ' + escHtml(isvc.version) : '') +
+            (isvc.port ? ':<b>' + isvc.port + '</b>' : '') + '</span>';
+          const rmBtn = document.createElement('button');
+          rmBtn.className = 'xs danger'; rmBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+          rmBtn.onclick = () => deleteInstanceService(inst.id, isvc.id);
+          isvcRow.appendChild(rmBtn);
+          ownSvcDiv.appendChild(isvcRow);
         });
+        row.appendChild(ownSvcDiv);
+      }
+
+      // Actions: +Umgeb. / +Anwend. / +Dienst — stacked vertically
+      const actionsDiv = document.createElement('div');
+      actionsDiv.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-top:3px';
+      const selStyle = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+      if (allEnvironments.length) {
+        const envRow = document.createElement('div');
+        envRow.style.cssText = 'display:flex;gap:4px;align-items:center';
+        const envSel = document.createElement('select'); envSel.style.cssText = selStyle;
+        allEnvironments.forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o); });
         const envBtn = document.createElement('button');
         envBtn.className = 'xs'; envBtn.textContent = '+Umgeb.';
         envBtn.onclick = () => addInstanceEnv(inst.id, parseInt(envSel.value));
-        chipRow.appendChild(envSel);
-        chipRow.appendChild(envBtn);
+        envRow.appendChild(envSel); envRow.appendChild(envBtn);
+        actionsDiv.appendChild(envRow);
       }
-
-      // App assign
       if (allApplications.length) {
-        const appSel = document.createElement('select');
-        appSel.style.cssText = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
-        allApplications.forEach(a => {
-          const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; appSel.appendChild(o);
-        });
+        const appRow = document.createElement('div');
+        appRow.style.cssText = 'display:flex;gap:4px;align-items:center';
+        const appSel = document.createElement('select'); appSel.style.cssText = selStyle;
+        allApplications.forEach(a => { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; appSel.appendChild(o); });
         const appBtn = document.createElement('button');
         appBtn.className = 'xs'; appBtn.textContent = '+Anwend.';
         appBtn.onclick = () => addInstanceApp(inst.id, parseInt(appSel.value));
-        chipRow.appendChild(appSel);
-        chipRow.appendChild(appBtn);
+        appRow.appendChild(appSel); appRow.appendChild(appBtn);
+        actionsDiv.appendChild(appRow);
       }
-
-      row.appendChild(chipRow);
-
-      // Own services offered by this instance
-      const ownSvcDiv = document.createElement('div');
-      ownSvcDiv.style.cssText = 'padding:3px 0 3px 8px;border-left:2px solid #1d4ed8;margin:4px 0 2px 4px;display:flex;flex-direction:column;gap:3px';
-      (inst.own_services || []).forEach(isvc => {
-        const isvcRow = document.createElement('div');
-        isvcRow.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:0.75rem';
-        const col = SVC_COLORS[isvc.type] || '#4b5563';
-        isvcRow.innerHTML = '<span style="color:' + col + '">' + (INST_ICONS[isvc.type] || '⚙') + ' ' +
-          escHtml(isvc.type) + (isvc.version ? ' ' + escHtml(isvc.version) : '') +
-          (isvc.port ? ':<b>' + isvc.port + '</b>' : '') + '</span>';
-        const rmBtn = document.createElement('button');
-        rmBtn.className = 'xs danger'; rmBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-        rmBtn.onclick = () => deleteInstanceService(inst.id, isvc.id);
-        isvcRow.appendChild(rmBtn);
-        ownSvcDiv.appendChild(isvcRow);
-      });
-      // Add-service form for instance
-      const isvcAddRow = document.createElement('div');
-      isvcAddRow.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
+      const svcRow = document.createElement('div');
+      svcRow.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
       const isvcTypeSel = document.createElement('select');
       isvcTypeSel.style.cssText = 'font-size:0.72rem;padding:1px 3px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
-      INST_SVC_TYPES.forEach(t => {
-        const o = document.createElement('option'); o.value = t; o.textContent = t; isvcTypeSel.appendChild(o);
-      });
+      INST_SVC_TYPES.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; isvcTypeSel.appendChild(o); });
       const isvcVerInp = document.createElement('input');
       isvcVerInp.type = 'text'; isvcVerInp.placeholder = 'Version'; isvcVerInp.style.cssText = 'width:70px;font-size:0.72rem;padding:1px 4px';
       const isvcPortInp = document.createElement('input');
-      isvcPortInp.type = 'number'; isvcPortInp.placeholder = 'Port'; isvcPortInp.style.cssText = 'width:60px;font-size:0.72rem;padding:1px 4px';
+      isvcPortInp.type = 'number'; isvcPortInp.placeholder = 'Port'; isvcPortInp.style.cssText = 'width:55px;font-size:0.72rem;padding:1px 4px';
       const isvcAddBtn = document.createElement('button');
       isvcAddBtn.className = 'xs'; isvcAddBtn.textContent = '+Dienst';
       isvcAddBtn.onclick = () => addInstanceService(inst.id, isvcTypeSel.value, isvcVerInp.value, isvcPortInp.value);
-      isvcAddRow.appendChild(isvcTypeSel);
-      isvcAddRow.appendChild(isvcVerInp);
-      isvcAddRow.appendChild(isvcPortInp);
-      isvcAddRow.appendChild(isvcAddBtn);
-      ownSvcDiv.appendChild(isvcAddRow);
-      row.appendChild(ownSvcDiv);
+      svcRow.appendChild(isvcTypeSel); svcRow.appendChild(isvcVerInp); svcRow.appendChild(isvcPortInp); svcRow.appendChild(isvcAddBtn);
+      actionsDiv.appendChild(svcRow);
+      row.appendChild(actionsDiv);
 
       block.appendChild(row);
     });
