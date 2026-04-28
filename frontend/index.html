@@ -1368,12 +1368,11 @@ function applyFilters() {
     edges.update(edgeUpdates);
     if (layoutMode === 'hierarchical') {
       const pos = computeHierarchicalPositions();
-      const pu = [];
       Object.entries(pos).forEach(([id, {x, y}]) => {
         const nid = isNaN(Number(id)) ? id : Number(id);
-        if (nodes.get(nid)) pu.push({id: nid, x, y});
+        const bn = network.body.nodes[nid];
+        if (bn) { bn.x = x; bn.y = y; }
       });
-      if (pu.length) nodes.update(pu);
     }
     network.fit();
     if (layoutMode !== 'hierarchical') network.stabilize(150);
@@ -1513,12 +1512,11 @@ function applyFilters() {
       clFilter: hiddenClusterIds,
       rtrFilter: hiddenRouterIds,
     });
-    const pu = [];
     Object.entries(pos).forEach(([id, {x, y}]) => {
       const nid = isNaN(Number(id)) ? id : Number(id);
-      if (nodes.get(nid)) pu.push({id: nid, x, y});
+      const bn = network.body.nodes[nid];
+      if (bn) { bn.x = x; bn.y = y; }
     });
-    if (pu.length) nodes.update(pu);
   }
   network.fit();
   if (layoutMode !== 'hierarchical') network.stabilize(150);
