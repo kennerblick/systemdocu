@@ -831,33 +831,42 @@ function buildInternetGraph() {
   return {iNodes, iEdges};
 }
 
-function computeHierarchicalPositions() {
+function computeHierarchicalPositions(opts = {}) {
   const NODE_W = 150, NODE_H = 80, COL_GAP = 90, VM_GAP = 30, BELOW_GAP = 70;
   const pos = {};
 
+  const _servers  = opts.srvFilter  ? allServers.filter(s => opts.srvFilter.has(s.id))   : allServers;
+  const _routers  = opts.rtrFilter  ? allRouters.filter(r => !opts.rtrFilter.has(r.id))  : allRouters;
+  const _clusters = opts.clFilter   ? allClusters.filter(c => !opts.clFilter.has(c.id))  : allClusters;
+  const _instF    = opts.instFilter; // Set<instId> | undefined
+
   const sortByName = arr => [...arr].sort((a, b) => a.hostname.localeCompare(b.hostname));
-  const isVmHost   = s => (s.services||[]).some(svc => VM_SVC_TYPES.has(svc.type) && (svc.instances||[]).length);
+  const isVmHost   = s => (s.services||[]).some(svc =>
+    VM_SVC_TYPES.has(svc.type) &&
+    (svc.instances||[]).some(inst => !_instF || _instF.has(inst.id)));
 
   // ── Environment column order: follow router→environment connections ──────────
   const envOrder = [];
   const seenEnvs = new Set();
-  allRouters.forEach(r => (r.environments||[]).forEach(env => {
+  _routers.forEach(r => (r.environments||[]).forEach(env => {
     if (!seenEnvs.has(env.id)) { seenEnvs.add(env.id); envOrder.push(env.id); }
   }));
   allEnvironments.forEach(env => {
-    if (!seenEnvs.has(env.id)) { seenEnvs.add(env.id); envOrder.push(env.id); }
+    if (!seenEnvs.has(env.id) &&
+        _servers.some(s => (s.environments||[]).some(e => e.id === env.id))) {
+      seenEnvs.add(env.id); envOrder.push(env.id);
+    }
   });
 
   // ── Re-sort so gateway-connected environments are adjacent columns ────────────
-  // Build adjacency: if server in env A uses a gateway-server in env B → A adj B
   if (envOrder.length > 1) {
     const envAdj = new Map(allEnvironments.map(e => [e.id, new Set()]));
-    const gwSrvEnvs = new Map(); // gateway server id → [envId]
-    allServers.forEach(s => {
+    const gwSrvEnvs = new Map();
+    _servers.forEach(s => {
       if (s.is_gateway && (s.environments||[]).length)
         gwSrvEnvs.set(s.id, s.environments.map(e => e.id));
     });
-    allServers.forEach(s => {
+    _servers.forEach(s => {
       if (!s.gateway_server_id) return;
       const srcEnvIds = (s.environments||[]).map(e => e.id);
       const gwEnvIds  = gwSrvEnvs.get(s.gateway_server_id) || [];
@@ -865,7 +874,6 @@ function computeHierarchicalPositions() {
         if (a !== b) { envAdj.get(a)?.add(b); envAdj.get(b)?.add(a); }
       }));
     });
-    // Greedy nearest-neighbour starting from the first environment
     const remaining = new Set(envOrder);
     const ordered   = [envOrder[0]];
     remaining.delete(envOrder[0]);
@@ -883,7 +891,7 @@ function computeHierarchicalPositions() {
   // ── Server → environment mapping ────────────────────────────────────────────
   const envServerMap = new Map(envOrder.map(id => [id, []]));
   const noEnvServers = [];
-  sortByName(allServers).forEach(s => {
+  sortByName(_servers).forEach(s => {
     const envId = s.environments && s.environments.length ? s.environments[0].id : null;
     if (envId && envServerMap.has(envId)) envServerMap.get(envId).push(s);
     else noEnvServers.push(s);
@@ -893,7 +901,7 @@ function computeHierarchicalPositions() {
   function maxVmCols(servers) {
     return servers.filter(isVmHost).reduce((m, host) => {
       const n = (host.services||[]).filter(svc => VM_SVC_TYPES.has(svc.type))
-        .reduce((s, svc) => s + (svc.instances||[]).length, 0);
+        .reduce((s, svc) => s + (svc.instances||[]).filter(i => !_instF || _instF.has(i.id)).length, 0);
       return Math.max(m, n ? Math.ceil(Math.sqrt(n)) : 1);
     }, 1);
   }
@@ -930,7 +938,8 @@ function computeHierarchicalPositions() {
       const vms = [];
       (host.services||[]).forEach(svc => {
         if (VM_SVC_TYPES.has(svc.type))
-          [...(svc.instances||[])].sort((a, b) => a.name.localeCompare(b.name))
+          [...(svc.instances||[])].filter(inst => !_instF || _instF.has(inst.id))
+            .sort((a, b) => a.name.localeCompare(b.name))
             .forEach(inst => vms.push('inst_' + inst.id));
       });
       if (vms.length) {
@@ -941,7 +950,7 @@ function computeHierarchicalPositions() {
         y += Math.ceil(vms.length / vc) * NODE_H + VM_GAP;
       }
     });
-    return y; // height of this column
+    return y;
   }
 
   let maxColH = 0;
@@ -957,25 +966,25 @@ function computeHierarchicalPositions() {
     });
     return Math.ceil(ids.length / cols) * NODE_H;
   };
-  const clusterIds = allClusters.map(c => 'cluster_' + c.id);
+  const clusterIds = _clusters.map(c => 'cluster_' + c.id);
   if (clusterIds.length) { y += placeGrid(clusterIds, y) + BELOW_GAP; }
   const nonVmInsts = [];
-  sortByName(allServers).forEach(s => (s.services||[]).forEach(svc => {
+  sortByName(_servers).forEach(s => (s.services||[]).forEach(svc => {
     if (!VM_SVC_TYPES.has(svc.type))
-      [...(svc.instances||[])].sort((a, b) => a.name.localeCompare(b.name))
+      [...(svc.instances||[])].filter(inst => !_instF || _instF.has(inst.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
         .forEach(inst => nonVmInsts.push('inst_' + inst.id));
   }));
   if (nonVmInsts.length) placeGrid(nonVmInsts, y);
 
   // ── Internet nodes above servers ─────────────────────────────────────────────
-  if (allRouters.length) {
-    const rootRouters   = allRouters.filter(r => !r.upstream_router_id);
+  if (_routers.length) {
+    const rootRouters   = _routers.filter(r => !r.upstream_router_id);
     const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
-    // Routers: x = mean x of their environment columns (fallback: evenly spaced)
-    allRouters.forEach((r, idx) => {
+    _routers.forEach((r, idx) => {
       const xs = (r.environments||[]).map(e => envColCx.get(e.id)).filter(x => x !== undefined);
       const rx = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length
-                           : (idx - (allRouters.length - 1) / 2) * NODE_W;
+                           : (idx - (_routers.length - 1) / 2) * NODE_W;
       pos['router_' + r.id] = {x: rx, y: -NODE_H};
     });
     providerNames.forEach((p, i) => {
@@ -1357,6 +1366,15 @@ function applyFilters() {
     });
     nodes.update(nodeUpdates);
     edges.update(edgeUpdates);
+    if (layoutMode === 'hierarchical') {
+      const pos = computeHierarchicalPositions();
+      const pu = [];
+      Object.entries(pos).forEach(([id, {x, y}]) => {
+        const nid = isNaN(Number(id)) ? id : Number(id);
+        if (nodes.get(nid)) pu.push({id: nid, x, y});
+      });
+      if (pu.length) nodes.update(pu);
+    }
     network.fit();
     if (layoutMode !== 'hierarchical') network.stabilize(150);
     network.redraw();
@@ -1488,6 +1506,20 @@ function applyFilters() {
 
   nodes.update(nodeUpdates);
   edges.update(edgeUpdates);
+  if (layoutMode === 'hierarchical') {
+    const pos = computeHierarchicalPositions({
+      srvFilter: visibleSrvIds,
+      instFilter: matchingInstIds,
+      clFilter: hiddenClusterIds,
+      rtrFilter: hiddenRouterIds,
+    });
+    const pu = [];
+    Object.entries(pos).forEach(([id, {x, y}]) => {
+      const nid = isNaN(Number(id)) ? id : Number(id);
+      if (nodes.get(nid)) pu.push({id: nid, x, y});
+    });
+    if (pu.length) nodes.update(pu);
+  }
   network.fit();
   if (layoutMode !== 'hierarchical') network.stabilize(150);
   network.redraw();
