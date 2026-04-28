@@ -591,15 +591,21 @@ function buildInstanceNodesEdges() {
       (svc.instances || []).forEach(inst => {
         const gwR = inst.gateway_router_id ? allRouters.find(r => r.id === inst.gateway_router_id) : null;
         const gwS = inst.gateway_server_id ? allServers.find(sv => sv.id === inst.gateway_server_id) : null;
+        const gwI = inst.gateway_instance_id ? (() => {
+          for (const srv2 of allServers) for (const svc2 of (srv2.services||[])) for (const i2 of (svc2.instances||[])) if (i2.id === inst.gateway_instance_id) return i2;
+          return null;
+        })() : null;
         instNodes.push({
           id: 'inst_' + inst.id,
-          label: (INST_ICONS[svc.type] || '⚙') + ' ' + inst.name,
+          label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
           title: inst.name +
+                 (inst.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
                  (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
                  (inst.environments && inst.environments.length
                    ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : '') +
                  (gwR ? '<br>GW: ' + gwR.name : '') +
                  (gwS ? '<br>GW: ' + gwS.hostname : '') +
+                 (gwI ? '<br>GW: ' + gwI.name : '') +
                  ((inst.own_services || []).length
                    ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type]||'⚙')+' '+s.type+(s.port?':'+s.port:'')).join('  ') : ''),
           shape: 'box',
@@ -634,6 +640,14 @@ function buildInstanceNodesEdges() {
             arrows: 'to', width: 1, dashes: [4, 4], physics: false,
             color: {color: '#22d3ee', opacity: 0.65},
             title: 'Gateway: ' + ((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
+          });
+        } else if (inst.gateway_instance_id) {
+          gwInstEdges.push({
+            id: 'gw_inst_' + inst.id,
+            from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            color: {color: '#22d3ee', opacity: 0.65},
+            title: 'Gateway: ' + (gwI ? gwI.name : inst.gateway_instance_id),
           });
         }
       });
@@ -1841,10 +1855,16 @@ function renderServicesSection(server) {
         gwSel.title = 'Gateway dieser VM';
         gwSel.innerHTML = '<option value="">— kein GW —</option>';
         const instEnvIds = new Set((inst.environments || []).map(e => e.id));
-        const matchedRouters = allRouters.filter(r => (r.environments || []).some(e => instEnvIds.has(e.id)));
-        const otherRouters  = allRouters.filter(r => !(r.environments || []).some(e => instEnvIds.has(e.id)));
-        const matchedGwSrvs = allServers.filter(gs => gs.is_gateway && (gs.environments || []).some(e => instEnvIds.has(e.id)));
-        const otherGwSrvs   = allServers.filter(gs => gs.is_gateway && !(gs.environments || []).some(e => instEnvIds.has(e.id)));
+        const allGwInsts = [];
+        allServers.forEach(sv => (sv.services||[]).forEach(sv2 => (sv2.instances||[]).forEach(i2 => {
+          if (i2.is_gateway && i2.id !== inst.id) allGwInsts.push(i2);
+        })));
+        const matchedRouters  = allRouters.filter(r => (r.environments||[]).some(e => instEnvIds.has(e.id)));
+        const otherRouters    = allRouters.filter(r => !(r.environments||[]).some(e => instEnvIds.has(e.id)));
+        const matchedGwSrvs   = allServers.filter(gs => gs.is_gateway && (gs.environments||[]).some(e => instEnvIds.has(e.id)));
+        const otherGwSrvs     = allServers.filter(gs => gs.is_gateway && !(gs.environments||[]).some(e => instEnvIds.has(e.id)));
+        const matchedGwInsts  = allGwInsts.filter(i2 => (i2.environments||[]).some(e => instEnvIds.has(e.id)));
+        const otherGwInsts    = allGwInsts.filter(i2 => !(i2.environments||[]).some(e => instEnvIds.has(e.id)));
         const addRouterOpt = (r) => {
           const opt = document.createElement('option');
           opt.value = 'router_' + r.id;
@@ -1855,8 +1875,15 @@ function renderServicesSection(server) {
         const addServerOpt = (gs) => {
           const opt = document.createElement('option');
           opt.value = 'server_' + gs.id;
-          opt.textContent = gs.hostname + ' [GW]';
+          opt.textContent = gs.hostname + ' [GW-Server]';
           if (inst.gateway_server_id === gs.id) opt.selected = true;
+          gwSel.appendChild(opt);
+        };
+        const addInstOpt = (i2) => {
+          const opt = document.createElement('option');
+          opt.value = 'instance_' + i2.id;
+          opt.textContent = i2.name + ' [GW-VM]';
+          if (inst.gateway_instance_id === i2.id) opt.selected = true;
           gwSel.appendChild(opt);
         };
         const addSep = (label) => {
@@ -1864,24 +1891,30 @@ function renderServicesSection(server) {
           sep.disabled = true; sep.textContent = '── ' + label + ' ──';
           gwSel.appendChild(sep);
         };
-        if (matchedRouters.length || matchedGwSrvs.length) {
-          if (otherRouters.length || otherGwSrvs.length) addSep('Selbe Umgebung');
+        const hasMatched = matchedRouters.length || matchedGwSrvs.length || matchedGwInsts.length;
+        const hasOther   = otherRouters.length  || otherGwSrvs.length   || otherGwInsts.length;
+        if (hasMatched) {
+          if (hasOther) addSep('Selbe Umgebung');
           matchedRouters.forEach(addRouterOpt);
           matchedGwSrvs.forEach(addServerOpt);
-          if (otherRouters.length || otherGwSrvs.length) {
+          matchedGwInsts.forEach(addInstOpt);
+          if (hasOther) {
             addSep('Andere Umgebungen');
             otherRouters.forEach(addRouterOpt);
             otherGwSrvs.forEach(addServerOpt);
+            otherGwInsts.forEach(addInstOpt);
           }
         } else {
           allRouters.forEach(addRouterOpt);
           allServers.filter(gs => gs.is_gateway).forEach(addServerOpt);
+          allGwInsts.forEach(addInstOpt);
         }
         gwSel.onchange = () => {
           const v = gwSel.value;
           updateInstanceGateway(inst.id,
-            v.startsWith('router_') ? parseInt(v.replace('router_', '')) : null,
-            v.startsWith('server_') ? parseInt(v.replace('server_', '')) : null);
+            v.startsWith('router_')   ? parseInt(v.replace('router_',   '')) : null,
+            v.startsWith('server_')   ? parseInt(v.replace('server_',   '')) : null,
+            v.startsWith('instance_') ? parseInt(v.replace('instance_', '')) : null);
         };
         nameDiv.appendChild(gwSel);
       } else {
@@ -1934,6 +1967,19 @@ function renderServicesSection(server) {
       const actionsDiv = document.createElement('div');
       actionsDiv.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-top:3px';
       const selStyle = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+      if (VM_SVC_TYPES.has(svc.type)) {
+        const gwChkRow = document.createElement('div');
+        gwChkRow.style.cssText = 'display:flex;gap:5px;align-items:center';
+        const gwChk = document.createElement('input');
+        gwChk.type = 'checkbox'; gwChk.checked = !!inst.is_gateway;
+        gwChk.onchange = () => api('PATCH', '/instances/' + inst.id, {is_gateway: gwChk.checked}).then(() => loadAll());
+        const gwChkLbl = document.createElement('label');
+        gwChkLbl.style.cssText = 'font-size:0.72rem;color:#9ca3af;cursor:pointer;display:flex;gap:4px;align-items:center';
+        gwChkLbl.appendChild(gwChk);
+        gwChkLbl.appendChild(document.createTextNode('fungiert als Gateway'));
+        gwChkRow.appendChild(gwChkLbl);
+        actionsDiv.appendChild(gwChkRow);
+      }
       if (allEnvironments.length) {
         const envRow = document.createElement('div');
         envRow.style.cssText = 'display:flex;gap:4px;align-items:center';
@@ -2368,8 +2414,12 @@ async function deleteInstanceService(instanceId, serviceId) {
   await loadAll();
 }
 
-async function updateInstanceGateway(instanceId, gateway_router_id, gateway_server_id) {
-  try { await api('PATCH', '/instances/' + instanceId, {gateway_router_id: gateway_router_id || null, gateway_server_id: gateway_server_id || null}); }
+async function updateInstanceGateway(instanceId, gateway_router_id, gateway_server_id, gateway_instance_id) {
+  try { await api('PATCH', '/instances/' + instanceId, {
+    gateway_router_id: gateway_router_id || null,
+    gateway_server_id: gateway_server_id || null,
+    gateway_instance_id: gateway_instance_id || null,
+  }); }
   catch (e) { return alert('Fehler beim Speichern des Gateways: ' + e.message); }
   await loadAll();
 }

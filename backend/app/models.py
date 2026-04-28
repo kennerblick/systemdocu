@@ -93,6 +93,9 @@ class ServiceInstance(Base):
     gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
+    is_gateway = Column(Boolean, default=False)
+    gateway_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="SET NULL"), nullable=True)
+
     service = relationship("Service", back_populates="instances", foreign_keys=[service_id])
     cluster = relationship("Cluster", back_populates="own_instances", foreign_keys=[cluster_id])
     own_services = relationship("Service", back_populates="instance",

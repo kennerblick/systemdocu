@@ -82,6 +82,8 @@ async def startup():
         "ALTER TABLE service_instances ALTER COLUMN service_id DROP NOT NULL",
         "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
         "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS fqdn VARCHAR(255)",
+        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS is_gateway BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_instance_id INTEGER REFERENCES service_instances(id) ON DELETE SET NULL",
         # migrate old single environment_id to M2M table (only if legacy column still exists)
         """
         DO $$ BEGIN

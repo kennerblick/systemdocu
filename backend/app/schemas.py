@@ -56,9 +56,11 @@ class ServiceInstanceBase(BaseModel):
     description: Optional[str] = None
     fqdn: Optional[str] = None
     ip: Optional[str] = None
+    is_gateway: bool = False
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
     gateway_server_id: Optional[int] = None
+    gateway_instance_id: Optional[int] = None
 
 
 class ServiceInstanceCreate(ServiceInstanceBase):
@@ -70,9 +72,11 @@ class ServiceInstanceUpdate(BaseModel):
     description: Optional[str] = None
     fqdn: Optional[str] = None
     ip: Optional[str] = None
+    is_gateway: Optional[bool] = None
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
     gateway_server_id: Optional[int] = None
+    gateway_instance_id: Optional[int] = None
     service_id: Optional[int] = None
 
 
