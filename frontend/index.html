@@ -139,6 +139,17 @@
       <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
     </div>
 
+    <div class="section-label">Server-Relation</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="rel-target" style="flex:1"></select>
+      <select id="rel-type" style="width:120px">
+        <option value="connects_to">connects_to</option>
+        <option value="hosts">hosts</option>
+        <option value="depends_on">depends_on</option>
+      </select>
+      <button class="small" onclick="addRelation()">+</button>
+    </div>
+
     <div class="section-label">Services &amp; Instanzen</div>
     <div id="sb-services"></div>
     <button class="small" style="margin-top:4px" onclick="toggleAddService()"><i class="fa-solid fa-plus"></i> Service hinzufügen</button>
@@ -165,18 +176,6 @@
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
       </div>
       <button class="small" onclick="addService()">Speichern</button>
-    </div>
-
-
-    <div class="section-label">Server-Relation</div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <select id="rel-target" style="flex:1"></select>
-      <select id="rel-type" style="width:120px">
-        <option value="connects_to">connects_to</option>
-        <option value="hosts">hosts</option>
-        <option value="depends_on">depends_on</option>
-      </select>
-      <button class="small" onclick="addRelation()">+</button>
     </div>
 
     <div class="section-label">Instanz-Relationen</div>
