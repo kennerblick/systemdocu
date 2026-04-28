@@ -1622,10 +1622,13 @@ function openSidebar(serverId) {
   const instMap = buildInstServerMap();
   const srcSel = document.getElementById('ir-src');
   srcSel.innerHTML = '';
-  // Clusters as sources
-  if (allClusters.length) {
+  // Clusters as sources — only those with a member instance on this server
+  const serverInstIds = new Set();
+  (server.services||[]).forEach(svc => (svc.instances||[]).forEach(i => serverInstIds.add(i.id)));
+  const relevantClusters = allClusters.filter(cl => (cl.members||[]).some(m => serverInstIds.has(m.id)));
+  if (relevantClusters.length) {
     const grp = document.createElement('optgroup'); grp.label = 'Cluster';
-    allClusters.forEach(cl => {
+    relevantClusters.forEach(cl => {
       const o = document.createElement('option');
       o.value = 'cluster_' + cl.id;
       o.textContent = '◆ ' + cl.name + (cl.domain ? ' (' + cl.domain + ')' : ' [' + cl.service_type + ']');
