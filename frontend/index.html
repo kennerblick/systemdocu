@@ -457,7 +457,7 @@ const SVC_COLORS = {
 // Only instances of these service types represent VMs with their own IP addresses
 const VM_SVC_TYPES = new Set(['hyperv', 'esxi', 'proxmox']);
 
-const isExternServer = s => (s.environments||[]).some(e => e.name.toLowerCase() === 'extern');
+const isExternServer = s => (s.environments||[]).some(e => e.name.toLowerCase() === 'www');
 
 async function api(method, path, body) {
   const opts = {method, headers: {'Content-Type': 'application/json'}};
