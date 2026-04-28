@@ -1387,17 +1387,31 @@ function applyFilters() {
 
   // ── 3. Environments reachable from visible servers/instances ──────────────
   const visibleEnvIds = new Set();
+  const directGwRouterIds = new Set();
   allServers.forEach(s => {
-    if (visibleSrvIds.has(s.id)) (s.environments||[]).forEach(e => visibleEnvIds.add(e.id));
+    if (visibleSrvIds.has(s.id)) {
+      (s.environments||[]).forEach(e => visibleEnvIds.add(e.id));
+      if (s.gateway_router_id) directGwRouterIds.add(s.gateway_router_id);
+    }
     (s.services||[]).forEach(svc => (svc.instances||[]).forEach(inst => {
-      if (matchingInstIds.has(inst.id)) (inst.environments||[]).forEach(e => visibleEnvIds.add(e.id));
+      if (matchingInstIds.has(inst.id)) {
+        (inst.environments||[]).forEach(e => visibleEnvIds.add(e.id));
+        if (inst.gateway_router_id) directGwRouterIds.add(inst.gateway_router_id);
+      }
     }));
   });
+  // Pull in environments of direct-gateway routers so their sibling routers
+  // (in the same environment) also become visible
+  directGwRouterIds.forEach(rid => {
+    const r = allRouters.find(r => r.id === rid);
+    if (r) (r.environments||[]).forEach(e => visibleEnvIds.add(e.id));
+  });
 
-  // ── 4. Visible routers (serve visible environments) ───────────────────────
+  // ── 4. Visible routers: serve visible envs OR are direct gateways ─────────
   const hiddenRouterIds = new Set();
   allRouters.forEach(r => {
-    if (!(r.environments||[]).some(e => visibleEnvIds.has(e.id))) hiddenRouterIds.add(r.id);
+    const servesEnv = (r.environments||[]).some(e => visibleEnvIds.has(e.id));
+    if (!servesEnv && !directGwRouterIds.has(r.id)) hiddenRouterIds.add(r.id);
   });
   const anyRouterVisible = allRouters.some(r => !hiddenRouterIds.has(r.id));
   const visibleProviders = new Set(
