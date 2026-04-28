@@ -832,16 +832,15 @@ function buildInternetGraph() {
   });
 
   // Extern servers — direct edge to internet cloud
+  // Extern server edges — NOT in inetEdgeIds; visibility managed per-server
   externSrvs.forEach(s => {
-    const eid = 'inet_extern_' + s.id;
     iEdges.push({
-      id: eid, from: 'internet_cloud', to: s.id,
+      id: 'inet_extern_' + s.id, from: 'internet_cloud', to: s.id,
       arrows: 'to', width: 2, physics: true,
       color: {color: '#3b82f6', opacity: 0.7},
       title: 'Direkte Internet-Verbindung',
       hidden,
     });
-    inetEdgeIds.push(eid);
   });
 
   return {iNodes, iEdges};
@@ -1391,6 +1390,7 @@ function applyFilters() {
       const id = e.id;
       if (typeof id !== 'string') return;
       if (inetEdgeIds.includes(id)) { edgeUpdates.push({id, hidden: !showInternet}); return; }
+      if (id.startsWith('inet_extern_')) { edgeUpdates.push({id, hidden: !showInternet}); return; }
       if (id.startsWith('gw_srv_') || id.startsWith('gw_inst_')) {
         const needsInternet = typeof e.from === 'string' && e.from.startsWith('router_');
         edgeUpdates.push({id, hidden: needsInternet && !showInternet});
@@ -1496,8 +1496,9 @@ function applyFilters() {
     const id = 'router_' + r.id;
     if (nodes.get(id)) nodeUpdates.push({id, hidden: !showInternet || hiddenRouterIds.has(r.id)});
   });
+  const anyExternVisible = allServers.some(s => isExternServer(s) && visibleSrvIds.has(s.id));
   if (nodes.get('internet_cloud'))
-    nodeUpdates.push({id: 'internet_cloud', hidden: !showInternet || !anyRouterVisible});
+    nodeUpdates.push({id: 'internet_cloud', hidden: (!showInternet || !anyRouterVisible) && !anyExternVisible});
   nodes.forEach(n => {
     if (typeof n.id === 'string' && n.id.startsWith('provider_'))
       nodeUpdates.push({id: n.id, hidden: !showInternet || !visibleProviders.has(n.id.replace('provider_', ''))});
@@ -1512,6 +1513,10 @@ function applyFilters() {
     const id = e.id;
     if (typeof id !== 'string') return;
     if (inetEdgeIds.includes(id)) { edgeUpdates.push({id, hidden: !showInternet}); return; }
+    if (id.startsWith('inet_extern_')) {
+      const srvId = parseInt(id.replace('inet_extern_', ''));
+      edgeUpdates.push({id, hidden: !visibleSrvIds.has(srvId)}); return;
+    }
     if (id.startsWith('sr_')) {
       edgeUpdates.push({id, hidden: !visibleSrvIds.has(e.from) || !visibleSrvIds.has(e.to)});
     } else if (id.startsWith('ir_srv_')) {
@@ -2898,6 +2903,8 @@ function toggleInternet() {
   if (!envId && !appId) {
     allServers.filter(isExternServer).forEach(s => {
       if (nodes.get(s.id)) nodes.update({id: s.id, hidden: !showInternet});
+      const eid = 'inet_extern_' + s.id;
+      if (edges.get(eid)) edges.update({id: eid, hidden: !showInternet});
     });
   }
   if (showingInstances) {
