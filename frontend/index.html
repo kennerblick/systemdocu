@@ -978,14 +978,28 @@ function computeHierarchicalPositions(opts = {}) {
   };
   const clusterIds = _clusters.map(c => 'cluster_' + c.id);
   if (clusterIds.length) { y += placeGrid(clusterIds, y) + BELOW_GAP; }
-  const nonVmInsts = [];
+  const instByColCx = new Map();
+  const noColInsts = [];
   sortByName(_colSrvs).forEach(s => (s.services||[]).forEach(svc => {
-    if (!VM_SVC_TYPES.has(svc.type))
-      [...(svc.instances||[])].filter(inst => !_instF || _instF.has(inst.id))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .forEach(inst => nonVmInsts.push('inst_' + inst.id));
+    if (VM_SVC_TYPES.has(svc.type)) return;
+    [...(svc.instances||[])].filter(inst => !_instF || _instF.has(inst.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(inst => {
+        const cx = [...(inst.environments||[]), ...(s.environments||[])]
+          .map(e => envColCx.get(e.id))
+          .find(x => x !== undefined);
+        if (cx !== undefined) {
+          if (!instByColCx.has(cx)) instByColCx.set(cx, []);
+          instByColCx.get(cx).push('inst_' + inst.id);
+        } else {
+          noColInsts.push('inst_' + inst.id);
+        }
+      });
   }));
-  if (nonVmInsts.length) placeGrid(nonVmInsts, y);
+  instByColCx.forEach((insts, cx) => {
+    insts.forEach((id, i) => { pos[id] = {x: cx, y: y + i * NODE_H}; });
+  });
+  if (noColInsts.length) placeGrid(noColInsts, y);
 
   // ── Internet nodes above servers ─────────────────────────────────────────────
   if (_routers.length || _externSrvs.length) {
