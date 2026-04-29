@@ -1586,6 +1586,7 @@ function openSidebar(serverId) {
   const server = allServers.find(s => s.id === serverId);
   if (!server) return;
   currentServerId = serverId;
+  document.getElementById('sb-edit-form').style.display = 'none';
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sb-hostname').textContent = server.hostname;
   const ipEl = document.getElementById('sb-ip');
