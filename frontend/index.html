@@ -1420,8 +1420,10 @@ function applyFilters(skipFit = false) {
         if (bn) { bn.x = x; bn.y = y; }
       });
     }
-    if (!skipFit) network.fit();
-    if (layoutMode !== 'hierarchical') network.stabilize(150);
+    if (!skipFit) {
+      network.fit();
+      if (layoutMode !== 'hierarchical') network.stabilize(150);
+    }
     network.redraw();
     return;
   }
@@ -1569,8 +1571,10 @@ function applyFilters(skipFit = false) {
       if (bn) { bn.x = x; bn.y = y; }
     });
   }
-  if (!skipFit) network.fit();
-  if (layoutMode !== 'hierarchical') network.stabilize(150);
+  if (!skipFit) {
+    network.fit();
+    if (layoutMode !== 'hierarchical') network.stabilize(150);
+  }
   network.redraw();
 }
 
