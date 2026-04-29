@@ -2357,10 +2357,10 @@ function renderServicesSection(server) {
           const isSrc = r.source_instance_id === inst.id;
           const otherId = isSrc ? r.target_instance_id : r.source_instance_id;
           const otherClId = isSrc ? r.target_cluster_id : r.source_cluster_id;
-          let otherName = '?';
+          let otherName = '?', otherServerName = '';
           if (otherId) {
             allServers.forEach(sv => (sv.services||[]).forEach(sv2 => (sv2.instances||[]).forEach(i2 => {
-              if (i2.id === otherId) otherName = i2.name;
+              if (i2.id === otherId) { otherName = i2.name; otherServerName = sv.hostname; }
             })));
           } else if (otherClId) {
             const cl = allClusters.find(c => c.id === otherClId);
@@ -2370,6 +2370,7 @@ function renderServicesSection(server) {
           const relRow = document.createElement('div');
           relRow.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:0.72rem;color:#9ca3af';
           relRow.innerHTML = '<span style="color:#7c3aed;font-weight:600">' + arrow + '</span>' +
+            (otherServerName ? '<span style="color:#6b7280">' + escHtml(otherServerName) + '/</span>' : '') +
             escHtml(otherName) +
             '<span style="color:#4b5563">(' + escHtml(r.type) + ')</span>';
           relDiv.appendChild(relRow);
