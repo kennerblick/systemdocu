@@ -88,12 +88,13 @@
   <button onclick="openManageClusters()"><i class="fa-solid fa-object-group"></i> Cluster</button>
   <button id="zbx-btn" onclick="openZabbixScan()"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button onclick="exportExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
-  <button onclick="exportJson()" title="JSON-Export"><i class="fa-solid fa-download"></i></button>
-  <label id="damping-control" style="display:flex;align-items:center;gap:5px;font-size:0.82rem;color:#9ca3af;padding:5px 10px;background:#0f1b35;border-radius:5px;border:1px solid #0f3460;user-select:none" title="Physik-Dämpfung: höher = ruhiger">
-    <i class="fa-solid fa-wave-square" style="font-size:0.75rem"></i>
-    <input type="range" id="damping-slider" min="5" max="92" value="9" step="1"
-      style="width:64px;cursor:pointer;accent-color:#7c3aed" oninput="applyDamping(this.value)">
-  </label>
+  <div id="search-wrap" style="position:relative;display:flex;align-items:center">
+    <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:8px;color:#6b7280;font-size:0.75rem;pointer-events:none"></i>
+    <input type="text" id="search-input" placeholder="Server, Instanz, IP…" autocomplete="off"
+      style="background:#0f1b35;border:1px solid #0f3460;color:#e0e0e0;border-radius:5px;padding:4px 8px 4px 26px;font-size:0.82rem;width:190px;outline:none"
+      oninput="onSearchInput(this.value)" onkeydown="onSearchKey(event)" onfocus="onSearchInput(this.value)">
+    <div id="search-dd" style="display:none;position:absolute;top:100%;left:0;z-index:400;background:#1e293b;border:1px solid #334155;border-radius:6px;min-width:230px;max-height:260px;overflow-y:auto;margin-top:2px;box-shadow:0 4px 16px rgba(0,0,0,0.5)"></div>
+  </div>
   <button id="layout-toggle-btn" onclick="toggleLayout()" title="Layout wechseln" style="min-width:120px">
     <i class="fa-solid fa-sitemap"></i> Hierarchisch
   </button>
@@ -427,8 +428,12 @@ let allRouters = [];
 let allClusters = [];
 let layoutMode = 'physics';
 let currentRenderedLayout = null;
-let physicsDamping = 0.09;
 let irSrvEdgeIds = [];
+let _blinkTimer = null;
+let _blinkNodeId = null;
+let _blinkOrigColor = null;
+let _searchResults = [];
+let _searchIdx = -1;
 let inetNodeIds = [];
 let inetEdgeIds = [];
 let showInternet = false;
@@ -1056,19 +1061,11 @@ function toggleLayout() {
   btn.innerHTML = layoutMode === 'hierarchical'
     ? '<i class="fa-solid fa-circle-nodes"></i> Physik'
     : '<i class="fa-solid fa-sitemap"></i> Hierarchisch';
-  document.getElementById('damping-control').style.display = layoutMode === 'hierarchical' ? 'none' : 'flex';
   if (network) { network.destroy(); network = null; showingInstances = false; }
   renderGraph();
   applyFilters();
   if (currentServerId) openSidebar(currentServerId);
   else if (currentClusterId) openClusterSidebar(currentClusterId);
-}
-
-function applyDamping(val) {
-  physicsDamping = val / 100;
-  if (network && layoutMode === 'physics') {
-    network.setOptions({ physics: { barnesHut: { damping: physicsDamping } } });
-  }
 }
 
 function renderGraph(skipFit = false) {
@@ -1192,7 +1189,7 @@ function renderGraph(skipFit = false) {
       }
     : {
         physics: {
-          barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: physicsDamping },
+          barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: 0.09 },
           stabilization: { iterations: 150 },
         },
         interaction: { hover: true, tooltipDelay: 200, maxZoomLevel: 5 },
@@ -1255,6 +1252,7 @@ function renderGraph(skipFit = false) {
   });
 
   network.on('click', params => {
+    stopBlink();
     if (!params.nodes.length) return closeSidebar();
     const nodeId = params.nodes[0];
     if (typeof nodeId === 'string' && nodeId.startsWith('cluster_')) {
@@ -3444,14 +3442,125 @@ function exportExcel() {
   a.click();
 }
 
-async function exportJson() {
-  const data = await api('GET', '/export/json');
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'systemdocu-export.json';
-  a.click();
+// ── Search ────────────────────────────────────────────────────────────────────
+
+function _buildSearchIndex() {
+  const idx = [];
+  allServers.forEach(srv => {
+    const ips = (srv.ip || '').split(',').map(s => s.trim()).filter(Boolean);
+    idx.push({ nodeId: srv.id, label: srv.hostname, sub: ips.join(', '), ips, type: 'server' });
+    (srv.services || []).forEach(svc => {
+      (svc.instances || []).forEach(inst => {
+        idx.push({ nodeId: 'inst_' + inst.id, label: inst.name, sub: srv.hostname, ips: [], type: 'instance' });
+      });
+    });
+  });
+  return idx;
 }
+
+function onSearchInput(q) {
+  const dd = document.getElementById('search-dd');
+  q = q.trim().toLowerCase();
+  if (!q) { dd.style.display = 'none'; _searchResults = []; return; }
+  _searchResults = _buildSearchIndex().filter(item =>
+    item.label.toLowerCase().includes(q) ||
+    item.sub.toLowerCase().includes(q) ||
+    item.ips.some(ip => ip.includes(q))
+  ).slice(0, 20);
+  _searchIdx = -1;
+  _renderSearchDd();
+}
+
+function _renderSearchDd() {
+  const dd = document.getElementById('search-dd');
+  if (!_searchResults.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = '';
+  _searchResults.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:7px 12px;cursor:pointer;font-size:0.82rem;display:flex;flex-direction:column;gap:1px' +
+      (i === _searchIdx ? ';background:#334155' : '');
+    const icon = item.type === 'server' ? '<i class="fa-solid fa-server" style="color:#60a5fa;width:12px"></i>'
+                                        : '<i class="fa-solid fa-cube" style="color:#a78bfa;width:12px"></i>';
+    row.innerHTML = '<span style="color:#e0e0e0;display:flex;align-items:center;gap:6px">' + icon + escHtml(item.label) + '</span>' +
+      (item.sub ? '<span style="font-size:0.72rem;color:#6b7280;padding-left:18px">' + escHtml(item.sub) + '</span>' : '');
+    row.onmouseenter = () => { _searchIdx = i; _renderSearchDd(); };
+    row.onclick = () => _selectSearchResult(item);
+    dd.appendChild(row);
+  });
+  dd.style.display = 'block';
+}
+
+function onSearchKey(e) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _searchIdx = Math.min(_searchIdx + 1, _searchResults.length - 1);
+    _renderSearchDd();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _searchIdx = Math.max(_searchIdx - 1, 0);
+    _renderSearchDd();
+  } else if (e.key === 'Enter' && _searchResults.length) {
+    e.preventDefault();
+    _selectSearchResult(_searchResults[Math.max(_searchIdx, 0)]);
+  } else if (e.key === 'Escape') {
+    document.getElementById('search-dd').style.display = 'none';
+  }
+}
+
+function _selectSearchResult(item) {
+  document.getElementById('search-input').value = item.label;
+  document.getElementById('search-dd').style.display = 'none';
+  _zoomToNode(item.nodeId);
+}
+
+function _zoomToNode(nodeId) {
+  if (!network) return;
+  stopBlink();
+  if (typeof nodeId === 'string' && nodeId.startsWith('inst_') && !showingInstances) {
+    network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15, animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+    setTimeout(() => { updateInstanceVisibility(network.getScale()); _focusNode(nodeId); }, 460);
+  } else {
+    _focusNode(nodeId);
+  }
+}
+
+function _focusNode(nodeId) {
+  if (!network || !nodes.get(nodeId)) return;
+  network.focus(nodeId, { scale: 1.6, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+  _startBlink(nodeId);
+}
+
+function _startBlink(nodeId) {
+  stopBlink();
+  const node = nodes.get(nodeId);
+  if (!node) return;
+  _blinkNodeId = nodeId;
+  _blinkOrigColor = node.color;
+  let bright = true;
+  _blinkTimer = setInterval(() => {
+    if (!nodes.get(nodeId)) { stopBlink(); return; }
+    nodes.update({ id: nodeId, color: bright
+      ? { background: '#facc15', border: '#fbbf24', highlight: { background: '#fde68a', border: '#fff' } }
+      : _blinkOrigColor });
+    bright = !bright;
+  }, 380);
+}
+
+function stopBlink() {
+  if (_blinkTimer) { clearInterval(_blinkTimer); _blinkTimer = null; }
+  if (_blinkNodeId !== null) {
+    const node = nodes.get(_blinkNodeId);
+    if (node && _blinkOrigColor) nodes.update({ id: _blinkNodeId, color: _blinkOrigColor });
+    _blinkNodeId = null;
+    _blinkOrigColor = null;
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('search-wrap').contains(e.target)) {
+    document.getElementById('search-dd').style.display = 'none';
+  }
+});
 
 document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
