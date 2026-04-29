@@ -2,6 +2,8 @@
 
 Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle Server, Services, Instanzen, Cluster, Anwendungen, Umgebungen/Subnetze und Internetanschlüsse — inklusive Zabbix-Integration und Excel-Export.
 
+**Version: v0.4.0-alpha**
+
 ![Graph-Ansicht](docs/screenshot.png)
 
 ---
@@ -85,7 +87,7 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-Neue Datenbankspalten werden beim Start automatisch per `ALTER TABLE … ADD COLUMN IF NOT EXISTS` migriert — kein manueller SQL-Eingriff nötig.
+Datenbankmigrationen werden beim Start automatisch per **Alembic** angewendet — kein manueller SQL-Eingriff nötig.
 
 ---
 
@@ -117,7 +119,7 @@ Internetanschluss / Router / Gateway
 └── Environments (M:N)           — Netze, für die dieser Eintrag Gateway ist
 
 Cluster
-├── Name, Beschreibung, Service-Typ (z. B. postgresql, kubernetes)
+├── Name, Beschreibung, Domain/FQDN, Service-Typ (z. B. postgresql, kubernetes)
 └── Mitglieder (M:N)               — Instanzen gleichen Typs von beliebigen Servern
 
 Relationen
@@ -139,10 +141,27 @@ Relationen
 | Rauszoomen | Blendet Instanz-Knoten aus, zeigt Übersichtskanten |
 | Hover über Kante | Zeigt Verbindungsdetails als Tooltip |
 | VM-Instanzen | Werden visuell im farbigen Bereich ihres Hyper-V-Hosts dargestellt |
+| Klick auf Cluster-Raute | Öffnet Cluster-Sidebar |
 
 **Linke Seite**: Internetanschlüsse/Router (erscheinen nur wenn Toggle „🌐 Internet" aktiv).
 
 **Sidebar-Breite**: Die Sidebar lässt sich durch Ziehen des Trennbalkens zwischen Graph und Sidebar auf eine beliebige Breite (280–700 px) anpassen.
+
+### Suche
+
+Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznamen** und **IP-Adressen** in Echtzeit.
+
+- Tipp-Eingabe → Dropdown mit bis zu 20 Treffern (Server- und Instanz-Einträge)
+- Klick auf Eintrag oder **Enter** → Graph zoomt zum gefundenen Element, das Element blinkt **gelb** bis es angeklickt wird
+- Bei versteckten Instanz-Knoten (zu weit herausgezoomt): automatisches Reinzoomen vor dem Fokussieren
+- Pfeiltasten ↑/↓ zur Navigation im Dropdown, **Escape** zum Schließen
+
+### Layout
+
+| Schaltfläche | Beschreibung |
+|---|---|
+| **Hierarchisch** | Umgebungen als vertikale Spalten, Server und Instanzen in Zeilen; Internet links |
+| **Physik** | Kräftebasiertes Layout, frei verschiebbar |
 
 ### Filter
 
@@ -158,11 +177,20 @@ Relationen
 
 In der Sidebar des Servers:
 
-- **Service hinzufügen**: Typ wählen (PostgreSQL, Docker, Hyper-V, Samba, MQTT …), Version und Port optional
+- **Service hinzufügen**: Typ wählen (PostgreSQL, Docker, Hyper-V, Samba, NFS, MQTT …), Version und Port optional
 - Jeder Service-Typ kann pro Server **nur einmal** angelegt werden
 - **Instanz hinzufügen**: Name und optionale Beschreibung
-- Bei Hyper-V/ESXi/Proxmox: Instanzen sind VMs und erhalten ein eigenes IP-Feld sowie ein Gateway-Dropdown
-- **Umgebungen** und **Anwendungen** können per Chip-Button jeder Instanz zugeordnet werden
+
+**Instanz-Aktionen** (unterhalb des Instanznamens):
+
+| Service-Typ | Verfügbare Aktionen |
+|---|---|
+| kubernetes, hyperv, docker, proxmox, esxi | **+Netzwerk** · **+Anwendung** · **+Service** (Dropdown-Buttons) |
+| postgresql, samba, nfs, sftp, webserver, mqtt, gateway | **+Anwendung** (Dropdown-Button) |
+
+Jede Instanz zeigt darunter ihre **Relationen** als kompakte Liste mit Richtungspfeil, Servernamen/Instanzname und Relationstyp.
+
+Bei Hyper-V/ESXi/Proxmox: Instanzen sind VMs und erhalten ein eigenes IP-Feld sowie ein Gateway-Dropdown.
 
 **VM-eigene Dienste**: Eine VM kann selbst Dienste anbieten (z. B. Webserver, MQTT-Broker). Diese werden im unteren Bereich der VM-Kachel als Liste verwaltet (Typ, Version, Port) und erscheinen als auswählbare Einträge in den Instanz-Relationen-Dropdowns (mit `↳`-Präfix).
 
@@ -221,7 +249,7 @@ In der Sidebar unter **Server-Relation**:
 
 Schaltfläche **Cluster**:
 
-- **Neuen Cluster erstellen**: Name, Beschreibung (optional) und Service-Typ wählen → **Erstellen**
+- **Neuen Cluster erstellen**: Name, Beschreibung (optional), Domain/FQDN (optional) und Service-Typ wählen → **Erstellen**
 - **Mitglieder hinzufügen**: Stift-Icon → Server wählen → Instanzen des passenden Typs erscheinen → **+ Mitglied**. Mitglieder können von beliebig vielen Servern sein.
 - **Mitglied entfernen**: Chip mit × anklicken
 - **Cluster löschen**: × in der Kopfzeile
@@ -253,7 +281,7 @@ Zabbix → Administration → API-Token → Token erstellen, Benutzer mit **Lese
 2. Host aus der Liste wählen → **Scannen**
 3. Erkannte Services prüfen → **Importieren**
 
-Erkannt werden: PostgreSQL, MySQL, Docker, Kubernetes, Samba, SFTP, FreeIPA, Zabbix, Graylog, Veeam, MinIO, Hyper-V.
+Erkannt werden: PostgreSQL, MySQL, Docker, Kubernetes, Samba, NFS, SFTP, FreeIPA, Zabbix, Graylog, Veeam, MinIO, Hyper-V.
 
 Der Button zeigt Verbindungsstatus an:
 - Grüner Rahmen: Zabbix erreichbar
@@ -271,10 +299,6 @@ Schaltfläche **Excel** → `systemdocu.xlsx` wird heruntergeladen.
 - **Sheet 2 „Anwendungen"**: Anwendung → Instanz → Service → Server
 
 Server- und Service-Zellen sind farbig markiert (entsprechend der Graph-Farben). Erste Zeile eingefroren, Spaltenbreiten vorgegeben.
-
-### JSON
-
-Schaltfläche **↓** (neben Excel) → vollständiger Rohdaten-Export als `systemdocu-export.json`.
 
 ---
 
@@ -296,17 +320,20 @@ cat backup_20250101.sql | docker compose exec -T postgres psql -U $POSTGRES_USER
 ┌─────────────────────────────────────────────────────┐
 │  Browser                                            │
 │  frontend/index.html  (vanilla JS + vis-network)    │
+│  SSE-Client: Echtzeit-Aktualisierung bei Änderungen │
 └──────────────────────┬──────────────────────────────┘
                        │ HTTP :9191
 ┌──────────────────────▼──────────────────────────────┐
 │  nginx  (Frontend-Container)                        │
 │  /api/* → proxy_pass backend:8000                   │
+│  X-Accel-Buffering: no  (SSE-Durchleitung)          │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
 │  FastAPI  (Backend-Container, Python 3.12)          │
-│  SQLAlchemy async + asyncpg                         │
-│  Automatische DB-Migration beim Start               │
+│  SQLAlchemy 2.0 async + asyncpg                     │
+│  Alembic-Migrationen beim Start (entrypoint.sh)     │
+│  SSE-Endpoint /api/events (asyncio.Queue-Bus)       │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
@@ -317,6 +344,8 @@ cat backup_20250101.sql | docker compose exec -T postgres psql -U $POSTGRES_USER
 
 Alle drei Container laufen im internen Docker-Netzwerk `internal`. Nur Port `9191` (nginx) ist nach außen geöffnet.
 
+**Echtzeit-Sync**: Jede Schreiboperation broadcastet ein SSE-Event (`data_changed`). Alle verbundenen Browser laden die Daten neu und aktualisieren den Graphen diff-basiert — ohne Zoom oder Physik-Positionen zurückzusetzen. Mehrere gleichzeitige Nutzer werden vollständig unterstützt.
+
 ### Service-Typen
 
 | Typ | Icon | Farbe |
@@ -326,9 +355,10 @@ Alle drei Container laufen im internen Docker-Netzwerk `internal`. Nur Port `919
 | docker | 🐳 | Hellblau |
 | kubernetes | ☸ | Indigo |
 | hyperv | 🖥 | Cyan |
-| proxmox | 🖥 | Orange |
+| proxmox | 🖧 | Orange |
 | esxi | 🖥 | Grün |
-| samba | 📁 | Orange |
+| samba | 📁 | Amber |
+| nfs | 🗂 | Dunkel-Amber |
 | sftp | 📂 | Grün |
 | freeipa | 🔑 | Violett |
 | zabbix | 📊 | Rot |
@@ -338,6 +368,10 @@ Alle drei Container laufen im internen Docker-Netzwerk `internal`. Nur Port `919
 | gateway | 🔀 | Teal |
 | webserver | 🌐 | Hellblau |
 | mqtt | 📨 | Lila |
+
+### Datenbankmigrationen
+
+Schema-Änderungen werden versioniert mit **Alembic** verwaltet (`backend/alembic/versions/`). Beim Container-Start führt `entrypoint.sh` automatisch `alembic upgrade head` aus.
 
 ### Logs
 
@@ -371,8 +405,8 @@ Interaktive Swagger-Doku: `http://<server-ip>:9191/api/docs`
 | GET/POST/PUT/DELETE | `/api/environments` | Umgebungen verwalten |
 | GET/POST/DELETE | `/api/applications` | Anwendungen verwalten |
 | GET/POST/PUT/DELETE | `/api/internet-routers` | Internetanschlüsse verwalten |
-| GET | `/api/export/json` | JSON-Rohdaten-Export |
 | GET | `/api/export/excel` | Excel-Export |
+| GET | `/api/events` | SSE-Stream für Echtzeit-Updates |
 | GET | `/api/zabbix/ping` | Zabbix-Verbindungsstatus |
 | GET | `/api/zabbix/hosts` | Zabbix-Hosts auflisten |
 | POST | `/api/zabbix/scan` | Host scannen |
