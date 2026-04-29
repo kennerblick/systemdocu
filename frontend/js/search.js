@@ -108,11 +108,18 @@ function _selectSearchResult(item) {
 function _zoomToNode(nodeId) {
   if (!network) return;
   stopBlink();
-  // In physics mode: always zoom past the threshold first so instances appear,
-  // then focus on the target element after the animation settles.
+  // In physics mode: zoom past threshold first so instances appear,
+  // then wait for physics to stabilise before focusing the target node.
   if (layoutMode === 'physics' && !showingInstances) {
-    network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15, animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
-    setTimeout(() => { updateInstanceVisibility(network.getScale()); _focusNode(nodeId); }, 460);
+    network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15, animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
+    setTimeout(() => {
+      updateInstanceVisibility(network.getScale());
+      // Focus only after physics has settled; fallback after 1.2 s.
+      let done = false;
+      const go = () => { if (done) return; done = true; _focusNode(nodeId); };
+      network.once('stabilized', go);
+      setTimeout(go, 1200);
+    }, 320);
   } else {
     _focusNode(nodeId);
   }
