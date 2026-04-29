@@ -1,6 +1,13 @@
 import asyncio
 import os
+import sys
+from pathlib import Path
 from logging.config import fileConfig
+
+# Ensure the project root (/app inside the container) is on sys.path so that
+# 'from app.models import Base' resolves correctly regardless of how alembic
+# is invoked (entrypoint.sh, docker exec, etc.)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
