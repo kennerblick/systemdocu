@@ -997,7 +997,11 @@ function computeHierarchicalPositions(opts = {}) {
       });
   }));
   instByColCx.forEach((insts, cx) => {
-    insts.forEach((id, i) => { pos[id] = {x: cx, y: y + i * NODE_H}; });
+    const n = insts.length;
+    const cols = Math.ceil(Math.sqrt(n));
+    insts.forEach((id, i) => {
+      pos[id] = {x: cx + (i % cols - (cols - 1) / 2) * NODE_W, y: y + Math.floor(i / cols) * NODE_H};
+    });
   });
   if (noColInsts.length) placeGrid(noColInsts, y);
 
@@ -1173,7 +1177,7 @@ function renderGraph() {
           barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: physicsDamping },
           stabilization: { iterations: 150 },
         },
-        interaction: { hover: true, tooltipDelay: 200 },
+        interaction: { hover: true, tooltipDelay: 200, maxZoomLevel: 5 },
         edges: { smooth: { type: 'continuous' } },
       };
   network = new Network(document.getElementById('graph'), {nodes, edges}, netOpts);
