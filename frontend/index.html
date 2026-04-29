@@ -1322,7 +1322,7 @@ function updateInstanceVisibility(scale) {
     irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: false}); });
   }
 
-  applyFilters();
+  applyFilters(true);
   network.redraw();
   updateZoomHint(show);
 }
@@ -1357,7 +1357,7 @@ function updateFilters() {
   syncSel('app-filter', allApplications, 'name');
 }
 
-function applyFilters() {
+function applyFilters(skipFit = false) {
   if (!nodes || !edges || !network) return;
   const envId = parseInt(document.getElementById('env-filter').value) || 0;
   const appId = parseInt(document.getElementById('app-filter').value) || 0;
@@ -1402,7 +1402,7 @@ function applyFilters() {
         if (bn) { bn.x = x; bn.y = y; }
       });
     }
-    network.fit();
+    if (!skipFit) network.fit();
     if (layoutMode !== 'hierarchical') network.stabilize(150);
     network.redraw();
     return;
@@ -1551,7 +1551,7 @@ function applyFilters() {
       if (bn) { bn.x = x; bn.y = y; }
     });
   }
-  network.fit();
+  if (!skipFit) network.fit();
   if (layoutMode !== 'hierarchical') network.stabilize(150);
   network.redraw();
 }
