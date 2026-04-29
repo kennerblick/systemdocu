@@ -52,8 +52,8 @@
   #filter-bar label{font-size:0.82rem;color:#9ca3af}
   .svc-block{background:#0f1b35;border-radius:6px;padding:8px;margin-top:4px}
   .svc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .svc-title{font-size:0.82rem;font-weight:600;color:#93c5fd}
-  .instance-row{display:flex;flex-direction:column;gap:3px;padding:9px 0 5px;border-top:1px solid #1e3a5f}
+  .svc-title{font-size:0.95rem;font-weight:600;color:#93c5fd}
+  .instance-row{display:flex;flex-direction:column;gap:3px;padding:9px 0 5px;border-top:2px solid #1e3a5f}
   .instance-name{font-size:0.8rem;color:#e0e0e0;font-weight:500}
   .instance-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
   .add-instance-form{display:flex;gap:5px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid #1e3a5f}
@@ -451,6 +451,9 @@ const SVC_COLORS = {
 
 // Only instances of these service types represent VMs with their own IP addresses
 const VM_SVC_TYPES = new Set(['hyperv', 'esxi', 'proxmox']);
+
+// Instances of these services get full controls (net + app + service dropdowns)
+const FULL_INST_TYPES = new Set(['kubernetes', 'hyperv', 'docker', 'proxmox', 'esxi']);
 
 const isExternServer = s => (s.environments||[]).some(e => e.name.toLowerCase() === 'www');
 
@@ -2067,6 +2070,56 @@ async function removeClusterMember(clusterId, instanceId) {
   renderClusterList();
 }
 
+function makeInstDropdownBtn(label, items, onSelect, emptyText) {
+  const wrap = document.createElement('div');
+  wrap.style.position = 'relative';
+
+  const btn = document.createElement('button');
+  btn.className = 'xs';
+  btn.innerHTML = '<i class="fa-solid fa-plus"></i> ' + label;
+
+  const dd = document.createElement('div');
+  dd.className = 'inst-dropdown';
+  dd.style.cssText = 'display:none;position:absolute;top:100%;left:0;z-index:300;' +
+    'background:#1e293b;border:1px solid #334155;border-radius:6px;' +
+    'min-width:150px;max-height:200px;overflow-y:auto;margin-top:2px;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,0.5)';
+
+  btn.onclick = e => {
+    e.stopPropagation();
+    document.querySelectorAll('.inst-dropdown').forEach(d => { if (d !== dd) d.style.display = 'none'; });
+    if (dd.style.display !== 'none') { dd.style.display = 'none'; return; }
+    const list = typeof items === 'function' ? items() : items;
+    dd.innerHTML = '';
+    if (!list.length) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:8px 12px;font-size:0.8rem;color:#6b7280';
+      msg.textContent = emptyText || 'Keine Einträge';
+      dd.appendChild(msg);
+    } else {
+      list.forEach(item => {
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:7px 12px;cursor:pointer;font-size:0.82rem;display:flex;align-items:center;gap:8px';
+        if (item.color) {
+          row.innerHTML = '<span style="width:9px;height:9px;border-radius:50%;background:' + item.color +
+            ';display:inline-block;flex-shrink:0"></span>' + escHtml(item.label);
+        } else {
+          row.textContent = item.label;
+        }
+        row.onmouseenter = () => row.style.background = '#334155';
+        row.onmouseleave = () => row.style.background = '';
+        row.onclick = ev => { ev.stopPropagation(); dd.style.display = 'none'; onSelect(item.id); };
+        dd.appendChild(row);
+      });
+    }
+    dd.style.display = 'block';
+  };
+
+  wrap.appendChild(btn);
+  wrap.appendChild(dd);
+  return wrap;
+}
+
 function renderServicesSection(server) {
   const container = document.getElementById('sb-services');
   container.innerHTML = '';
@@ -2239,10 +2292,11 @@ function renderServicesSection(server) {
         row.appendChild(ownSvcDiv);
       }
 
-      // Actions: +Umgeb. / +Anwend. / +Dienst — stacked vertically
+      // ── Actions ─────────────────────────────────────────────────────────────
       const actionsDiv = document.createElement('div');
-      actionsDiv.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-top:3px';
-      const selStyle = 'font-size:0.72rem;padding:2px 4px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
+      actionsDiv.style.cssText = 'margin-top:4px;display:flex;flex-direction:column;gap:3px';
+
+      // VM-only: gateway checkbox
       if (VM_SVC_TYPES.has(svc.type)) {
         const gwChkRow = document.createElement('div');
         gwChkRow.style.cssText = 'display:flex;gap:5px;align-items:center';
@@ -2256,43 +2310,72 @@ function renderServicesSection(server) {
         gwChkRow.appendChild(gwChkLbl);
         actionsDiv.appendChild(gwChkRow);
       }
-      if (allEnvironments.length) {
-        const envRow = document.createElement('div');
-        envRow.style.cssText = 'display:flex;gap:4px;align-items:center';
-        const envSel = document.createElement('select'); envSel.style.cssText = selStyle;
-        allEnvironments.forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o); });
-        const envBtn = document.createElement('button');
-        envBtn.className = 'xs'; envBtn.textContent = '+Umgeb.';
-        envBtn.onclick = () => addInstanceEnv(inst.id, parseInt(envSel.value));
-        envRow.appendChild(envSel); envRow.appendChild(envBtn);
-        actionsDiv.appendChild(envRow);
+
+      // Dropdown buttons in one row
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;align-items:center';
+
+      if (FULL_INST_TYPES.has(svc.type)) {
+        // +Netzwerk
+        if (allEnvironments.length) {
+          const assignedEnvIds = new Set((inst.environments || []).map(e => e.id));
+          btnRow.appendChild(makeInstDropdownBtn('Netzwerk',
+            () => allEnvironments.filter(e => !assignedEnvIds.has(e.id)).map(e => ({id: e.id, label: e.name, color: e.color})),
+            id => addInstanceEnv(inst.id, id), 'Alle Netzwerke bereits vergeben'));
+        }
+        // +Anwendung
+        if (allApplications.length) {
+          const assignedAppIds = new Set((inst.applications || []).map(a => a.id));
+          btnRow.appendChild(makeInstDropdownBtn('Anwendung',
+            () => allApplications.filter(a => !assignedAppIds.has(a.id)).map(a => ({id: a.id, label: a.name, color: a.color})),
+            id => addInstanceApp(inst.id, id), 'Alle Anwendungen bereits vergeben'));
+        }
+        // +Service
+        btnRow.appendChild(makeInstDropdownBtn('Service',
+          INST_SVC_TYPES.map(t => ({id: t, label: (INST_ICONS[t] || '⚙') + ' ' + t})),
+          t => addInstanceService(inst.id, t, null, null), 'Keine Dienste verfügbar'));
+      } else {
+        // Only +Anwendung for non-full types
+        if (allApplications.length) {
+          const assignedAppIds = new Set((inst.applications || []).map(a => a.id));
+          btnRow.appendChild(makeInstDropdownBtn('Anwendung',
+            () => allApplications.filter(a => !assignedAppIds.has(a.id)).map(a => ({id: a.id, label: a.name, color: a.color})),
+            id => addInstanceApp(inst.id, id), 'Alle Anwendungen bereits vergeben'));
+        }
       }
-      if (allApplications.length) {
-        const appRow = document.createElement('div');
-        appRow.style.cssText = 'display:flex;gap:4px;align-items:center';
-        const appSel = document.createElement('select'); appSel.style.cssText = selStyle;
-        allApplications.forEach(a => { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; appSel.appendChild(o); });
-        const appBtn = document.createElement('button');
-        appBtn.className = 'xs'; appBtn.textContent = '+Anwend.';
-        appBtn.onclick = () => addInstanceApp(inst.id, parseInt(appSel.value));
-        appRow.appendChild(appSel); appRow.appendChild(appBtn);
-        actionsDiv.appendChild(appRow);
-      }
-      const svcRow = document.createElement('div');
-      svcRow.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
-      const isvcTypeSel = document.createElement('select');
-      isvcTypeSel.style.cssText = 'font-size:0.72rem;padding:1px 3px;background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:3px';
-      INST_SVC_TYPES.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; isvcTypeSel.appendChild(o); });
-      const isvcVerInp = document.createElement('input');
-      isvcVerInp.type = 'text'; isvcVerInp.placeholder = 'Version'; isvcVerInp.style.cssText = 'width:70px;font-size:0.72rem;padding:1px 4px';
-      const isvcPortInp = document.createElement('input');
-      isvcPortInp.type = 'number'; isvcPortInp.placeholder = 'Port'; isvcPortInp.style.cssText = 'width:55px;font-size:0.72rem;padding:1px 4px';
-      const isvcAddBtn = document.createElement('button');
-      isvcAddBtn.className = 'xs'; isvcAddBtn.textContent = '+Dienst';
-      isvcAddBtn.onclick = () => addInstanceService(inst.id, isvcTypeSel.value, isvcVerInp.value, isvcPortInp.value);
-      svcRow.appendChild(isvcTypeSel); svcRow.appendChild(isvcVerInp); svcRow.appendChild(isvcPortInp); svcRow.appendChild(isvcAddBtn);
-      actionsDiv.appendChild(svcRow);
+
+      if (btnRow.children.length) actionsDiv.appendChild(btnRow);
       row.appendChild(actionsDiv);
+
+      // ── Instance relations ───────────────────────────────────────────────────
+      const instRels = allInstanceRelations.filter(r =>
+        r.source_instance_id === inst.id || r.target_instance_id === inst.id);
+      if (instRels.length) {
+        const relDiv = document.createElement('div');
+        relDiv.style.cssText = 'margin-top:4px;display:flex;flex-direction:column;gap:2px';
+        instRels.forEach(r => {
+          const isSrc = r.source_instance_id === inst.id;
+          const otherId = isSrc ? r.target_instance_id : r.source_instance_id;
+          const otherClId = isSrc ? r.target_cluster_id : r.source_cluster_id;
+          let otherName = '?';
+          if (otherId) {
+            allServers.forEach(sv => (sv.services||[]).forEach(sv2 => (sv2.instances||[]).forEach(i2 => {
+              if (i2.id === otherId) otherName = i2.name;
+            })));
+          } else if (otherClId) {
+            const cl = allClusters.find(c => c.id === otherClId);
+            if (cl) otherName = cl.name;
+          }
+          const arrow = r.direction === 'from' ? (isSrc ? '←' : '→') : (isSrc ? '→' : '←');
+          const relRow = document.createElement('div');
+          relRow.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:0.72rem;color:#9ca3af';
+          relRow.innerHTML = '<span style="color:#7c3aed;font-weight:600">' + arrow + '</span>' +
+            escHtml(otherName) +
+            '<span style="color:#4b5563">(' + escHtml(r.type) + ')</span>';
+          relDiv.appendChild(relRow);
+        });
+        row.appendChild(relDiv);
+      }
 
       block.appendChild(row);
     });
