@@ -103,7 +103,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#f97316', opacity: 0.65 },
             title: 'Gateway: ' + ((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
@@ -112,7 +112,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: inst.gateway_server_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + ((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
@@ -120,7 +120,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + (gwI ? gwI.name : inst.gateway_instance_id),
           });
@@ -584,7 +584,7 @@ export function renderGraph(skipFit = false) {
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
         id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
-        arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+        arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#f97316', opacity: 0.65 },
         title: 'Gateway: ' + (gwR ? gwR.name : s.gateway_router_id),
         hidden: !showInternet,
@@ -595,7 +595,7 @@ export function renderGraph(skipFit = false) {
       const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
       edgeData.push({
         id: eid, from: s.gateway_server_id, to: s.id,
-        arrows: 'to', width: 1, dashes: [4, 4], physics: false,
+        arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#22d3ee', opacity: 0.65 },
         title: 'Gateway: ' + (gwS ? gwS.hostname : s.gateway_server_id),
       });
