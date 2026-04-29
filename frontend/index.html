@@ -134,9 +134,14 @@
 
     <div class="section-label">Umgebungen</div>
     <div class="chips" id="sb-envs"></div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-      <select id="env-select" style="flex:1"></select>
-      <button class="small" onclick="assignServerEnv()">Hinzufügen</button>
+    <div style="position:relative;margin-top:4px">
+      <button class="small" onclick="toggleEnvDropdown(event)" id="env-add-btn">
+        <i class="fa-solid fa-plus"></i> Netzwerk
+      </button>
+      <div id="env-dropdown" style="display:none;position:absolute;top:100%;left:0;z-index:200;
+           background:#1e293b;border:1px solid #334155;border-radius:6px;
+           min-width:160px;max-height:220px;overflow-y:auto;margin-top:3px;
+           box-shadow:0 4px 16px rgba(0,0,0,0.5)"></div>
     </div>
 
     <div class="section-label">Server-Relation</div>
@@ -1703,11 +1708,7 @@ function openSidebar(serverId) {
     c.onclick = () => removeServerEnv(env.id);
     envChips.appendChild(c);
   });
-  const envSel = document.getElementById('env-select');
-  envSel.innerHTML = '';
-  allEnvironments.forEach(e => {
-    const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; envSel.appendChild(o);
-  });
+  // Populate the env dropdown (built on demand when opened)
 
   const relSel = document.getElementById('rel-target');
   relSel.innerHTML = '';
@@ -2795,8 +2796,33 @@ async function mergeService(sourceId, targetId, instances) {
   await loadAll();
 }
 
-async function assignServerEnv() {
-  const envId = parseInt(document.getElementById('env-select').value);
+function toggleEnvDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('env-dropdown');
+  if (dd.style.display !== 'none') { dd.style.display = 'none'; return; }
+
+  const server = allServers.find(s => s.id === currentServerId);
+  const assignedIds = new Set((server?.environments || []).map(e => e.id));
+  const available = allEnvironments.filter(e => !assignedIds.has(e.id));
+
+  dd.innerHTML = '';
+  if (!available.length) {
+    dd.innerHTML = '<div style="padding:8px 12px;font-size:0.8rem;color:#6b7280">Keine weiteren Umgebungen</div>';
+  } else {
+    available.forEach(env => {
+      const item = document.createElement('div');
+      item.style.cssText = 'padding:7px 12px;cursor:pointer;font-size:0.85rem;display:flex;align-items:center;gap:8px';
+      item.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${env.color};display:inline-block;flex-shrink:0"></span>${escHtml(env.name)}`;
+      item.onmouseenter = () => item.style.background = '#334155';
+      item.onmouseleave = () => item.style.background = '';
+      item.onclick = () => { dd.style.display = 'none'; assignServerEnv(env.id); };
+      dd.appendChild(item);
+    });
+  }
+  dd.style.display = 'block';
+}
+
+async function assignServerEnv(envId) {
   if (!envId) return;
   try { await api('POST', '/servers/' + currentServerId + '/environments/' + envId); }
   catch (e) { return alert('Fehler: ' + e.message); }
@@ -3343,6 +3369,11 @@ async function exportJson() {
 
 document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+document.addEventListener('click', () => {
+  const dd = document.getElementById('env-dropdown');
+  if (dd) dd.style.display = 'none';
 });
 
 loadAll();
