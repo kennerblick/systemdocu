@@ -633,7 +633,7 @@ export function renderGraph(skipFit = false) {
     ? {
         physics: { enabled: false },
         interaction: { hover: true, tooltipDelay: 200 },
-        edges: { smooth: { type: 'dynamic' } },
+        edges: { smooth: { enabled: false } },
       }
     : {
         physics: {
@@ -641,7 +641,7 @@ export function renderGraph(skipFit = false) {
           stabilization: { iterations: 150 },
         },
         interaction: { hover: true, tooltipDelay: 200, maxZoomLevel: 5 },
-        edges: { smooth: { type: 'continuous' } },
+        edges: { smooth: { enabled: false } },
       };
 
   // Read the freshly-set nodes/edges from state
