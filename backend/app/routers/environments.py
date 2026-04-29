@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Environment
 from ..schemas import EnvironmentCreate, EnvironmentUpdate, EnvironmentOut
 
@@ -27,6 +28,7 @@ async def create_environment(payload: EnvironmentCreate, db: AsyncSession = Depe
         await db.rollback()
         raise HTTPException(status_code=409, detail="Umgebung existiert bereits")
     await db.refresh(obj)
+    await bus.broadcast("data_changed", {"entity": "environment"})
     return obj
 
 
@@ -44,6 +46,7 @@ async def update_environment(env_id: int, payload: EnvironmentUpdate, db: AsyncS
         await db.rollback()
         raise HTTPException(status_code=409, detail="Name bereits vergeben")
     await db.refresh(obj)
+    await bus.broadcast("data_changed", {"entity": "environment"})
     return obj
 
 
@@ -55,3 +58,4 @@ async def delete_environment(env_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Environment not found")
     await db.delete(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "environment"})

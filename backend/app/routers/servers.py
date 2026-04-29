@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Server, Service, ServiceInstance, Environment
 from ..schemas import ServerCreate, ServerUpdate, ServerOut
 
@@ -60,6 +61,7 @@ async def create_server(payload: ServerCreate, db: AsyncSession = Depends(get_db
         await db.rollback()
         raise HTTPException(status_code=409, detail=f"Hostname '{payload.hostname}' existiert bereits")
     await db.refresh(server)
+    await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server.id, db)
 
 
@@ -73,6 +75,7 @@ async def update_server(server_id: int, payload: ServerUpdate, db: AsyncSession 
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Hostname bereits vergeben")
+    await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)
 
 
@@ -81,7 +84,7 @@ async def delete_server(server_id: int, db: AsyncSession = Depends(get_db)):
     server = await get_server_or_404(server_id, db)
     await db.delete(server)
     await db.commit()
-
+    await bus.broadcast("data_changed", {"entity": "server"})
 
 
 @router.post("/{server_id}/environments/{env_id}", response_model=ServerOut)
@@ -99,6 +102,7 @@ async def add_server_environment(server_id: int, env_id: int, db: AsyncSession =
             elif env.default_gateway_server_id:
                 server.gateway_server_id = env.default_gateway_server_id
         await db.commit()
+        await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)
 
 
@@ -107,4 +111,5 @@ async def remove_server_environment(server_id: int, env_id: int, db: AsyncSessio
     server = await get_server_or_404(server_id, db)
     server.environments = [e for e in server.environments if e.id != env_id]
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)

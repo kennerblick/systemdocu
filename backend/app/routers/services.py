@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Service, Server, ServiceInstance
 from ..schemas import ServiceCreate, ServiceOut
 
@@ -38,6 +39,7 @@ async def create_service(server_id: int, payload: ServiceCreate, db: AsyncSessio
     service = Service(server_id=server_id, **payload.model_dump())
     db.add(service)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "service"})
     result = await db.execute(
         select(Service).options(*_svc_options).where(Service.id == service.id)
     )
@@ -52,3 +54,4 @@ async def delete_service(service_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Service not found")
     await db.delete(service)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "service"})

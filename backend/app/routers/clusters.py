@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Cluster, ServiceInstance
 from ..schemas import ClusterCreate, ClusterUpdate, ClusterOut, ClusterOwnInstanceCreate
 
@@ -42,6 +43,7 @@ async def create_cluster(payload: ClusterCreate, db: AsyncSession = Depends(get_
     obj = Cluster(**payload.model_dump())
     db.add(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "cluster"})
     return await get_cluster_or_404(obj.id, db)
 
 
@@ -51,6 +53,7 @@ async def update_cluster(cluster_id: int, payload: ClusterUpdate, db: AsyncSessi
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "cluster"})
     return await get_cluster_or_404(cluster_id, db)
 
 
@@ -59,6 +62,7 @@ async def delete_cluster(cluster_id: int, db: AsyncSession = Depends(get_db)):
     obj = await get_cluster_or_404(cluster_id, db)
     await db.delete(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "cluster"})
 
 
 @router.post("/{cluster_id}/instances/{instance_id}", response_model=ClusterOut)
@@ -70,6 +74,7 @@ async def add_cluster_member(cluster_id: int, instance_id: int, db: AsyncSession
     if inst not in obj.members:
         obj.members.append(inst)
         await db.commit()
+        await bus.broadcast("data_changed", {"entity": "cluster"})
     return await get_cluster_or_404(cluster_id, db)
 
 
@@ -78,6 +83,7 @@ async def remove_cluster_member(cluster_id: int, instance_id: int, db: AsyncSess
     obj = await get_cluster_or_404(cluster_id, db)
     obj.members = [m for m in obj.members if m.id != instance_id]
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "cluster"})
     return await get_cluster_or_404(cluster_id, db)
 
 
@@ -87,4 +93,5 @@ async def create_cluster_own_instance(cluster_id: int, payload: ClusterOwnInstan
     inst = ServiceInstance(cluster_id=cluster_id, **payload.model_dump())
     db.add(inst)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "cluster"})
     return await get_cluster_or_404(cluster_id, db)

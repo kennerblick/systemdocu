@@ -419,6 +419,7 @@ let allInstanceRelations = [];
 let allRouters = [];
 let allClusters = [];
 let layoutMode = 'physics';
+let currentRenderedLayout = null;
 let physicsDamping = 0.09;
 let irSrvEdgeIds = [];
 let inetNodeIds = [];
@@ -460,7 +461,14 @@ async function api(method, path, body) {
   return r.json();
 }
 
-async function loadAll() {
+let _lastLoadAll = 0;
+
+async function loadAll(skipFit = false) {
+  // Debounce SSE-triggered reloads that arrive right after a local mutation
+  const now = Date.now();
+  if (skipFit && now - _lastLoadAll < 600) return;
+  _lastLoadAll = now;
+
   try {
     [allServers, allRelations, allEnvironments, allApplications, allInstanceRelations, allRouters, allClusters] = await Promise.all([
       api('GET', '/servers'),
@@ -475,10 +483,10 @@ async function loadAll() {
     console.error('loadAll failed:', e);
     return;
   }
-  renderGraph();
+  renderGraph(skipFit);
   renderLegend();
   updateFilters();
-  applyFilters();
+  applyFilters(skipFit);
   if (currentServerId) openSidebar(currentServerId);
   else if (currentClusterId) openClusterSidebar(currentClusterId);
   checkZabbixStatus();
@@ -1053,7 +1061,7 @@ function applyDamping(val) {
   }
 }
 
-function renderGraph() {
+function renderGraph(skipFit = false) {
   const instMap = buildInstServerMap();
   const nodeData = allServers.map(buildNode);
   const edgeData = [];
@@ -1151,10 +1159,9 @@ function renderGraph() {
     nodeData.forEach(n => { if (pos[n.id]) { n.x = pos[n.id].x; n.y = pos[n.id].y; n.fixed = true; } });
   }
 
-  if (network) {
+  if (network && currentRenderedLayout === layoutMode) {
     showingInstances = layoutMode === 'hierarchical';
-    nodes.clear(); nodes.add(nodeData);
-    edges.clear(); edges.add(edgeData);
+    patchGraph(nodeData, edgeData);
     if (layoutMode === 'hierarchical') {
       irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({id, hidden: true}); });
     } else {
@@ -1162,6 +1169,7 @@ function renderGraph() {
     }
     return;
   }
+  currentRenderedLayout = layoutMode;
 
   const {DataSet, Network} = vis;
   nodes = new DataSet(nodeData);
@@ -1273,6 +1281,81 @@ function renderGraph() {
     tooltip.style.left = (x + tw > window.innerWidth  ? ev.clientX - tw - 8 : x) + 'px';
     tooltip.style.top  = (y + th > window.innerHeight ? ev.clientY - th - 8 : y) + 'px';
   });
+}
+
+// ── Diff-based graph patching (preserves node positions in physics mode) ─────
+
+function _nodeSignature(n) {
+  return n.label + '|' + n.shape + '|' + (n.borderWidth || 1) + '|' +
+         JSON.stringify(n.color) + '|' + (n.title || '');
+}
+
+function _edgeSignature(e) {
+  return String(e.from) + '→' + String(e.to) + '|' + (e.title || '') +
+         '|' + (e.dashes ? '1' : '0') + '|' + (e.arrows || '');
+}
+
+function patchGraph(newNodeData, newEdgeData) {
+  const oldNodeIds = new Set(nodes.getIds().map(String));
+  const oldEdgeIds = new Set(edges.getIds().map(String));
+
+  const newNodeMap = new Map(newNodeData.map(n => [String(n.id), n]));
+  const newEdgeMap = new Map(newEdgeData.map(e => [String(e.id), e]));
+
+  // Remove nodes/edges no longer present
+  const removeNodes = [...oldNodeIds].filter(id => !newNodeMap.has(id));
+  const removeEdges = [...oldEdgeIds].filter(id => !newEdgeMap.has(id));
+  if (removeNodes.length) nodes.remove(removeNodes);
+  if (removeEdges.length) edges.remove(removeEdges);
+
+  // Add new / update changed nodes
+  const addNodes = [], updNodes = [];
+  newNodeData.forEach(n => {
+    const sid = String(n.id);
+    if (!oldNodeIds.has(sid)) {
+      addNodes.push(n);
+    } else {
+      const old = nodes.get(n.id);
+      if (!old || _nodeSignature(n) !== _nodeSignature(old)) {
+        if (layoutMode === 'physics') {
+          // Preserve current position so the node doesn't jump
+          const bn = network.body.nodes[n.id];
+          if (bn) n = {...n, x: bn.x, y: bn.y};
+        }
+        updNodes.push(n);
+      }
+    }
+  });
+
+  // Add new / update changed edges
+  const addEdges = [], updEdges = [];
+  newEdgeData.forEach(e => {
+    const sid = String(e.id);
+    if (!oldEdgeIds.has(sid)) {
+      addEdges.push(e);
+    } else {
+      const old = edges.get(e.id);
+      if (!old || _edgeSignature(e) !== _edgeSignature(old)) updEdges.push(e);
+    }
+  });
+
+  if (addNodes.length) nodes.add(addNodes);
+  if (updNodes.length) nodes.update(updNodes);
+  if (addEdges.length) edges.add(addEdges);
+  if (updEdges.length) edges.update(updEdges);
+
+  // In physics mode, gently re-settle only if the structure actually changed
+  if (layoutMode === 'physics' && (addNodes.length || removeNodes.length)) {
+    network.stabilize(30);
+  }
+}
+
+// ── SSE client — real-time multi-user sync ────────────────────────────────────
+
+function initSSE() {
+  const es = new EventSource('/api/events');
+  es.addEventListener('data_changed', () => loadAll(true));
+  es.onerror = () => { es.close(); setTimeout(initSSE, 5000); };
 }
 
 function renderLegend() {
@@ -3263,6 +3346,7 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
 });
 
 loadAll();
+initSSE();
 
 // Sidebar resizer
 (function() {

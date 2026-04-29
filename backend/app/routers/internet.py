@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import InternetRouter, Environment, router_environments
 from ..schemas import InternetRouterCreate, InternetRouterOut
 
@@ -52,6 +53,7 @@ async def create_router(payload: InternetRouterCreate, db: AsyncSession = Depend
     await db.flush()
     await _apply_environments(obj.id, env_ids, db)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "router"})
     return await get_router_or_404(obj.id, db)
 
 
@@ -62,6 +64,7 @@ async def update_router(router_id: int, payload: InternetRouterCreate, db: Async
         setattr(obj, field, value)
     await _apply_environments(router_id, payload.environment_ids, db)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "router"})
     return await get_router_or_404(router_id, db)
 
 
@@ -70,3 +73,4 @@ async def delete_router(router_id: int, db: AsyncSession = Depends(get_db)):
     obj = await get_router_or_404(router_id, db)
     await db.delete(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "router"})

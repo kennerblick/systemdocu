@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
 from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, InstanceRelationUpdate, ServiceCreate, ServiceSimpleOut
 
@@ -48,6 +49,7 @@ async def create_instance(service_id: int, payload: ServiceInstanceCreate, db: A
     obj = ServiceInstance(service_id=service_id, **payload.model_dump())
     db.add(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(obj.id, db)
 
 
@@ -56,6 +58,7 @@ async def delete_instance(instance_id: int, db: AsyncSession = Depends(get_db)):
     obj = await get_instance_or_404(instance_id, db)
     await db.delete(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
 
 
 @router.patch("/api/instances/{instance_id}", response_model=ServiceInstanceOut)
@@ -64,6 +67,7 @@ async def update_instance(instance_id: int, payload: ServiceInstanceUpdate, db: 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(instance_id, db)
 
 
@@ -82,6 +86,7 @@ async def add_environment(instance_id: int, env_id: int, db: AsyncSession = Depe
             elif env.default_gateway_server_id:
                 obj.gateway_server_id = env.default_gateway_server_id
         await db.commit()
+        await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(instance_id, db)
 
 
@@ -90,6 +95,7 @@ async def remove_environment(instance_id: int, env_id: int, db: AsyncSession = D
     obj = await get_instance_or_404(instance_id, db)
     obj.environments = [e for e in obj.environments if e.id != env_id]
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(instance_id, db)
 
 
@@ -103,6 +109,7 @@ async def add_application(instance_id: int, app_id: int, db: AsyncSession = Depe
     if app not in obj.applications:
         obj.applications.append(app)
         await db.commit()
+        await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(instance_id, db)
 
 
@@ -111,6 +118,7 @@ async def remove_application(instance_id: int, app_id: int, db: AsyncSession = D
     obj = await get_instance_or_404(instance_id, db)
     obj.applications = [a for a in obj.applications if a.id != app_id]
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
     return await get_instance_or_404(instance_id, db)
 
 
@@ -126,6 +134,7 @@ async def create_instance_relation(payload: InstanceRelationCreate, db: AsyncSes
     db.add(rel)
     await db.commit()
     await db.refresh(rel)
+    await bus.broadcast("data_changed", {"entity": "relation"})
     return rel
 
 
@@ -139,6 +148,7 @@ async def update_instance_relation(rel_id: int, payload: InstanceRelationUpdate,
         setattr(rel, field, value)
     await db.commit()
     await db.refresh(rel)
+    await bus.broadcast("data_changed", {"entity": "relation"})
     return rel
 
 
@@ -150,6 +160,7 @@ async def delete_instance_relation(rel_id: int, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Relation not found")
     await db.delete(rel)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "relation"})
 
 
 @router.post("/api/instances/{instance_id}/services", response_model=ServiceSimpleOut, status_code=201)
@@ -159,6 +170,7 @@ async def create_instance_service(instance_id: int, payload: ServiceCreate, db: 
     db.add(svc)
     await db.commit()
     await db.refresh(svc)
+    await bus.broadcast("data_changed", {"entity": "instance"})
     return svc
 
 
@@ -172,3 +184,4 @@ async def delete_instance_service(instance_id: int, service_id: int, db: AsyncSe
         raise HTTPException(status_code=404, detail="Service not found")
     await db.delete(svc)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})

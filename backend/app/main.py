@@ -1,16 +1,19 @@
+import asyncio
 import logging
 import logging.handlers
 import os
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
 from .models import Server, Service, Relation, Environment, Application, InternetRouter
 from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
 from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet, clusters
+from .events import bus
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -54,57 +57,11 @@ app.include_router(clusters.router)
 
 @app.on_event("startup")
 async def startup():
+    # Tables and schema are managed by Alembic (entrypoint.sh runs `alembic upgrade head`
+    # before uvicorn starts).  The create_all call here is kept only as a safety net for
+    # local dev runs without Docker where Alembic may not have been executed.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    migrations = [
-        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS subnet VARCHAR(20)",
-        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS ip VARCHAR(45)",
-        "ALTER TABLE internet_routers ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
-        "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway VARCHAR(45)",
-        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS default_gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
-        "ALTER TABLE environments ADD COLUMN IF NOT EXISTS default_gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
-        "ALTER TABLE servers ADD COLUMN IF NOT EXISTS is_gateway BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
-        "ALTER TABLE servers ADD COLUMN IF NOT EXISTS gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_router_id INTEGER REFERENCES internet_routers(id) ON DELETE SET NULL",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
-        "ALTER TABLE services ALTER COLUMN server_id DROP NOT NULL",
-        "ALTER TABLE services ADD COLUMN IF NOT EXISTS instance_id INTEGER REFERENCES service_instances(id) ON DELETE CASCADE",
-        "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS direction VARCHAR(10) NOT NULL DEFAULT 'to'",
-        "ALTER TABLE instance_relations ALTER COLUMN source_instance_id DROP NOT NULL",
-        "ALTER TABLE instance_relations ALTER COLUMN target_instance_id DROP NOT NULL",
-        "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS source_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
-        "ALTER TABLE instance_relations ADD COLUMN IF NOT EXISTS target_cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
-        "ALTER TABLE clusters ADD COLUMN IF NOT EXISTS domain VARCHAR(255)",
-        "ALTER TABLE service_instances ALTER COLUMN service_id DROP NOT NULL",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS cluster_id INTEGER REFERENCES clusters(id) ON DELETE CASCADE",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS fqdn VARCHAR(255)",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS is_gateway BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE service_instances ADD COLUMN IF NOT EXISTS gateway_instance_id INTEGER REFERENCES service_instances(id) ON DELETE SET NULL",
-        # migrate old single environment_id to M2M table (only if legacy column still exists)
-        """
-        DO $$ BEGIN
-          IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='internet_routers' AND column_name='environment_id'
-          ) THEN
-            INSERT INTO router_environments (router_id, environment_id)
-            SELECT id, environment_id FROM internet_routers
-            WHERE environment_id IS NOT NULL
-            ON CONFLICT DO NOTHING;
-          END IF;
-        END $$
-        """,
-    ]
-    for sql in migrations:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text(sql))
-        except Exception as e:
-            logger.error("startup migration failed: %s | %s", sql.strip()[:80], e)
 
     await seed_data()
 
@@ -140,6 +97,32 @@ async def seed_data():
         await db.commit()
 
 
+# ── Server-Sent Events ────────────────────────────────────────────────────────
+
+@app.get("/api/events")
+async def sse(request: Request):
+    """SSE endpoint — clients receive a 'data_changed' event after any write."""
+    async def stream():
+        async with bus.subscribe() as q:
+            yield ": connected\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=25)
+                    yield msg
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Legacy endpoints (kept in main.py for backward-compat) ───────────────────
+
 @app.get("/api/relations", response_model=List[RelationOut])
 async def list_relations(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Relation))
@@ -152,6 +135,7 @@ async def create_relation(payload: RelationCreate, db: AsyncSession = Depends(ge
     db.add(rel)
     await db.commit()
     await db.refresh(rel)
+    await bus.broadcast("data_changed", {"entity": "relation"})
     return rel
 
 
@@ -218,5 +202,6 @@ async def import_zabbix(payload: ZabbixImportPayload, db: AsyncSession = Depends
             skipped += 1
 
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "server"})
     logger.warning("import_zabbix finished: created=%d updated=%d skipped=%d", created, updated, skipped) if skipped else None
     return {"created": created, "updated": updated, "skipped": skipped}

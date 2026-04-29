@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
+from ..events import bus
 from ..models import Application
 from ..schemas import ApplicationCreate, ApplicationOut
 
@@ -27,6 +28,7 @@ async def create_application(payload: ApplicationCreate, db: AsyncSession = Depe
         await db.rollback()
         raise HTTPException(status_code=409, detail="Anwendung existiert bereits")
     await db.refresh(obj)
+    await bus.broadcast("data_changed", {"entity": "application"})
     return obj
 
 
@@ -38,3 +40,4 @@ async def delete_application(app_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Application not found")
     await db.delete(obj)
     await db.commit()
+    await bus.broadcast("data_changed", {"entity": "application"})
