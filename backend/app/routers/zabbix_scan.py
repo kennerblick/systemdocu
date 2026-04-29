@@ -89,6 +89,8 @@ LLD_PATTERNS = [
     ("pg.db.discovery*",              "postgresql"),
     ("samba.shares*",                 "samba"),
     ("samba.share.discovery*",        "samba"),
+    ("nfs.share.discovery*",          "nfs"),
+    ("nfs*discovery*",                "nfs"),
     ("docker.container.discovery*",   "docker"),
     ("kubernetes*discovery*",         "kubernetes"),
     ("veeam*discovery*",              "veeam"),

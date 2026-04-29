@@ -41,6 +41,7 @@ TEMPLATE_MAP = {
     "Template OS Windows*": "windows",
     "Template Virt Hyper*": "hyperv",
     "Template App Samba*": "samba",
+    "Template App NFS*": "nfs",
     "Template App SSH*": "sftp",
     "Template App FreeIPA*": "freeipa",
     "Template App Zabbix*": "zabbix",

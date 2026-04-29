@@ -29,7 +29,7 @@ OS_HEX = {
 }
 SVC_HEX = {
     "postgresql": "336791", "docker": "2496ED", "kubernetes": "326CE5",
-    "hyperv": "00ADEF",    "samba": "D97706",   "sftp": "059669",
+    "hyperv": "00ADEF",    "samba": "D97706",   "nfs": "B45309",    "sftp": "059669",
     "freeipa": "7C3AED",   "zabbix": "E53E3E",  "graylog": "2D3748",
     "veeam": "00B050",     "minio": "C83B0E",   "gateway": "0D9488",
     "webserver": "0EA5E9",
