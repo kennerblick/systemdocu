@@ -3477,28 +3477,33 @@ function _renderSearchDd() {
   dd.innerHTML = '';
   _searchResults.forEach((item, i) => {
     const row = document.createElement('div');
-    row.style.cssText = 'padding:7px 12px;cursor:pointer;font-size:0.82rem;display:flex;flex-direction:column;gap:1px' +
-      (i === _searchIdx ? ';background:#334155' : '');
+    row.style.cssText = 'padding:7px 12px;cursor:pointer;font-size:0.82rem;display:flex;flex-direction:column;gap:1px';
     const icon = item.type === 'server' ? '<i class="fa-solid fa-server" style="color:#60a5fa;width:12px"></i>'
                                         : '<i class="fa-solid fa-cube" style="color:#a78bfa;width:12px"></i>';
     row.innerHTML = '<span style="color:#e0e0e0;display:flex;align-items:center;gap:6px">' + icon + escHtml(item.label) + '</span>' +
       (item.sub ? '<span style="font-size:0.72rem;color:#6b7280;padding-left:18px">' + escHtml(item.sub) + '</span>' : '');
-    row.onmouseenter = () => { _searchIdx = i; _renderSearchDd(); };
+    row.onmouseenter = () => { _searchIdx = i; _highlightSearchDd(); };
+    row.onmouseleave = () => { _searchIdx = -1; _highlightSearchDd(); };
     row.onclick = () => _selectSearchResult(item);
     dd.appendChild(row);
   });
   dd.style.display = 'block';
 }
 
+function _highlightSearchDd() {
+  const dd = document.getElementById('search-dd');
+  [...dd.children].forEach((row, i) => { row.style.background = i === _searchIdx ? '#334155' : ''; });
+}
+
 function onSearchKey(e) {
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     _searchIdx = Math.min(_searchIdx + 1, _searchResults.length - 1);
-    _renderSearchDd();
+    _highlightSearchDd();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     _searchIdx = Math.max(_searchIdx - 1, 0);
-    _renderSearchDd();
+    _highlightSearchDd();
   } else if (e.key === 'Enter' && _searchResults.length) {
     e.preventDefault();
     _selectSearchResult(_searchResults[Math.max(_searchIdx, 0)]);
