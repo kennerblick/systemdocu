@@ -1,0 +1,7 @@
+# Force shell scripts to LF so they work inside Linux containers
+*.sh text eol=lf
+
+# Python and config files
+*.py text eol=lf
+*.ini text eol=lf
+*.mako text eol=lf
