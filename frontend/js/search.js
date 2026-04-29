@@ -13,6 +13,7 @@ import {
   setBlinkState,
   showingInstances,
   INST_ZOOM_THRESHOLD,
+  layoutMode,
 } from './state.js';
 
 import { escHtml } from './utils.js';
@@ -107,7 +108,9 @@ function _selectSearchResult(item) {
 function _zoomToNode(nodeId) {
   if (!network) return;
   stopBlink();
-  if (typeof nodeId === 'string' && nodeId.startsWith('inst_') && !showingInstances) {
+  // In physics mode: always zoom past the threshold first so instances appear,
+  // then focus on the target element after the animation settles.
+  if (layoutMode === 'physics' && !showingInstances) {
     network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15, animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
     setTimeout(() => { updateInstanceVisibility(network.getScale()); _focusNode(nodeId); }, 460);
   } else {
