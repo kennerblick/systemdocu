@@ -1,0 +1,62 @@
+/*
+ * main.css — all application styles for systemdocu
+ * Extracted from the original monolithic index.html <style> block.
+ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
+#topbar{background:#16213e;padding:10px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #0f3460;flex-shrink:0;flex-wrap:wrap}
+#topbar h1{font-size:1.1rem;color:#e94560;margin-right:auto;letter-spacing:1px}
+button{background:#0f3460;color:#e0e0e0;border:none;padding:7px 14px;border-radius:5px;cursor:pointer;font-size:0.85rem}
+button:hover{background:#e94560}
+button.danger{background:#7f1d1d}
+button.danger:hover{background:#ef4444}
+button.small{padding:3px 8px;font-size:0.75rem}
+button.xs{padding:1px 6px;font-size:0.7rem}
+select,input[type=text],input[type=number],input[type=color],textarea{background:#0f3460;color:#e0e0e0;border:1px solid #1d4ed8;border-radius:4px;padding:5px 8px;font-size:0.85rem}
+select{cursor:pointer}
+#main{display:flex;flex:1;overflow:hidden}
+#graph{flex:1;background:#1a1a2e;position:relative}
+#graph-legend{position:absolute;top:10px;right:10px;z-index:10;background:rgba(22,33,62,0.93);border:1px solid #0f3460;border-radius:7px;padding:10px 14px;font-size:0.76rem;color:#9ca3af;pointer-events:none;min-width:130px;display:none}
+#graph-legend .leg-title{font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:#4b5563;margin-bottom:7px}
+#graph-legend .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#d1d5db}
+#graph-legend .leg-dot{width:11px;height:11px;border-radius:2px;flex-shrink:0}
+#edge-tooltip{position:fixed;z-index:200;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:7px 11px;font-size:0.78rem;color:#e2e8f0;pointer-events:none;white-space:pre;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none}
+#sidebar-resizer{width:5px;background:transparent;cursor:col-resize;flex-shrink:0;display:none;transition:background 0.15s}
+#sidebar-resizer:hover,#sidebar-resizer.dragging{background:#1d4ed8}
+#sidebar{width:430px;min-width:280px;max-width:700px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}
+#sidebar.open{display:flex}
+#sidebar h2{font-size:1rem;color:#e94560;border-bottom:1px solid #0f3460;padding-bottom:6px}
+.meta-row{font-size:0.82rem;color:#9ca3af}
+.meta-row span{color:#e0e0e0}
+.section-label{font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.75rem;color:#fff;cursor:pointer;user-select:none}
+.chip:hover{opacity:0.75}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center}
+.modal-backdrop.open{display:flex}
+.modal{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:20px;min-width:340px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto}
+.modal h3{color:#e94560;font-size:1rem}
+.modal-row{display:flex;flex-direction:column;gap:4px}
+.modal-row label{font-size:0.78rem;color:#9ca3af}
+.modal-row input,.modal-row select,.modal-row textarea{width:100%}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.list-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #0f3460}
+.dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+#filter-bar{display:flex;align-items:center;gap:6px}
+#filter-bar label{font-size:0.82rem;color:#9ca3af}
+.svc-block{background:#0f1b35;border-radius:6px;padding:8px;margin-top:4px}
+.svc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.svc-title{font-size:0.95rem;font-weight:600;color:#93c5fd}
+.instance-row{display:flex;flex-direction:column;gap:3px;padding:9px 0 5px;border-top:2px solid #1e3a5f}
+.instance-name{font-size:0.8rem;color:#e0e0e0;font-weight:500}
+.instance-chips{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+.add-instance-form{display:flex;gap:5px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid #1e3a5f}
+.add-instance-form input{flex:1;font-size:0.78rem;padding:3px 6px}
+.assign-row{display:flex;gap:5px;align-items:center;margin-top:4px}
+.assign-row select{flex:1;font-size:0.75rem;padding:2px 4px}
+.svc-postgresql .svc-title{color:#93c5fd}
+.badge{padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:#fff}
+.svc-postgresql{background:#1e3a5f}
+.svc-docker .svc-title{color:#7dd3fc}
+.svc-kubernetes .svc-title{color:#818cf8}
