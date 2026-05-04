@@ -108,27 +108,31 @@ function _selectSearchResult(item) {
 function _zoomToNode(nodeId) {
   if (!network) return;
   stopBlink();
-  // In physics mode: zoom past threshold first so instances appear,
-  // then wait for physics to stabilise before focusing the target node.
   if (layoutMode === 'physics' && !showingInstances) {
-    network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15, animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
-    setTimeout(() => {
-      updateInstanceVisibility(network.getScale());
-      // Focus only after physics has settled; fallback after 1.2 s.
-      let done = false;
-      const go = () => { if (done) return; done = true; _focusNode(nodeId); };
-      network.once('stabilized', go);
-      setTimeout(go, 1200);
-    }, 320);
+    // Jump past threshold instantly so instances are added to the DataSet.
+    network.moveTo({ scale: INST_ZOOM_THRESHOLD + 0.15 });
+    updateInstanceVisibility(network.getScale());
+    // Wait for physics to settle, then focus. Fallback after 1.5 s.
+    let done = false;
+    const go = () => { if (done) return; done = true; _focusNode(nodeId); };
+    network.once('stabilized', go);
+    setTimeout(go, 1500);
   } else {
     _focusNode(nodeId);
   }
 }
 
-/** Focuses the camera on a node and starts the blink animation. */
+/** Focuses the camera on a node using its current graph position. */
 function _focusNode(nodeId) {
-  if (!network || !nodes.get(nodeId)) return;
-  network.focus(nodeId, { scale: 1.6, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+  if (!network) return;
+  let pos;
+  try { pos = network.getPosition(nodeId); } catch (_) { return; }
+  if (!pos) return;
+  network.moveTo({
+    position: { x: pos.x, y: pos.y },
+    scale: 1.6,
+    animation: { duration: 500, easingFunction: 'easeInOutQuad' },
+  });
   _startBlink(nodeId);
 }
 
