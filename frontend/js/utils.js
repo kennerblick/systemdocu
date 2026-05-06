@@ -10,6 +10,13 @@ import {
 } from './state.js';
 
 /**
+ * Returns the display label for a server: common_name if set, otherwise hostname.
+ */
+export function displayName(server) {
+  return (server.common_name && server.common_name.trim()) || server.hostname;
+}
+
+/**
  * Escapes HTML special characters to prevent XSS in innerHTML assignments.
  */
 export function escHtml(s) {

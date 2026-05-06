@@ -24,10 +24,12 @@ function _buildSearchIndex() {
   const idx = [];
   allServers.forEach(srv => {
     const ips = (srv.ip || '').split(',').map(s => s.trim()).filter(Boolean);
-    idx.push({ nodeId: srv.id, label: srv.hostname, sub: ips.join(', '), ips, type: 'server' });
+    const label = (srv.common_name && srv.common_name.trim()) || srv.hostname;
+    const sub = [srv.common_name && srv.common_name !== label ? srv.hostname : '', ips.join(', ')].filter(Boolean).join(' · ');
+    idx.push({ nodeId: srv.id, label, hostname: srv.hostname, common_name: srv.common_name || '', sub, ips, type: 'server' });
     (srv.services || []).forEach(svc => {
       (svc.instances || []).forEach(inst => {
-        idx.push({ nodeId: 'inst_' + inst.id, label: inst.name, sub: srv.hostname, ips: [], type: 'instance' });
+        idx.push({ nodeId: 'inst_' + inst.id, label: inst.name, hostname: '', common_name: '', sub: label, ips: [], type: 'instance' });
       });
     });
   });
@@ -43,6 +45,8 @@ export function onSearchInput(q) {
   if (!q) { dd.style.display = 'none'; setSearchState([], -1); return; }
   const results = _buildSearchIndex().filter(item =>
     item.label.toLowerCase().includes(q) ||
+    item.hostname.toLowerCase().includes(q) ||
+    item.common_name.toLowerCase().includes(q) ||
     item.sub.toLowerCase().includes(q) ||
     item.ips.some(ip => ip.includes(q))
   ).slice(0, 20);

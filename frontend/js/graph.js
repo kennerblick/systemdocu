@@ -25,7 +25,7 @@ import {
   currentServerId, currentClusterId,
 } from './state.js';
 
-import { buildInstServerMap } from './utils.js';
+import { buildInstServerMap, displayName } from './utils.js';
 import { applyFilters } from './filters.js';
 import { stopBlink } from './search.js';
 import { openSidebar, closeSidebar } from './sidebar.js';
@@ -44,12 +44,13 @@ export function buildNode(server) {
   const col = serverColor(server);
   return {
     id: server.id,
-    label: server.hostname,
+    label: displayName(server),
     shape: 'dot',
     size: 18,
     color: { background: col, border: col, highlight: { background: col, border: '#fff' } },
     font: { color: '#e0e0e0', size: 13 },
     title: '[' + server.os_type + '] ' + server.hostname +
+           (server.common_name ? ' (' + server.common_name + ')' : '') +
            (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
            (server.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
            (server.gateway_router_id ? '<br>GW: ' + ((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +

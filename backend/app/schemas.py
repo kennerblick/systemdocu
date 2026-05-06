@@ -124,6 +124,7 @@ class ServiceOut(ServiceBase):
 
 class ServerBase(BaseModel):
     hostname: str
+    common_name: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
     os_type: str = "linux"
@@ -139,6 +140,7 @@ class ServerCreate(ServerBase):
 
 class ServerUpdate(BaseModel):
     hostname: Optional[str] = None
+    common_name: Optional[str] = None
     ip: Optional[str] = None
     gateway: Optional[str] = None
     os_type: Optional[str] = None

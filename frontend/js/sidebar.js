@@ -15,7 +15,7 @@ import {
 } from './state.js';
 
 import { api, loadAll } from './api.js';
-import { escHtml, buildInstServerMap, makeInstDropdownBtn } from './utils.js';
+import { escHtml, buildInstServerMap, makeInstDropdownBtn, displayName } from './utils.js';
 
 // ── Sidebar open/close ────────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ export function openSidebar(serverId) {
   document.getElementById('cl-sidebar').style.display = 'none';
   document.getElementById('srv-sidebar').style.display = 'contents';
   document.getElementById('sidebar').classList.add('open');
-  document.getElementById('sb-hostname').textContent = server.hostname;
+  document.getElementById('sb-hostname').textContent = displayName(server);
 
   const ipEl = document.getElementById('sb-ip');
   const ips = (server.ip || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -49,7 +49,7 @@ export function openSidebar(serverId) {
     if (r) gwText = r.name + (r.internal_ip ? ' (' + r.internal_ip + ')' : '');
   } else if (server.gateway_server_id) {
     const gs = allServers.find(s => s.id === server.gateway_server_id);
-    if (gs) gwText = gs.hostname + ' [GW-Server]';
+    if (gs) gwText = displayName(gs) + ' [GW-Server]';
   }
   if (gwText) { gwEl.textContent = gwText; gwRow.style.display = ''; }
   else { gwRow.style.display = 'none'; }
@@ -68,9 +68,9 @@ export function openSidebar(serverId) {
 
   const relSel = document.getElementById('rel-target');
   relSel.innerHTML = '';
-  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
+  [...allServers].sort((a, b) => displayName(a).localeCompare(displayName(b))).forEach(s => {
     const o = document.createElement('option'); o.value = s.id;
-    o.textContent = s.hostname + (s.id === currentServerId ? ' (dieser)' : '');
+    o.textContent = displayName(s) + (s.id === currentServerId ? ' (dieser)' : '');
     relSel.appendChild(o);
   });
 
@@ -108,8 +108,8 @@ export function openSidebar(serverId) {
     tgtSrvSel.appendChild(o);
   });
   const srvGroup = document.createElement('optgroup'); srvGroup.label = 'Server';
-  [...allServers].sort((a, b) => a.hostname.localeCompare(b.hostname)).forEach(s => {
-    const o = document.createElement('option'); o.value = s.id; o.textContent = s.hostname; srvGroup.appendChild(o);
+  [...allServers].sort((a, b) => displayName(a).localeCompare(displayName(b))).forEach(s => {
+    const o = document.createElement('option'); o.value = s.id; o.textContent = displayName(s); srvGroup.appendChild(o);
   });
   tgtSrvSel.appendChild(srvGroup);
   updateIrTgtInst();
@@ -457,8 +457,8 @@ export function renderInstRelSection(server, instMap) {
     row.style.fontSize = '0.78rem';
     const dir = r.direction || 'to';
     const dirIcon = dir === 'both' ? '↔' : dir === 'none' ? '—' : dir === 'from' ? '←' : '→';
-    const srcLabel = escHtml(srcCl ? '◆ ' + srcCl.name : (src ? src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' : '?'));
-    const tgtLabel = escHtml(tgtCl ? '◆ ' + tgtCl.name : (tgt ? tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' : '?'));
+    const srcLabel = escHtml(srcCl ? '◆ ' + srcCl.name : (src ? src.name + ' (' + (srcSrv ? displayName(srcSrv) : '?') + ')' : '?'));
+    const tgtLabel = escHtml(tgtCl ? '◆ ' + tgtCl.name : (tgt ? tgt.name + ' (' + (tgtSrv ? displayName(tgtSrv) : '?') + ')' : '?'));
     row.innerHTML =
       '<span style="color:#a78bfa;flex:1">' + srcLabel +
       ' <span style="color:#94a3b8">' + dirIcon + '</span> ' + tgtLabel +
@@ -559,6 +559,7 @@ export function toggleServerEdit() {
     const s = allServers.find(s => s.id === currentServerId);
     if (!s) return;
     document.getElementById('edit-hostname').value = s.hostname || '';
+    document.getElementById('edit-common-name').value = s.common_name || '';
     document.getElementById('edit-ip').value = s.ip || '';
     document.getElementById('edit-os').value = s.os_type || 'linux';
     document.getElementById('edit-desc').value = s.description || '';
@@ -596,6 +597,7 @@ export async function saveServerEdit() {
     const gwVal = document.getElementById('edit-gateway-device').value;
     await api('PUT', '/servers/' + currentServerId, {
       hostname:          document.getElementById('edit-hostname').value.trim() || undefined,
+      common_name:       document.getElementById('edit-common-name').value.trim() || null,
       ip:                document.getElementById('edit-ip').value || null,
       os_type:           document.getElementById('edit-os').value,
       description:       document.getElementById('edit-desc').value || null,

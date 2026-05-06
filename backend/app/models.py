@@ -46,6 +46,7 @@ class Server(Base):
     __tablename__ = "servers"
     id = Column(Integer, primary_key=True, index=True)
     hostname = Column(String(255), unique=True, nullable=False)
+    common_name = Column(String(255), nullable=True)
     fqdn = Column(String(255))
     ip = Column(String(45))
     gateway = Column(String(45))
