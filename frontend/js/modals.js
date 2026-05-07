@@ -43,6 +43,7 @@ export async function createServer() {
   try {
     await api('POST', '/servers', {
       hostname,
+      common_name: document.getElementById('new-common-name').value.trim() || null,
       ip:          document.getElementById('new-ip').value || null,
       os_type:     document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
@@ -50,7 +51,7 @@ export async function createServer() {
     });
   } catch (e) { return alert('Fehler: ' + e.message); }
   closeModal('modal-add-server');
-  ['new-hostname', 'new-ip', 'new-desc'].forEach(id => document.getElementById(id).value = '');
+  ['new-hostname', 'new-common-name', 'new-ip', 'new-desc'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('new-is-gateway').checked = false;
   await loadAll();
 }
