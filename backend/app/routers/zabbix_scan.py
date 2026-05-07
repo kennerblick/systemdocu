@@ -157,6 +157,9 @@ def scan_host(zabbix_hostid: str):
     # Hyper-V: text item from PowerShell Get-VM
     _scan_hyperv_items(zapi, zabbix_hostid, services)
 
+    # Proxmox VMs: items matching "ProxmoxVM [ID]: Name"
+    _scan_proxmox_items(zapi, zabbix_hostid, services)
+
     # fallback: if Hyper-V VMs found but template didn't reveal Windows
     if "hyperv" in services and os_type == "linux":
         os_type = "windows"
@@ -300,6 +303,29 @@ def _parse_hyperv_output(text: str) -> list:
             if name and not name.startswith('{') and len(name) > 1:
                 vms.append(name)
     return vms
+
+
+def _scan_proxmox_items(zapi, hostid, services):
+    try:
+        items = zapi.item.get(
+            output=["name", "lastvalue"],
+            hostids=[hostid],
+            filter={"status": "0"},
+            search={"name": "ProxmoxVM"},
+            limit=500,
+        )
+        pattern = re.compile(r'^ProxmoxVM\s+\[(\d+)\]:\s*Name\s*$', re.IGNORECASE)
+        for item in items:
+            m = pattern.match(item.get("name", ""))
+            if m:
+                vmid = m.group(1)
+                vmname = (item.get("lastvalue") or "").strip()
+                if vmname:
+                    if "proxmox" not in services:
+                        services["proxmox"] = {"version": None, "instances": set()}
+                    services["proxmox"]["instances"].add(f"[{vmid}] {vmname}")
+    except Exception as e:
+        logger.warning("Proxmox VM item scan failed: %s", e)
 
 
 # --- Import ---
