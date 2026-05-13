@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from ..database import get_db
 from ..models import Server, Service, ServiceInstance
+from .zabbix_scanners import run_all_scanners
 
 logger = logging.getLogger("systemdocu")
 router = APIRouter(prefix="/api/zabbix", tags=["zabbix"])
@@ -85,18 +86,20 @@ def list_hosts():
 
 
 LLD_PATTERNS = [
-    ("pgsql.db.discovery*",           "postgresql"),
-    ("pg.db.discovery*",              "postgresql"),
-    ("samba.shares*",                 "samba"),
-    ("samba.share.discovery*",        "samba"),
-    ("nfs.share.discovery*",          "nfs"),
-    ("nfs*discovery*",                "nfs"),
-    ("docker.container.discovery*",   "docker"),
-    ("kubernetes*discovery*",         "kubernetes"),
-    ("veeam*discovery*",              "veeam"),
-    ("vm.discovery*",                 "hyperv"),
-    ("hyperv*discovery*",             "hyperv"),
-    ("minio*discovery*",              "minio"),
+    ("pgsql.db.discovery*",                        "postgresql"),
+    ("pg.db.discovery*",                           "postgresql"),
+    ("samba.shares*",                              "samba"),
+    ("samba.share.discovery*",                     "samba"),
+    ("nfs.share.discovery*",                       "nfs"),
+    ("nfs*discovery*",                             "nfs"),
+    ("docker.container*.discovery*",               "docker"),
+    ("kubernetes*discovery*",                      "kubernetes"),
+    ("veeam*discovery*",                           "veeam"),
+    ("vm.discovery*",                              "hyperv"),
+    ("hyperv*discovery*",                          "hyperv"),
+    ("minio*discovery*",                           "minio"),
+    # full-key patterns (matched against the complete key_ including parameters)
+    ("system.run[*pvesh*--type vm*",               "proxmox"),
 ]
 
 
@@ -144,9 +147,11 @@ def scan_host(zabbix_hostid: str):
     )
 
     for rule in lld_rules:
-        base_key = rule["key_"].split("[")[0]
+        full_key = rule["key_"]
+        base_key = full_key.split("[")[0]
         for pattern, svc_type in LLD_PATTERNS:
-            if fnmatch.fnmatch(base_key, pattern):
+            key_to_match = full_key if "[" in pattern else base_key
+            if fnmatch.fnmatch(key_to_match, pattern):
                 names = _lld_instance_names(zapi, zabbix_hostid, rule)
                 if names:
                     if svc_type not in services:
@@ -154,11 +159,8 @@ def scan_host(zabbix_hostid: str):
                     services[svc_type]["instances"].update(names)
                 break
 
-    # Hyper-V: text item from PowerShell Get-VM
-    _scan_hyperv_items(zapi, zabbix_hostid, services)
-
-    # Proxmox VMs: items matching "ProxmoxVM [ID]: Name"
-    _scan_proxmox_items(zapi, zabbix_hostid, services)
+    # Item-based scanners (hyperv, proxmox, docker, …)
+    run_all_scanners(zapi, zabbix_hostid, services)
 
     # fallback: if Hyper-V VMs found but template didn't reveal Windows
     if "hyperv" in services and os_type == "linux":
@@ -246,86 +248,6 @@ def _lld_instance_names(zapi, hostid, rule) -> set:
     return names
 
 
-def _scan_hyperv_items(zapi, hostid, services):
-    try:
-        items = zapi.item.get(
-            output=["name", "key_", "lastvalue"],
-            hostids=[hostid],
-            filter={"status": "0", "value_type": "4"},  # type=4 → text
-            limit=200,
-        )
-        for item in items:
-            key = item.get("key_", "").lower()
-            name = item.get("name", "").lower()
-            if ("get-vm" in key or "get-vm" in name or
-                    "vm-list" in key or "vm-list" in name or
-                    "hyper-v" in key or "hyper-v" in name or
-                    "hyperv" in key or "hyperv" in name):
-                vms = _parse_hyperv_output(item.get("lastvalue", ""))
-                if vms:
-                    if "hyperv" not in services:
-                        services["hyperv"] = {"version": None, "instances": set()}
-                    services["hyperv"]["instances"].update(vms)
-    except Exception as e:
-        logger.warning("Hyper-V item scan failed: %s", e)
-
-
-def _parse_hyperv_output(text: str) -> list:
-    if not text:
-        return []
-
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-
-    # Format A: "VMName    {ip, ...}" per line — PowerShell column output
-    brace_re = re.compile(r'^(\S+)\s+\{[^}]*\}\s*$')
-    brace_hits = [brace_re.match(l) for l in lines]
-    brace_hits = [m for m in brace_hits if m]
-    if brace_hits and len(brace_hits) >= max(1, len(lines) * 0.35):
-        vms = []
-        for m in brace_hits:
-            name = m.group(1).rstrip('.')  # strip PS truncation (e.g. "kabeld-p...")
-            if name and len(name) > 1 and not name.startswith('{'):
-                vms.append(name)
-        return vms
-
-    # Format B: table with VMName header row + "---" separator
-    vms = []
-    header_passed = False
-    for stripped in lines:
-        if re.match(r'^[-=]+', stripped):
-            header_passed = True
-            continue
-        if not header_passed and re.search(r'VMName|Name', stripped, re.I):
-            header_passed = True
-            continue
-        if header_passed:
-            name = stripped.split()[0]
-            if name and not name.startswith('{') and len(name) > 1:
-                vms.append(name)
-    return vms
-
-
-def _scan_proxmox_items(zapi, hostid, services):
-    try:
-        items = zapi.item.get(
-            output=["name", "lastvalue"],
-            hostids=[hostid],
-            filter={"status": "0"},
-            search={"name": "ProxmoxVM"},
-            limit=500,
-        )
-        pattern = re.compile(r'^ProxmoxVM\s+\[(\d+)\]:\s*Name\s*$', re.IGNORECASE)
-        for item in items:
-            m = pattern.match(item.get("name", ""))
-            if m:
-                vmid = m.group(1)
-                vmname = (item.get("lastvalue") or "").strip()
-                if vmname:
-                    if "proxmox" not in services:
-                        services["proxmox"] = {"version": None, "instances": set()}
-                    services["proxmox"]["instances"].add(f"[{vmid}] {vmname}")
-    except Exception as e:
-        logger.warning("Proxmox VM item scan failed: %s", e)
 
 
 # --- Import ---

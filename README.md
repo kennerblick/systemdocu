@@ -2,7 +2,7 @@
 
 Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle Server, Services, Instanzen, Cluster, Anwendungen, Umgebungen/Subnetze und Internetanschlüsse — inklusive Zabbix-Integration und Excel-Export.
 
-**Version: v0.4.0-alpha**
+**Version: v0.5.0-alpha**
 
 ![Graph-Ansicht](docs/screenshot.png)
 
@@ -281,11 +281,37 @@ Zabbix → Administration → API-Token → Token erstellen, Benutzer mit **Lese
 2. Host aus der Liste wählen → **Scannen**
 3. Erkannte Services prüfen → **Importieren**
 
-Erkannt werden: PostgreSQL, MySQL, Docker, Kubernetes, Samba, NFS, SFTP, FreeIPA, Zabbix, Graylog, Veeam, MinIO, Hyper-V.
+Erkannt werden: PostgreSQL, Docker, Kubernetes, Samba, NFS, Veeam, MinIO, Hyper-V, Proxmox-VMs.
 
 Der Button zeigt Verbindungsstatus an:
 - Grüner Rahmen: Zabbix erreichbar
 - Roter Hintergrund: nicht erreichbar oder falsche Credentials
+
+### Erkennungsmethoden
+
+**LLD-basiert** (empfohlen): Der Scan wertet aktive Zabbix-Discovery-Rules aus. Dabei werden sowohl Standard-Keys (`docker.containers.discovery`, `pgsql.db.discovery`, …) als auch vollständige Keys mit Parametern unterstützt. Letzteres erlaubt eigene `system.run`-Rules, z. B. für Proxmox:
+
+```
+system.run[sudo pvesh get /cluster/resources --type vm --output-format json]
+```
+
+**Item-basiert** (Fallback): Für Dienste ohne LLD-Rule können zusätzliche Scanner eingebunden werden. Die Scanner liegen als einzelne Python-Dateien in `backend/app/routers/zabbix_scanners/` und werden automatisch geladen. Jede Datei muss eine Funktion `scan(zapi, hostid, services)` bereitstellen — keine weitere Registrierung nötig. Mitgeliefert: `hyperv.py` (PowerShell Get-VM Items) und `proxmox.py` (Items im Format `ProxmoxVM [ID]: Name`).
+
+**Eigene Scanner hinzufügen:**
+
+```python
+# backend/app/routers/zabbix_scanners/mein_scanner.py
+import logging
+logger = logging.getLogger("systemdocu")
+
+def scan(zapi, hostid: str, services: dict) -> None:
+    items = zapi.item.get(output=["name"], hostids=[hostid],
+                          search={"name": "Mein Muster"}, limit=500)
+    for item in items:
+        # services["mein-typ"] = {"version": None, "instances": set()}
+        # services["mein-typ"]["instances"].add(item["name"])
+        pass
+```
 
 ---
 
