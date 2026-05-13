@@ -5,6 +5,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from pyzabbix import ZabbixAPI
 from pydantic import BaseModel
 from typing import List, Optional
@@ -102,10 +103,7 @@ LLD_PATTERNS = [
 ]
 
 
-@router.get("/scan/{zabbix_hostid}")
-def scan_host(zabbix_hostid: str):
-    zapi = _get_zapi()
-
+def _scan_host_data(zapi: ZabbixAPI, zabbix_hostid: str) -> dict:
     hosts = zapi.host.get(
         output=["hostid", "host", "name"],
         hostids=[zabbix_hostid],
@@ -138,13 +136,11 @@ def scan_host(zabbix_hostid: str):
 
     services = {}  # type -> {version, instances set}
 
-    # LLD-based discovery
     lld_rules = zapi.discoveryrule.get(
         output=["itemid", "key_", "name"],
         hostids=[zabbix_hostid],
         filter={"status": "0"},
     )
-
     for rule in lld_rules:
         full_key = rule["key_"]
         base_key = full_key.split("[")[0]
@@ -158,10 +154,8 @@ def scan_host(zabbix_hostid: str):
                     services[svc_type]["instances"].update(names)
                 break
 
-    # Item-based scanners (hyperv, proxmox, docker, …)
     run_all_scanners(zapi, zabbix_hostid, services)
 
-    # fallback: if Hyper-V VMs found but template didn't reveal Windows
     if "hyperv" in services and os_type == "linux":
         os_type = "windows"
 
@@ -172,14 +166,129 @@ def scan_host(zabbix_hostid: str):
         "ip": ip,
         "os_type": os_type,
         "services": [
-            {
-                "type": svc_type,
-                "version": data["version"],
-                "instances": sorted(data["instances"]),
-            }
+            {"type": svc_type, "version": data["version"], "instances": sorted(data["instances"])}
             for svc_type, data in services.items()
         ],
     }
+
+
+@router.get("/scan/{zabbix_hostid}")
+def scan_host(zabbix_hostid: str):
+    return _scan_host_data(_get_zapi(), zabbix_hostid)
+
+
+@router.get("/rescan/{server_id}")
+async def rescan_server(server_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Server)
+        .options(selectinload(Server.services).selectinload(Service.instances))
+        .where(Server.id == server_id)
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(404, "Server nicht gefunden")
+
+    zapi = _get_zapi()
+
+    zbx_hosts = zapi.host.get(output=["hostid", "host"], filter={"host": server.hostname})
+    if not zbx_hosts and server.ip:
+        first_ip = server.ip.split(",")[0].strip()
+        ifaces = zapi.hostinterface.get(output=["hostid"], filter={"ip": first_ip})
+        if ifaces:
+            zbx_hosts = zapi.host.get(output=["hostid", "host"], hostids=[ifaces[0]["hostid"]])
+    if not zbx_hosts:
+        raise HTTPException(404, f"Kein Zabbix-Host für '{server.hostname}' gefunden")
+
+    zabbix_hostid = zbx_hosts[0]["hostid"]
+    scan = _scan_host_data(zapi, zabbix_hostid)
+
+    zbx_by_type = {s["type"]: set(s["instances"]) for s in scan["services"]}
+
+    db_by_type = {}
+    for svc in server.services:
+        db_by_type.setdefault(svc.type, {"service_id": svc.id, "instances": {}})
+        for inst in svc.instances:
+            db_by_type[svc.type]["instances"][inst.name] = {
+                "id": inst.id, "available": inst.available
+            }
+
+    new_services = []
+    missing_instances = []
+    restore_instances = []
+
+    for svc_type, zbx_insts in zbx_by_type.items():
+        db_insts = db_by_type.get(svc_type, {}).get("instances", {})
+        new_insts = [n for n in zbx_insts if n not in db_insts]
+        if new_insts:
+            new_services.append({"type": svc_type, "instances": sorted(new_insts)})
+        for name, info in db_insts.items():
+            if name in zbx_insts and not info["available"]:
+                restore_instances.append({"id": info["id"], "name": name, "service_type": svc_type})
+
+    for svc_type, db_svc in db_by_type.items():
+        zbx_insts = zbx_by_type.get(svc_type, set())
+        for name, info in db_svc["instances"].items():
+            if name not in zbx_insts and info["available"]:
+                missing_instances.append({"id": info["id"], "name": name, "service_type": svc_type})
+
+    return {
+        "zabbix_hostid": zabbix_hostid,
+        "new_services": new_services,
+        "missing_instances": missing_instances,
+        "restore_instances": restore_instances,
+    }
+
+
+class _RescanApply(BaseModel):
+    zabbix_hostid: str
+    new_services: List[_SvcIn] = []
+    missing_instance_ids: List[int] = []
+    restore_instance_ids: List[int] = []
+
+
+@router.post("/rescan/{server_id}")
+async def apply_rescan(server_id: int, payload: _RescanApply, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Server).where(Server.id == server_id))
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(404, "Server nicht gefunden")
+
+    # Mark missing instances as unavailable
+    for inst_id in payload.missing_instance_ids:
+        r = await db.execute(select(ServiceInstance).where(ServiceInstance.id == inst_id))
+        inst = r.scalar_one_or_none()
+        if inst:
+            inst.available = False
+
+    # Restore previously unavailable instances
+    for inst_id in payload.restore_instance_ids:
+        r = await db.execute(select(ServiceInstance).where(ServiceInstance.id == inst_id))
+        inst = r.scalar_one_or_none()
+        if inst:
+            inst.available = True
+
+    # Add new services / instances
+    for svc_data in payload.new_services:
+        svc_result = await db.execute(
+            select(Service).where(Service.server_id == server_id, Service.type == svc_data.type)
+        )
+        service = svc_result.scalar_one_or_none()
+        if service is None:
+            service = Service(server_id=server_id, type=svc_data.type, version=svc_data.version)
+            db.add(service)
+            await db.flush()
+
+        existing = {i.name for i in (
+            await db.execute(select(ServiceInstance).where(ServiceInstance.service_id == service.id))
+        ).scalars().all()}
+        for inst_name in svc_data.instances:
+            if inst_name not in existing:
+                db.add(ServiceInstance(service_id=service.id, name=inst_name))
+
+    await db.commit()
+    from ..events import bus
+    await bus.broadcast("data_changed", {"entity": "instance"})
+    return {"status": "ok"}
 
 
 def _lld_instance_names(zapi, hostid, rule) -> set:

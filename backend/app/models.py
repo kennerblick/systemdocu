@@ -95,6 +95,7 @@ class ServiceInstance(Base):
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     is_gateway = Column(Boolean, default=False)
+    available = Column(Boolean, default=True, nullable=False, server_default='true')
     gateway_instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="SET NULL"), nullable=True)
 
     service = relationship("Service", back_populates="instances", foreign_keys=[service_id])

@@ -50,6 +50,7 @@
       <h2 id="sb-hostname"></h2>
       <div style="display:flex;gap:5px">
         <button class="small" id="toggle-server-edit-btn"><i class="fa-solid fa-pen"></i></button>
+        <button class="small" id="zbx-rescan-btn" title="Zabbix Rescan" style="color:#60a5fa"><i class="fa-solid fa-rotate"></i></button>
         <button class="small danger" id="delete-server-btn"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>
@@ -120,6 +121,22 @@
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
       </div>
       <button class="small" id="add-service-save-btn">Speichern</button>
+    </div>
+
+    <!-- Zabbix Rescan diff panel -->
+    <div id="zbx-rescan-panel" style="display:none;flex-direction:column;gap:8px;background:#0f1b35;padding:10px;border-radius:6px;margin-top:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:0.85rem;font-weight:600;color:#60a5fa"><i class="fa-solid fa-rotate"></i> Zabbix Rescan</span>
+        <button class="xs" id="zbx-rescan-close-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="zbx-rescan-loading" style="display:none;font-size:0.8rem;color:#9ca3af">Scanne Zabbix…</div>
+      <div id="zbx-rescan-result" style="display:none;flex-direction:column;gap:6px">
+        <div id="zbx-rescan-new"></div>
+        <div id="zbx-rescan-missing"></div>
+        <div id="zbx-rescan-restore"></div>
+        <div id="zbx-rescan-none" style="display:none;font-size:0.8rem;color:#9ca3af">Keine Änderungen gefunden.</div>
+        <button class="small" id="zbx-rescan-apply-btn" style="display:none">Anwenden</button>
+      </div>
     </div>
 
     <div class="section-label">Instanz-Relationen</div>

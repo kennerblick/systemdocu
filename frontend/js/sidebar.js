@@ -171,12 +171,16 @@ export function renderServicesSection(server) {
     [...(svc.instances || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(inst => {
       const row = document.createElement('div');
       row.className = 'instance-row';
+      if (inst.available === false) row.style.opacity = '0.55';
 
       const nameDiv = document.createElement('div');
       nameDiv.className = 'instance-name';
       nameDiv.style.display = 'flex'; nameDiv.style.alignItems = 'center';
       nameDiv.style.gap = '5px'; nameDiv.style.flexWrap = 'wrap';
-      nameDiv.innerHTML = escHtml(inst.name) +
+      const unavailBadge = inst.available === false
+        ? '<i class="fa-solid fa-skull" style="color:#ef4444;font-size:0.8rem" title="Nicht mehr in Zabbix vorhanden"></i> '
+        : '';
+      nameDiv.innerHTML = unavailBadge + escHtml(inst.name) +
         (inst.description ? ' <span style="color:#6b7280;font-size:0.72rem">— ' + escHtml(inst.description) + '</span>' : '');
 
       const instDelBtn = document.createElement('button');
@@ -814,4 +818,112 @@ export function initSidebar() {
   document.getElementById('add-service-save-btn').addEventListener('click', addService);
   document.getElementById('add-rel-btn').addEventListener('click', addRelation);
   document.getElementById('add-inst-rel-btn').addEventListener('click', addInstRel);
+  document.getElementById('zbx-rescan-btn').addEventListener('click', runZabbixRescan);
+  document.getElementById('zbx-rescan-close-btn').addEventListener('click', closeZabbixRescanPanel);
+  document.getElementById('zbx-rescan-apply-btn').addEventListener('click', applyZabbixRescan);
+}
+
+// ── Zabbix Rescan ─────────────────────────────────────────────────────────────
+
+let _zbxRescanData = null;
+
+function closeZabbixRescanPanel() {
+  document.getElementById('zbx-rescan-panel').style.display = 'none';
+  _zbxRescanData = null;
+}
+
+async function runZabbixRescan() {
+  if (!currentServerId) return;
+  const panel = document.getElementById('zbx-rescan-panel');
+  const loading = document.getElementById('zbx-rescan-loading');
+  const result  = document.getElementById('zbx-rescan-result');
+  panel.style.display = 'flex';
+  loading.style.display = 'block';
+  result.style.display = 'none';
+  _zbxRescanData = null;
+
+  let diff;
+  try {
+    diff = await api('GET', '/zabbix/rescan/' + currentServerId);
+  } catch (e) {
+    loading.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+
+  _zbxRescanData = diff;
+  loading.style.display = 'none';
+  result.style.display = 'flex';
+
+  const newEl     = document.getElementById('zbx-rescan-new');
+  const missingEl = document.getElementById('zbx-rescan-missing');
+  const restoreEl = document.getElementById('zbx-rescan-restore');
+  const noneEl    = document.getElementById('zbx-rescan-none');
+  const applyBtn  = document.getElementById('zbx-rescan-apply-btn');
+  newEl.innerHTML = ''; missingEl.innerHTML = ''; restoreEl.innerHTML = '';
+
+  const hasChanges = diff.new_services.length || diff.missing_instances.length || diff.restore_instances.length;
+  noneEl.style.display  = hasChanges ? 'none' : 'block';
+  applyBtn.style.display = hasChanges ? '' : 'none';
+
+  if (diff.new_services.length) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:0.78rem;font-weight:600;color:#4ade80;margin-bottom:2px';
+    hdr.textContent = 'Neu in Zabbix:';
+    newEl.appendChild(hdr);
+    diff.new_services.forEach(svc => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-size:0.78rem;color:#86efac;padding-left:6px';
+      row.innerHTML = '<i class="fa-solid fa-plus" style="font-size:0.7rem"></i> ' +
+        escHtml(svc.type) + ': ' + svc.instances.map(n => escHtml(n)).join(', ');
+      newEl.appendChild(row);
+    });
+  }
+
+  if (diff.missing_instances.length) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:0.78rem;font-weight:600;color:#f87171;margin-bottom:2px;margin-top:4px';
+    hdr.textContent = 'Nicht mehr in Zabbix (werden als inaktiv markiert):';
+    missingEl.appendChild(hdr);
+    diff.missing_instances.forEach(inst => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-size:0.78rem;color:#fca5a5;padding-left:6px';
+      row.innerHTML = '<i class="fa-solid fa-skull" style="font-size:0.7rem"></i> ' +
+        escHtml(inst.service_type) + ': ' + escHtml(inst.name);
+      missingEl.appendChild(row);
+    });
+  }
+
+  if (diff.restore_instances.length) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:0.78rem;font-weight:600;color:#60a5fa;margin-bottom:2px;margin-top:4px';
+    hdr.textContent = 'Wieder verfügbar (werden reaktiviert):';
+    restoreEl.appendChild(hdr);
+    diff.restore_instances.forEach(inst => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-size:0.78rem;color:#93c5fd;padding-left:6px';
+      row.innerHTML = '<i class="fa-solid fa-rotate-left" style="font-size:0.7rem"></i> ' +
+        escHtml(inst.service_type) + ': ' + escHtml(inst.name);
+      restoreEl.appendChild(row);
+    });
+  }
+}
+
+async function applyZabbixRescan() {
+  if (!_zbxRescanData || !currentServerId) return;
+  const btn = document.getElementById('zbx-rescan-apply-btn');
+  btn.disabled = true;
+  btn.textContent = 'Wird angewendet…';
+  try {
+    await api('POST', '/zabbix/rescan/' + currentServerId, {
+      zabbix_hostid:       _zbxRescanData.zabbix_hostid,
+      new_services:        _zbxRescanData.new_services,
+      missing_instance_ids: _zbxRescanData.missing_instances.map(i => i.id),
+      restore_instance_ids: _zbxRescanData.restore_instances.map(i => i.id),
+    });
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Anwenden';
+    return alert('Fehler: ' + e.message);
+  }
+  closeZabbixRescanPanel();
+  await loadAll();
 }

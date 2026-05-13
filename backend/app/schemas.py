@@ -57,6 +57,7 @@ class ServiceInstanceBase(BaseModel):
     fqdn: Optional[str] = None
     ip: Optional[str] = None
     is_gateway: bool = False
+    available: bool = True
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
     gateway_server_id: Optional[int] = None
@@ -73,6 +74,7 @@ class ServiceInstanceUpdate(BaseModel):
     fqdn: Optional[str] = None
     ip: Optional[str] = None
     is_gateway: Optional[bool] = None
+    available: Optional[bool] = None
     gateway: Optional[str] = None
     gateway_router_id: Optional[int] = None
     gateway_server_id: Optional[int] = None
