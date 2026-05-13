@@ -818,9 +818,9 @@ export function initSidebar() {
   document.getElementById('add-service-save-btn').addEventListener('click', addService);
   document.getElementById('add-rel-btn').addEventListener('click', addRelation);
   document.getElementById('add-inst-rel-btn').addEventListener('click', addInstRel);
-  document.getElementById('zbx-rescan-btn').addEventListener('click', runZabbixRescan);
-  document.getElementById('zbx-rescan-close-btn').addEventListener('click', closeZabbixRescanPanel);
-  document.getElementById('zbx-rescan-apply-btn').addEventListener('click', applyZabbixRescan);
+  document.getElementById('zbx-rescan-btn')?.addEventListener('click', runZabbixRescan);
+  document.getElementById('zbx-rescan-close-btn')?.addEventListener('click', closeZabbixRescanPanel);
+  document.getElementById('zbx-rescan-apply-btn')?.addEventListener('click', applyZabbixRescan);
 }
 
 // ── Zabbix Rescan ─────────────────────────────────────────────────────────────
@@ -841,6 +841,7 @@ async function runZabbixRescan() {
   loading.style.display = 'block';
   result.style.display = 'none';
   _zbxRescanData = null;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   let diff;
   try {
