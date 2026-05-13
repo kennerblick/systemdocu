@@ -86,6 +86,12 @@ def list_hosts():
     return sorted(result, key=lambda x: x["hostname"].lower())
 
 
+class _SvcIn(BaseModel):
+    type: str
+    version: Optional[str] = None
+    instances: List[str] = []
+
+
 LLD_PATTERNS = [
     ("pgsql.db.discovery*",                        "postgresql"),
     ("pg.db.discovery*",                           "postgresql"),
@@ -363,12 +369,6 @@ def _lld_instance_names(zapi, hostid, rule) -> set:
 class _InstIn(BaseModel):
     name: str
     description: Optional[str] = None
-
-
-class _SvcIn(BaseModel):
-    type: str
-    version: Optional[str] = None
-    instances: List[str] = []
 
 
 class ZabbixScanImport(BaseModel):
