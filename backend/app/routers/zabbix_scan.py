@@ -88,8 +88,7 @@ def list_hosts():
 LLD_PATTERNS = [
     ("pgsql.db.discovery*",                        "postgresql"),
     ("pg.db.discovery*",                           "postgresql"),
-    ("samba.shares*",                              "samba"),
-    ("samba.share.discovery*",                     "samba"),
+    ("samba.share*",                               "samba"),
     ("nfs.share.discovery*",                       "nfs"),
     ("nfs*discovery*",                             "nfs"),
     ("docker.container*.discovery*",               "docker"),
