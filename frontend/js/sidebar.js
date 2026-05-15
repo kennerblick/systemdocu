@@ -115,6 +115,10 @@ export function openSidebar(serverId) {
   updateIrTgtInst();
   renderInstRelSection(server, instMap);
 
+  // Rescan button — bind per open so serverId is captured directly
+  const rescanBtn = document.getElementById('zbx-rescan-btn');
+  if (rescanBtn) rescanBtn.onclick = () => runZabbixRescan(serverId);
+
   // Show resizer
   document.getElementById('sidebar-resizer').style.display = 'block';
 }
@@ -818,7 +822,6 @@ export function initSidebar() {
   document.getElementById('add-service-save-btn').addEventListener('click', addService);
   document.getElementById('add-rel-btn').addEventListener('click', addRelation);
   document.getElementById('add-inst-rel-btn').addEventListener('click', addInstRel);
-  document.getElementById('zbx-rescan-btn')?.addEventListener('click', runZabbixRescan);
   document.getElementById('zbx-rescan-close-btn')?.addEventListener('click', closeZabbixRescanPanel);
   document.getElementById('zbx-rescan-apply-btn')?.addEventListener('click', applyZabbixRescan);
 }
@@ -826,14 +829,16 @@ export function initSidebar() {
 // ── Zabbix Rescan ─────────────────────────────────────────────────────────────
 
 let _zbxRescanData = null;
+let _zbxRescanServerId = null;
 
 function closeZabbixRescanPanel() {
   document.getElementById('zbx-rescan-panel').style.display = 'none';
   _zbxRescanData = null;
+  _zbxRescanServerId = null;
 }
 
-async function runZabbixRescan() {
-  if (!currentServerId) return;
+async function runZabbixRescan(serverId) {
+  if (!serverId) return;
   const panel = document.getElementById('zbx-rescan-panel');
   const loading = document.getElementById('zbx-rescan-loading');
   const result  = document.getElementById('zbx-rescan-result');
@@ -841,11 +846,12 @@ async function runZabbixRescan() {
   loading.style.display = 'block';
   result.style.display = 'none';
   _zbxRescanData = null;
+  _zbxRescanServerId = serverId;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   let diff;
   try {
-    diff = await api('GET', '/zabbix/rescan/' + currentServerId);
+    diff = await api('GET', '/zabbix/rescan/' + serverId);
   } catch (e) {
     loading.textContent = 'Fehler: ' + e.message;
     return;
@@ -915,7 +921,7 @@ async function applyZabbixRescan() {
   btn.disabled = true;
   btn.textContent = 'Wird angewendet…';
   try {
-    await api('POST', '/zabbix/rescan/' + currentServerId, {
+    await api('POST', '/zabbix/rescan/' + _zbxRescanServerId, {
       zabbix_hostid:       _zbxRescanData.zabbix_hostid,
       new_services:        _zbxRescanData.new_services,
       missing_instance_ids: _zbxRescanData.missing_instances.map(i => i.id),
