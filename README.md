@@ -78,6 +78,25 @@ ZABBIX_VERIFY_SSL=false
 
 ---
 
+## Speicherung / Persistenz
+
+- Primärer Speicher: PostgreSQL-Datenbank im `postgres`-Container.
+- DB-Verbindung: `postgresql+asyncpg://<POSTGRES_USER>:<POSTGRES_PASSWORD>@<POSTGRES_HOST>/<POSTGRES_DB>`.
+- Die Datenbankstruktur wird in `backend/app/models.py` definiert. Wichtige Tabellen und ihre Formate sind:
+  - `servers`: Hostname, FQDN, IP-/Gateway-Adressen als Strings, Betriebssystem-Typ, Beschreibung als Text, `is_gateway` als Boolean, Gateway-Verweise als Foreign-Key-IDs.
+  - `services`: Service-Typ, Version als String, Port als Integer, Detailtext als Text.
+  - `service_instances`: Instanzname, FQDN, Beschreibung als Text, IP/Gateway als String, Boolean-Felder `available` und `is_gateway`, sowie Verweise auf Router/Server/Cluster.
+  - `environments`: Name, Beschreibung, Farbe, Subnetz, Gateway-IP als Strings, Default-Gateway-Verweise als Foreign Keys.
+  - `applications`: Name, Beschreibung, Farbe als Strings.
+  - `clusters`: Name, Beschreibung, Service-Typ, Domain als Strings.
+  - `internet_routers`: Name, Anbieter, externe/interne IP als Strings, Upstream-Router-Referenz, verknüpfter Server als Foreign Key.
+  - `relations` und `instance_relations`: Relationale Verknüpfungen zwischen Servern, Instanzen oder Clustern, gespeichert als Foreign-Key-IDs plus `type`/`direction` als Strings.
+  - Join-Tabellen für M:N-Beziehungen: `server_tags`, `server_environments`, `instance_environments`, `instance_applications`, `router_environments`, `cluster_members`.
+- Schemaänderungen werden per Alembic in `backend/alembic` verwaltet und beim Start automatisch angewendet.
+- Docker speichert die PostgreSQL-Daten dauerhaft im Host-Verzeichnis `/opt/docker/systemdocu/postgres`.
+- Logs des Backends liegen im Host-Verzeichnis `/opt/docker/systemdocu/logs`.
+- Es gibt keine persistente Flat-File-Datenbank für die CMDB-Daten; alle Kernobjekte werden relational in PostgreSQL gespeichert.
+
 ## Update
 
 ```bash
