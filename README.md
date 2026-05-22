@@ -93,6 +93,23 @@ Datenbankmigrationen werden beim Start automatisch per **Alembic** angewendet �
 
 ## Datenmodell
 
+### Grafische Übersicht
+
+```mermaid
+erDiagram
+    SERVER ||--o{ SERVICE : hosts
+    SERVICE ||--o{ INSTANCE : contains
+    SERVER }o--|| ENVIRONMENT : belongs_to
+    INSTANCE }o--|| ENVIRONMENT : belongs_to
+    SERVER }o--|| INTERNET_CONNECTION : gateway
+    INSTANCE }o--|| INTERNET_CONNECTION : gateway
+    CLUSTER ||--o{ INSTANCE : groups
+    INSTANCE ||--o{ APPLICATION : runs
+    INTERNET_CONNECTION }o--|| SERVER : links
+```
+
+### Textuelles Datenmodell
+
 ```
 Server
 ├── Environments (M:N)          — Umgebungszugehörigkeit (z. B. Produktion, DMZ)
