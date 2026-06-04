@@ -55,6 +55,7 @@ export function openSidebar(serverId) {
   else { gwRow.style.display = 'none'; }
 
   renderServicesSection(server);
+  renderStoragesSection(server);
 
   const envChips = document.getElementById('sb-envs');
   envChips.innerHTML = '';
@@ -337,6 +338,29 @@ export function renderServicesSection(server) {
         actionsDiv.appendChild(gwChkRow);
       }
 
+      // Storage assignment
+      if ((server.storages || []).length) {
+        const stRow = document.createElement('div');
+        stRow.style.cssText = 'display:flex;gap:5px;align-items:center';
+        const stSel = document.createElement('select');
+        stSel.style.cssText = 'flex:1;font-size:0.72rem;padding:1px 4px';
+        stSel.innerHTML = '<option value="">— kein Storage —</option>';
+        [...(server.storages || [])].sort((a, b) => a.name.localeCompare(b.name)).forEach(st => {
+          const opt = document.createElement('option');
+          opt.value = st.id;
+          opt.textContent = st.name + (st.raid_type ? ' (' + st.raid_type + ')' : '');
+          if (inst.storage_id === st.id) opt.selected = true;
+          stSel.appendChild(opt);
+        });
+        stSel.onchange = () => setInstanceStorage(inst.id, parseInt(stSel.value) || null);
+        const stIcon = document.createElement('span');
+        stIcon.style.cssText = 'font-size:0.72rem;color:#9ca3af;white-space:nowrap';
+        stIcon.innerHTML = '<i class="fa-solid fa-hard-drive" style="font-size:0.7rem"></i>';
+        stRow.appendChild(stIcon);
+        stRow.appendChild(stSel);
+        actionsDiv.appendChild(stRow);
+      }
+
       const btnRow = document.createElement('div');
       btnRow.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;align-items:center';
 
@@ -418,6 +442,127 @@ export function renderServicesSection(server) {
 
     container.appendChild(block);
   });
+}
+
+// ── Storages section ──────────────────────────────────────────────────────────
+
+export function renderStoragesSection(server) {
+  const container = document.getElementById('sb-storages');
+  if (!container) return;
+  container.innerHTML = '';
+  const storages = [...(server.storages || [])].sort((a, b) => a.name.localeCompare(b.name));
+  if (!storages.length) {
+    container.innerHTML = '<div style="font-size:0.78rem;color:#6b7280">Keine Storages</div>';
+    return;
+  }
+  storages.forEach(st => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.style.cssText = 'display:flex;flex-direction:column;gap:3px;padding:6px 8px';
+
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:6px';
+    topRow.innerHTML =
+      '<i class="fa-solid fa-hard-drive" style="color:#6366f1;font-size:0.85rem"></i>' +
+      '<span style="font-weight:600;font-size:0.85rem">' + escHtml(st.name) + '</span>' +
+      (st.raid_type ? '<span style="background:#312e81;color:#a5b4fc;border-radius:3px;padding:1px 6px;font-size:0.72rem">' + escHtml(st.raid_type) + '</span>' : '') +
+      (st.disk_count ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.disk_count + '×</span>' : '') +
+      (st.size_gb ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.size_gb + ' GB</span>' : '');
+
+    const btnWrap = document.createElement('div');
+    btnWrap.style.cssText = 'display:flex;gap:4px;margin-left:auto';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'xs';
+    editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+    editBtn.onclick = () => editStorage(st, item);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'xs danger';
+    delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    delBtn.onclick = () => deleteStorage(st.id);
+    btnWrap.appendChild(editBtn);
+    btnWrap.appendChild(delBtn);
+    topRow.appendChild(btnWrap);
+    item.appendChild(topRow);
+
+    if (st.description) {
+      const descEl = document.createElement('div');
+      descEl.style.cssText = 'font-size:0.75rem;color:#9ca3af;padding-left:22px';
+      descEl.textContent = st.description;
+      item.appendChild(descEl);
+    }
+
+    container.appendChild(item);
+  });
+}
+
+function editStorage(st, itemEl) {
+  itemEl.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:4px">' +
+    '<input id="st-edit-name" type="text" value="' + escHtml(st.name) + '" placeholder="Name"/>' +
+    '<select id="st-edit-raid">' +
+    ['', 'RAID-0', 'RAID-1', 'RAID-5', 'RAID-6', 'RAID-10', 'JBOD', 'Software-RAID', 'ZFS', 'LVM', 'Einzeldisk']
+      .map(v => '<option value="' + v + '"' + (v === (st.raid_type || '') ? ' selected' : '') + '>' + (v || '— RAID-Typ —') + '</option>').join('') +
+    '</select>' +
+    '<div style="display:flex;gap:4px">' +
+    '<input id="st-edit-disks" type="number" value="' + (st.disk_count || '') + '" placeholder="Disks" style="width:70px"/>' +
+    '<input id="st-edit-size" type="number" value="' + (st.size_gb || '') + '" placeholder="Größe GB" style="flex:1"/>' +
+    '</div>' +
+    '<input id="st-edit-desc" type="text" value="' + escHtml(st.description || '') + '" placeholder="Beschreibung"/>' +
+    '<div style="display:flex;gap:4px">' +
+    '<button class="small" id="st-save-' + st.id + '"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>' +
+    '<button class="small" id="st-cancel-' + st.id + '">Abbrechen</button>' +
+    '</div>' +
+    '</div>';
+  document.getElementById('st-save-' + st.id).onclick = () => saveStorageEdit(st.id);
+  document.getElementById('st-cancel-' + st.id).onclick = () => loadAll();
+}
+
+async function saveStorageEdit(storageId) {
+  const name      = document.getElementById('st-edit-name').value.trim();
+  const raid_type = document.getElementById('st-edit-raid').value || null;
+  const disk_count = parseInt(document.getElementById('st-edit-disks').value) || null;
+  const size_gb    = parseInt(document.getElementById('st-edit-size').value) || null;
+  const description = document.getElementById('st-edit-desc').value.trim() || null;
+  if (!name) return alert('Name fehlt');
+  try { await api('PUT', '/storages/' + storageId, { name, raid_type, disk_count, size_gb, description }); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteStorage(storageId) {
+  if (!confirm('Storage wirklich löschen? Instanzen verlieren die Zuordnung.')) return;
+  try { await api('DELETE', '/storages/' + storageId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+export function toggleAddStorage() {
+  const f = document.getElementById('add-storage-form');
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+
+export async function saveNewStorage() {
+  const name      = document.getElementById('storage-name-input').value.trim();
+  const raid_type = document.getElementById('storage-raid-input').value || null;
+  const disk_count = parseInt(document.getElementById('storage-disks-input').value) || null;
+  const size_gb    = parseInt(document.getElementById('storage-size-input').value) || null;
+  const description = document.getElementById('storage-desc-input').value.trim() || null;
+  if (!name) return alert('Name fehlt');
+  try { await api('POST', '/servers/' + currentServerId + '/storages', { name, raid_type, disk_count, size_gb, description }); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  document.getElementById('add-storage-form').style.display = 'none';
+  document.getElementById('storage-name-input').value = '';
+  document.getElementById('storage-raid-input').value = '';
+  document.getElementById('storage-disks-input').value = '';
+  document.getElementById('storage-size-input').value = '';
+  document.getElementById('storage-desc-input').value = '';
+  await loadAll();
+}
+
+async function setInstanceStorage(instanceId, storageId) {
+  try { await api('PUT', '/instances/' + instanceId + '/storage', { storage_id: storageId || null }); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
 }
 
 // ── Instance relation section ─────────────────────────────────────────────────
@@ -820,6 +965,11 @@ export function initSidebar() {
   document.getElementById('save-server-edit-btn').addEventListener('click', saveServerEdit);
   document.getElementById('toggle-add-service-btn').addEventListener('click', toggleAddService);
   document.getElementById('add-service-save-btn').addEventListener('click', addService);
+  document.getElementById('toggle-add-storage-btn').addEventListener('click', toggleAddStorage);
+  document.getElementById('add-storage-save-btn').addEventListener('click', saveNewStorage);
+  document.getElementById('add-storage-cancel-btn').addEventListener('click', () => {
+    document.getElementById('add-storage-form').style.display = 'none';
+  });
   document.getElementById('add-rel-btn').addEventListener('click', addRelation);
   document.getElementById('add-inst-rel-btn').addEventListener('click', addInstRel);
   document.getElementById('zbx-rescan-close-btn')?.addEventListener('click', closeZabbixRescanPanel);

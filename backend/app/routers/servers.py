@@ -7,7 +7,7 @@ from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Server, Service, ServiceInstance, Environment
+from ..models import Server, Service, ServiceInstance, Environment, Storage
 from ..schemas import ServerCreate, ServerUpdate, ServerOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -23,6 +23,7 @@ _server_options = [
         .selectinload(Service.instances)
         .selectinload(ServiceInstance.own_services),
     selectinload(Server.environments),
+    selectinload(Server.storages),
 ]
 
 

@@ -3,6 +3,30 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 
+class StorageCreate(BaseModel):
+    name: str
+    raid_type: Optional[str] = None
+    disk_count: Optional[int] = None
+    size_gb: Optional[int] = None
+    description: Optional[str] = None
+
+
+class StorageUpdate(BaseModel):
+    name: Optional[str] = None
+    raid_type: Optional[str] = None
+    disk_count: Optional[int] = None
+    size_gb: Optional[int] = None
+    description: Optional[str] = None
+
+
+class StorageOut(StorageCreate):
+    id: int
+    server_id: int
+
+    class Config:
+        from_attributes = True
+
+
 class EnvironmentBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -106,6 +130,7 @@ class ServiceInstanceOut(ServiceInstanceBase):
     id: int
     service_id: Optional[int] = None
     cluster_id: Optional[int] = None
+    storage_id: Optional[int] = None
     applications: List[ApplicationOut] = []
     environments: List[EnvironmentOut] = []
     own_services: List[ServiceSimpleOut] = []
@@ -157,6 +182,7 @@ class ServerOut(ServerBase):
     created_at: datetime
     services: List[ServiceOut] = []
     environments: List[EnvironmentOut] = []
+    storages: List[StorageOut] = []
 
     class Config:
         from_attributes = True

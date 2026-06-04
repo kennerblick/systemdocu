@@ -42,6 +42,20 @@ cluster_members = Table(
 )
 
 
+class Storage(Base):
+    __tablename__ = "storages"
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    raid_type = Column(String(50), nullable=True)
+    disk_count = Column(Integer, nullable=True)
+    size_gb = Column(Integer, nullable=True)
+    description = Column(Text, nullable=True)
+
+    server = relationship("Server", back_populates="storages")
+    instances = relationship("ServiceInstance", back_populates="storage", foreign_keys="[ServiceInstance.storage_id]")
+
+
 class Server(Base):
     __tablename__ = "servers"
     id = Column(Integer, primary_key=True, index=True)
@@ -58,6 +72,7 @@ class Server(Base):
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
+    storages = relationship("Storage", back_populates="server", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary=server_tags, back_populates="servers")
     environments = relationship("Environment", secondary=server_environments, back_populates="servers")
     outgoing_relations = relationship("Relation", foreign_keys="Relation.source_id", back_populates="source", cascade="all, delete-orphan")
@@ -86,6 +101,7 @@ class ServiceInstance(Base):
     id = Column(Integer, primary_key=True, index=True)
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), nullable=True)
     cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=True)
+    storage_id = Column(Integer, ForeignKey("storages.id", ondelete="SET NULL"), nullable=True)
     fqdn = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -100,6 +116,7 @@ class ServiceInstance(Base):
 
     service = relationship("Service", back_populates="instances", foreign_keys=[service_id])
     cluster = relationship("Cluster", back_populates="own_instances", foreign_keys=[cluster_id])
+    storage = relationship("Storage", back_populates="instances", foreign_keys=[storage_id])
     own_services = relationship("Service", back_populates="instance",
                                 foreign_keys="[Service.instance_id]",
                                 cascade="all, delete-orphan")

@@ -9,7 +9,7 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from ..database import get_db
-from ..models import Server, Service, ServiceInstance
+from ..models import Server, Service, ServiceInstance, Storage
 
 router = APIRouter(tags=["export"])
 
@@ -94,8 +94,12 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
             selectinload(Server.services)
             .selectinload(Service.instances)
             .selectinload(ServiceInstance.applications),
+            selectinload(Server.services)
+            .selectinload(Service.instances)
+            .selectinload(ServiceInstance.storage),
             selectinload(Server.tags),
             selectinload(Server.environments),
+            selectinload(Server.storages),
         )
     )
     servers = list(result.scalars().all())
@@ -108,6 +112,7 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
     _build_sheet_samba(wb, servers)
     _build_sheet_docker(wb, servers)
     _build_sheet_nfs(wb, servers)
+    _build_sheet_storages(wb, servers)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -350,9 +355,10 @@ def _build_sheet_samba(wb: openpyxl.Workbook, servers: list) -> None:
     rows    = _collect_svc_rows(servers, {"samba"})
 
     def _write(ws, row, e, band):
-        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+        storage = e["inst"].storage.name if e["inst"].storage else ""
+        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
                   e["srv"].ip or "", e["envs"]]
-        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
         for col, (v, a) in enumerate(zip(vals, aligns), 1):
             _cell(ws, row, col, v, band, DATA_FONT, a)
         ws.cell(row=row, column=1).fill = _fill(svc_hex)
@@ -360,9 +366,9 @@ def _build_sheet_samba(wb: openpyxl.Workbook, servers: list) -> None:
 
     _build_svc_instances_sheet(
         wb, "Samba-Freigaben",
-        ["Freigabe", "Server", "OS", "IP", "Umgebungen"],
-        [28, 22, 10, 16, 22],
-        rows, _write, [2, 3, 4, 5],
+        ["Freigabe", "Storage", "Server", "OS", "IP", "Umgebungen"],
+        [28, 20, 22, 10, 16, 22],
+        rows, _write, [3, 4, 5, 6],
     )
 
 
@@ -371,9 +377,10 @@ def _build_sheet_db(wb: openpyxl.Workbook, servers: list) -> None:
     rows    = _collect_svc_rows(servers, {"postgresql"})
 
     def _write(ws, row, e, band):
-        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+        storage = e["inst"].storage.name if e["inst"].storage else ""
+        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
                   e["srv"].ip or "", e["envs"], e["svc"].version or ""]
-        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT, CENTER]
+        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT, CENTER]
         for col, (v, a) in enumerate(zip(vals, aligns), 1):
             _cell(ws, row, col, v, band, DATA_FONT, a)
         ws.cell(row=row, column=1).fill = _fill(svc_hex)
@@ -381,9 +388,9 @@ def _build_sheet_db(wb: openpyxl.Workbook, servers: list) -> None:
 
     _build_svc_instances_sheet(
         wb, "Datenbanken",
-        ["Datenbank", "Server", "OS", "IP", "Umgebungen", "PG-Version"],
-        [28, 22, 10, 16, 22, 12],
-        rows, _write, [2, 3, 4, 5, 6],
+        ["Datenbank", "Storage", "Server", "OS", "IP", "Umgebungen", "PG-Version"],
+        [28, 20, 22, 10, 16, 22, 12],
+        rows, _write, [3, 4, 5, 6, 7],
     )
 
 
@@ -392,9 +399,10 @@ def _build_sheet_docker(wb: openpyxl.Workbook, servers: list) -> None:
     rows    = _collect_svc_rows(servers, {"docker"})
 
     def _write(ws, row, e, band):
-        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+        storage = e["inst"].storage.name if e["inst"].storage else ""
+        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
                   e["srv"].ip or "", e["envs"]]
-        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
         for col, (v, a) in enumerate(zip(vals, aligns), 1):
             _cell(ws, row, col, v, band, DATA_FONT, a)
         ws.cell(row=row, column=1).fill = _fill(svc_hex)
@@ -402,9 +410,9 @@ def _build_sheet_docker(wb: openpyxl.Workbook, servers: list) -> None:
 
     _build_svc_instances_sheet(
         wb, "Docker-Container",
-        ["Container", "Server", "OS", "IP", "Umgebungen"],
-        [30, 22, 10, 16, 22],
-        rows, _write, [2, 3, 4, 5],
+        ["Container", "Storage", "Server", "OS", "IP", "Umgebungen"],
+        [30, 20, 22, 10, 16, 22],
+        rows, _write, [3, 4, 5, 6],
     )
 
 
@@ -413,9 +421,10 @@ def _build_sheet_nfs(wb: openpyxl.Workbook, servers: list) -> None:
     rows    = _collect_svc_rows(servers, {"nfs"})
 
     def _write(ws, row, e, band):
-        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+        storage = e["inst"].storage.name if e["inst"].storage else ""
+        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
                   e["srv"].ip or "", e["envs"]]
-        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
         for col, (v, a) in enumerate(zip(vals, aligns), 1):
             _cell(ws, row, col, v, band, DATA_FONT, a)
         ws.cell(row=row, column=1).fill = _fill(svc_hex)
@@ -423,9 +432,9 @@ def _build_sheet_nfs(wb: openpyxl.Workbook, servers: list) -> None:
 
     _build_svc_instances_sheet(
         wb, "NFS-Exporte",
-        ["Export/Mount", "Server", "OS", "IP", "Umgebungen"],
-        [30, 22, 10, 16, 22],
-        rows, _write, [2, 3, 4, 5],
+        ["Export/Mount", "Storage", "Server", "OS", "IP", "Umgebungen"],
+        [30, 20, 22, 10, 16, 22],
+        rows, _write, [3, 4, 5, 6],
     )
 
 
@@ -443,8 +452,8 @@ def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
 
     ws = wb.create_sheet("Virtuelle Maschinen")
     ws.freeze_panes = "A2"
-    _header_row(ws, ["VM-Name", "Typ", "Server", "OS", "IP", "Umgebungen"])
-    _col_widths(ws, [30, 12, 22, 10, 16, 22])
+    _header_row(ws, ["VM-Name", "Typ", "Storage", "Server", "OS", "IP", "Umgebungen"])
+    _col_widths(ws, [30, 12, 20, 22, 10, 16, 22])
 
     row, si, i = 2, 0, 0
     while i < len(rows):
@@ -465,9 +474,10 @@ def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
                    and rows[k]["srv"].id == srv.id
                    and rows[k]["svc"].id == svc.id):
                 e = rows[k]
-                vals   = [e["inst"].name, typ_label, srv.hostname,
+                storage = e["inst"].storage.name if e["inst"].storage else ""
+                vals   = [e["inst"].name, typ_label, storage, srv.hostname,
                           srv.os_type, srv.ip or "", e["envs"]]
-                aligns = [LEFT, CENTER, CENTER, CENTER, CENTER, LEFT]
+                aligns = [LEFT, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT]
                 for col, (v, a) in enumerate(zip(vals, aligns), 1):
                     _cell(ws, row, col, v, band, DATA_FONT, a)
                 ws.cell(row=row, column=1).fill = _fill(typ_hex)
@@ -481,14 +491,55 @@ def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
             ws.cell(row=svc_r0, column=2).alignment = CENTER
             j = k
 
-        for c in [3, 4, 5, 6]:
+        for c in [4, 5, 6, 7]:
             _merge(ws, c, srv_r0, row - 1)
-        top           = ws.cell(row=srv_r0, column=3)
+        top           = ws.cell(row=srv_r0, column=4)
         top.fill      = _fill(_srv_hex(srv))
         top.font      = WHITE_BOLD
         top.alignment = CENTER
         for r in range(srv_r0, row):
-            ws.cell(row=r, column=3).border = Border(
+            ws.cell(row=r, column=4).border = Border(
                 left=MED, right=THIN, top=THIN, bottom=THIN,
             )
         i = j
+
+
+def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
+    rows = []
+    for srv in sorted(servers, key=lambda s: s.hostname.lower()):
+        for st in sorted(srv.storages or [], key=lambda s: s.name.lower()):
+            rows.append({"srv": srv, "st": st})
+    if not rows:
+        return
+
+    ws = wb.create_sheet("Storages")
+    ws.freeze_panes = "A2"
+    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (GB)", "Beschreibung"])
+    _col_widths(ws, [22, 10, 16, 24, 14, 8, 12, 40])
+
+    row, si, i = 2, 0, 0
+    while i < len(rows):
+        srv    = rows[i]["srv"]
+        srv_r0 = row
+        band   = BANDS3[si % 2]
+        si    += 1
+        while i < len(rows) and rows[i]["srv"].id == srv.id:
+            st = rows[i]["st"]
+            vals   = [srv.hostname, srv.os_type, srv.ip or "",
+                      st.name, st.raid_type or "", st.disk_count or "",
+                      st.size_gb or "", st.description or ""]
+            aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT]
+            for col, (v, a) in enumerate(zip(vals, aligns), 1):
+                _cell(ws, row, col, v, band, DATA_FONT, a)
+            row += 1
+            i   += 1
+        for c in [1, 2, 3]:
+            _merge(ws, c, srv_r0, row - 1)
+        top           = ws.cell(row=srv_r0, column=1)
+        top.fill      = _fill(_srv_hex(srv))
+        top.font      = WHITE_BOLD
+        top.alignment = CENTER
+        for r in range(srv_r0, row):
+            ws.cell(row=r, column=1).border = Border(
+                left=MED, right=THIN, top=THIN, bottom=THIN,
+            )
