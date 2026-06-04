@@ -54,6 +54,10 @@ export function openSidebar(serverId) {
   if (gwText) { gwEl.textContent = gwText; gwRow.style.display = ''; }
   else { gwRow.style.display = 'none'; }
 
+  // Reset add-storage form so it always starts closed when switching servers
+  const _stForm = document.getElementById('add-storage-form');
+  if (_stForm) _stForm.style.display = 'none';
+
   renderServicesSection(server);
   renderStoragesSection(server);
 
@@ -538,7 +542,9 @@ async function deleteStorage(storageId) {
 
 export function toggleAddStorage() {
   const f = document.getElementById('add-storage-form');
-  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+  if (!f) return;
+  const hidden = f.style.display === 'none' || f.style.display === '';
+  f.style.display = hidden ? 'flex' : 'none';
 }
 
 export async function saveNewStorage() {
