@@ -505,6 +505,16 @@ def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
 
 
 def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
+    # Build storage_id → sorted list of connected instance names from already-loaded data
+    storage_instances: dict[int, list[str]] = {}
+    for srv in servers:
+        for svc in srv.services or []:
+            for inst in svc.instances or []:
+                if inst.storage_id:
+                    storage_instances.setdefault(inst.storage_id, []).append(inst.name)
+    for v in storage_instances.values():
+        v.sort(key=str.lower)
+
     rows = []
     for srv in sorted(servers, key=lambda s: s.hostname.lower()):
         for st in sorted(srv.storages or [], key=lambda s: s.name.lower()):
@@ -514,8 +524,8 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
 
     ws = wb.create_sheet("Storages")
     ws.freeze_panes = "A2"
-    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (GB)", "Beschreibung"])
-    _col_widths(ws, [22, 10, 16, 24, 14, 8, 12, 40])
+    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (GB)", "Services", "Beschreibung"])
+    _col_widths(ws, [22, 10, 16, 24, 14, 8, 12, 36, 36])
 
     row, si, i = 2, 0, 0
     while i < len(rows):
@@ -525,10 +535,11 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
         si    += 1
         while i < len(rows) and rows[i]["srv"].id == srv.id:
             st = rows[i]["st"]
+            inst_names = ", ".join(storage_instances.get(st.id, []))
             vals   = [srv.hostname, srv.os_type, srv.ip or "",
                       st.name, st.raid_type or "", st.disk_count or "",
-                      st.size_gb or "", st.description or ""]
-            aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT]
+                      st.size_gb or "", inst_names, st.description or ""]
+            aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT, LEFT]
             for col, (v, a) in enumerate(zip(vals, aligns), 1):
                 _cell(ws, row, col, v, band, DATA_FONT, a)
             row += 1
