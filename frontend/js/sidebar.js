@@ -971,15 +971,20 @@ export function initSidebar() {
   document.getElementById('save-server-edit-btn').addEventListener('click', saveServerEdit);
   document.getElementById('toggle-add-service-btn').addEventListener('click', toggleAddService);
   document.getElementById('add-service-save-btn').addEventListener('click', addService);
-  document.getElementById('toggle-add-storage-btn').addEventListener('click', toggleAddStorage);
-  document.getElementById('add-storage-save-btn').addEventListener('click', saveNewStorage);
-  document.getElementById('add-storage-cancel-btn').addEventListener('click', () => {
-    document.getElementById('add-storage-form').style.display = 'none';
-  });
   document.getElementById('add-rel-btn').addEventListener('click', addRelation);
   document.getElementById('add-inst-rel-btn').addEventListener('click', addInstRel);
   document.getElementById('zbx-rescan-close-btn')?.addEventListener('click', closeZabbixRescanPanel);
   document.getElementById('zbx-rescan-apply-btn')?.addEventListener('click', applyZabbixRescan);
+
+  // Storage buttons via delegation — robust against null/ID mismatches
+  document.addEventListener('click', e => {
+    if (e.target.closest('#toggle-add-storage-btn'))  { toggleAddStorage(); return; }
+    if (e.target.closest('#add-storage-save-btn'))    { saveNewStorage(); return; }
+    if (e.target.closest('#add-storage-cancel-btn'))  {
+      const f = document.getElementById('add-storage-form');
+      if (f) f.style.display = 'none';
+    }
+  });
 }
 
 // ── Zabbix Rescan ─────────────────────────────────────────────────────────────
