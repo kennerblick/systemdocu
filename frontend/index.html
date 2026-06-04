@@ -92,6 +92,37 @@
       <button class="small" id="save-server-edit-btn"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
     </div>
 
+    <div class="section-label">Storages</div>
+    <div id="sb-storages"></div>
+    <div style="margin-top:4px">
+      <button class="small" id="toggle-add-storage-btn"><i class="fa-solid fa-plus"></i> Storage</button>
+    </div>
+    <div id="add-storage-form" style="display:none;flex-direction:column;gap:4px;background:#0f1b35;padding:10px;border-radius:6px;margin-top:4px">
+      <input type="text" id="storage-name-input" placeholder="Name (z.B. RAID-1 SAS)"/>
+      <select id="storage-raid-input">
+        <option value="">— RAID-Typ —</option>
+        <option value="RAID-0">RAID-0</option>
+        <option value="RAID-1">RAID-1</option>
+        <option value="RAID-5">RAID-5</option>
+        <option value="RAID-6">RAID-6</option>
+        <option value="RAID-10">RAID-10</option>
+        <option value="JBOD">JBOD</option>
+        <option value="Software-RAID">Software-RAID</option>
+        <option value="ZFS">ZFS</option>
+        <option value="LVM">LVM</option>
+        <option value="Einzeldisk">Einzeldisk</option>
+      </select>
+      <div style="display:flex;gap:4px">
+        <input type="number" id="storage-disks-input" placeholder="Disks" style="width:70px"/>
+        <input type="number" id="storage-size-input" placeholder="Größe GB" style="flex:1"/>
+      </div>
+      <input type="text" id="storage-desc-input" placeholder="Beschreibung (optional)"/>
+      <div style="display:flex;gap:4px">
+        <button class="small" id="add-storage-save-btn"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
+        <button class="small" id="add-storage-cancel-btn">Abbrechen</button>
+      </div>
+    </div>
+
     <div class="section-label">Umgebungen</div>
     <div class="chips" id="sb-envs"></div>
     <div style="position:relative;margin-top:4px">
@@ -137,37 +168,6 @@
         <input type="number" id="svc-port" placeholder="Port" style="width:70px"/>
       </div>
       <button class="small" id="add-service-save-btn">Speichern</button>
-    </div>
-
-    <div class="section-label">Storages</div>
-    <div id="sb-storages"></div>
-    <div style="margin-top:4px">
-      <button class="small" id="toggle-add-storage-btn"><i class="fa-solid fa-plus"></i> Storage</button>
-    </div>
-    <div id="add-storage-form" style="display:none;flex-direction:column;gap:4px;background:#0f1b35;padding:10px;border-radius:6px;margin-top:4px">
-      <input type="text" id="storage-name-input" placeholder="Name (z.B. RAID-1 SAS)"/>
-      <select id="storage-raid-input">
-        <option value="">— RAID-Typ —</option>
-        <option value="RAID-0">RAID-0</option>
-        <option value="RAID-1">RAID-1</option>
-        <option value="RAID-5">RAID-5</option>
-        <option value="RAID-6">RAID-6</option>
-        <option value="RAID-10">RAID-10</option>
-        <option value="JBOD">JBOD</option>
-        <option value="Software-RAID">Software-RAID</option>
-        <option value="ZFS">ZFS</option>
-        <option value="LVM">LVM</option>
-        <option value="Einzeldisk">Einzeldisk</option>
-      </select>
-      <div style="display:flex;gap:4px">
-        <input type="number" id="storage-disks-input" placeholder="Disks" style="width:70px"/>
-        <input type="number" id="storage-size-input" placeholder="Größe GB" style="flex:1"/>
-      </div>
-      <input type="text" id="storage-desc-input" placeholder="Beschreibung (optional)"/>
-      <div style="display:flex;gap:4px">
-        <button class="small" id="add-storage-save-btn"><i class="fa-solid fa-floppy-disk"></i> Speichern</button>
-        <button class="small" id="add-storage-cancel-btn">Abbrechen</button>
-      </div>
     </div>
 
     <div class="section-label">Instanz-Relationen</div>
