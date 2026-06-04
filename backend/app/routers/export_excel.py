@@ -103,6 +103,11 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
     wb = openpyxl.Workbook()
     _build_sheet1(wb, servers)
     _build_sheet2(wb, servers)
+    _build_sheet_vms(wb, servers)
+    _build_sheet_db(wb, servers)
+    _build_sheet_samba(wb, servers)
+    _build_sheet_docker(wb, servers)
+    _build_sheet_nfs(wb, servers)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -281,3 +286,209 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
                 _cell(ws, row, col, v, "F3F4F6", GREY_FONT, a)
             row += 1
         _merge(ws, 1, no_r0, row - 1)
+
+
+# ── Service-type detail sheets ─────────────────────────────────────────────────
+# Each sheet shows all instances of a specific service type across all servers.
+# Sheets are only added to the workbook if at least one row exists.
+
+BANDS3 = ["FEF3C7", "ECFDF5"]
+
+
+def _collect_svc_rows(servers: list, svc_types: set) -> list[dict]:
+    rows = []
+    for srv in sorted(servers, key=lambda s: s.hostname.lower()):
+        envs = ", ".join(e.name for e in srv.environments)
+        for svc in (srv.services or []):
+            if svc.type in svc_types:
+                for inst in sorted(svc.instances or [], key=lambda i: i.name.lower()):
+                    rows.append({"srv": srv, "svc": svc, "inst": inst, "envs": envs})
+    return rows
+
+
+def _build_svc_instances_sheet(
+    wb: openpyxl.Workbook,
+    title: str,
+    headers: list[str],
+    col_widths: list[int],
+    rows: list[dict],
+    write_row,
+    srv_merge_cols: list[int],
+) -> None:
+    """Generic sheet: one row per instance, server-info columns merged per server group."""
+    if not rows:
+        return
+    ws = wb.create_sheet(title)
+    ws.freeze_panes = "A2"
+    _header_row(ws, headers)
+    _col_widths(ws, col_widths)
+
+    row, si, i = 2, 0, 0
+    while i < len(rows):
+        srv    = rows[i]["srv"]
+        srv_r0 = row
+        band   = BANDS3[si % 2]
+        si    += 1
+        while i < len(rows) and rows[i]["srv"].id == srv.id:
+            write_row(ws, row, rows[i], band)
+            row += 1
+            i   += 1
+        for c in srv_merge_cols:
+            _merge(ws, c, srv_r0, row - 1)
+        top           = ws.cell(row=srv_r0, column=srv_merge_cols[0])
+        top.fill      = _fill(_srv_hex(srv))
+        top.font      = WHITE_BOLD
+        top.alignment = CENTER
+        for r in range(srv_r0, row):
+            ws.cell(row=r, column=srv_merge_cols[0]).border = Border(
+                left=MED, right=THIN, top=THIN, bottom=THIN,
+            )
+
+
+def _build_sheet_samba(wb: openpyxl.Workbook, servers: list) -> None:
+    svc_hex = SVC_HEX["samba"]
+    rows    = _collect_svc_rows(servers, {"samba"})
+
+    def _write(ws, row, e, band):
+        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+                  e["srv"].ip or "", e["envs"]]
+        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        for col, (v, a) in enumerate(zip(vals, aligns), 1):
+            _cell(ws, row, col, v, band, DATA_FONT, a)
+        ws.cell(row=row, column=1).fill = _fill(svc_hex)
+        ws.cell(row=row, column=1).font = WHITE_BOLD
+
+    _build_svc_instances_sheet(
+        wb, "Samba-Freigaben",
+        ["Freigabe", "Server", "OS", "IP", "Umgebungen"],
+        [28, 22, 10, 16, 22],
+        rows, _write, [2, 3, 4, 5],
+    )
+
+
+def _build_sheet_db(wb: openpyxl.Workbook, servers: list) -> None:
+    svc_hex = SVC_HEX["postgresql"]
+    rows    = _collect_svc_rows(servers, {"postgresql"})
+
+    def _write(ws, row, e, band):
+        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+                  e["srv"].ip or "", e["envs"], e["svc"].version or ""]
+        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT, CENTER]
+        for col, (v, a) in enumerate(zip(vals, aligns), 1):
+            _cell(ws, row, col, v, band, DATA_FONT, a)
+        ws.cell(row=row, column=1).fill = _fill(svc_hex)
+        ws.cell(row=row, column=1).font = WHITE_BOLD
+
+    _build_svc_instances_sheet(
+        wb, "Datenbanken",
+        ["Datenbank", "Server", "OS", "IP", "Umgebungen", "PG-Version"],
+        [28, 22, 10, 16, 22, 12],
+        rows, _write, [2, 3, 4, 5, 6],
+    )
+
+
+def _build_sheet_docker(wb: openpyxl.Workbook, servers: list) -> None:
+    svc_hex = SVC_HEX["docker"]
+    rows    = _collect_svc_rows(servers, {"docker"})
+
+    def _write(ws, row, e, band):
+        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+                  e["srv"].ip or "", e["envs"]]
+        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        for col, (v, a) in enumerate(zip(vals, aligns), 1):
+            _cell(ws, row, col, v, band, DATA_FONT, a)
+        ws.cell(row=row, column=1).fill = _fill(svc_hex)
+        ws.cell(row=row, column=1).font = WHITE_BOLD
+
+    _build_svc_instances_sheet(
+        wb, "Docker-Container",
+        ["Container", "Server", "OS", "IP", "Umgebungen"],
+        [30, 22, 10, 16, 22],
+        rows, _write, [2, 3, 4, 5],
+    )
+
+
+def _build_sheet_nfs(wb: openpyxl.Workbook, servers: list) -> None:
+    svc_hex = SVC_HEX["nfs"]
+    rows    = _collect_svc_rows(servers, {"nfs"})
+
+    def _write(ws, row, e, band):
+        vals   = [e["inst"].name, e["srv"].hostname, e["srv"].os_type,
+                  e["srv"].ip or "", e["envs"]]
+        aligns = [LEFT, CENTER, CENTER, CENTER, LEFT]
+        for col, (v, a) in enumerate(zip(vals, aligns), 1):
+            _cell(ws, row, col, v, band, DATA_FONT, a)
+        ws.cell(row=row, column=1).fill = _fill(svc_hex)
+        ws.cell(row=row, column=1).font = WHITE_BOLD
+
+    _build_svc_instances_sheet(
+        wb, "NFS-Exporte",
+        ["Export/Mount", "Server", "OS", "IP", "Umgebungen"],
+        [30, 22, 10, 16, 22],
+        rows, _write, [2, 3, 4, 5],
+    )
+
+
+def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
+    """VMs sheet: Hyper-V + Proxmox combined, Typ column merged per service group."""
+    rows = []
+    for srv in sorted(servers, key=lambda s: s.hostname.lower()):
+        envs = ", ".join(e.name for e in srv.environments)
+        for svc in (srv.services or []):
+            if svc.type in {"hyperv", "proxmox"}:
+                for inst in sorted(svc.instances or [], key=lambda i: i.name.lower()):
+                    rows.append({"srv": srv, "svc": svc, "inst": inst, "envs": envs})
+    if not rows:
+        return
+
+    ws = wb.create_sheet("Virtuelle Maschinen")
+    ws.freeze_panes = "A2"
+    _header_row(ws, ["VM-Name", "Typ", "Server", "OS", "IP", "Umgebungen"])
+    _col_widths(ws, [30, 12, 22, 10, 16, 22])
+
+    row, si, i = 2, 0, 0
+    while i < len(rows):
+        srv    = rows[i]["srv"]
+        srv_r0 = row
+        band   = BANDS3[si % 2]
+        si    += 1
+
+        j = i
+        while j < len(rows) and rows[j]["srv"].id == srv.id:
+            svc       = rows[j]["svc"]
+            svc_r0    = row
+            typ_label = "Hyper-V" if svc.type == "hyperv" else "Proxmox"
+            typ_hex   = SVC_HEX.get(svc.type, "4B5563")
+
+            k = j
+            while (k < len(rows)
+                   and rows[k]["srv"].id == srv.id
+                   and rows[k]["svc"].id == svc.id):
+                e = rows[k]
+                vals   = [e["inst"].name, typ_label, srv.hostname,
+                          srv.os_type, srv.ip or "", e["envs"]]
+                aligns = [LEFT, CENTER, CENTER, CENTER, CENTER, LEFT]
+                for col, (v, a) in enumerate(zip(vals, aligns), 1):
+                    _cell(ws, row, col, v, band, DATA_FONT, a)
+                ws.cell(row=row, column=1).fill = _fill(typ_hex)
+                ws.cell(row=row, column=1).font = WHITE_BOLD
+                row += 1
+                k   += 1
+
+            _merge(ws, 2, svc_r0, row - 1)
+            ws.cell(row=svc_r0, column=2).fill      = _fill(typ_hex)
+            ws.cell(row=svc_r0, column=2).font      = WHITE_BOLD
+            ws.cell(row=svc_r0, column=2).alignment = CENTER
+            j = k
+
+        for c in [3, 4, 5, 6]:
+            _merge(ws, c, srv_r0, row - 1)
+        top           = ws.cell(row=srv_r0, column=3)
+        top.fill      = _fill(_srv_hex(srv))
+        top.font      = WHITE_BOLD
+        top.alignment = CENTER
+        for r in range(srv_r0, row):
+            ws.cell(row=r, column=3).border = Border(
+                left=MED, right=THIN, top=THIN, bottom=THIN,
+            )
+        i = j
