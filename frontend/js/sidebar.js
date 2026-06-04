@@ -976,15 +976,13 @@ export function initSidebar() {
   document.getElementById('zbx-rescan-close-btn')?.addEventListener('click', closeZabbixRescanPanel);
   document.getElementById('zbx-rescan-apply-btn')?.addEventListener('click', applyZabbixRescan);
 
-  // Storage buttons via delegation — robust against null/ID mismatches
-  document.addEventListener('click', e => {
-    if (e.target.closest('#toggle-add-storage-btn'))  { toggleAddStorage(); return; }
-    if (e.target.closest('#add-storage-save-btn'))    { saveNewStorage(); return; }
-    if (e.target.closest('#add-storage-cancel-btn'))  {
-      const f = document.getElementById('add-storage-form');
-      if (f) f.style.display = 'none';
-    }
+  document.getElementById('toggle-add-storage-btn')?.addEventListener('click', toggleAddStorage);
+  document.getElementById('add-storage-save-btn')?.addEventListener('click', saveNewStorage);
+  document.getElementById('add-storage-cancel-btn')?.addEventListener('click', () => {
+    const f = document.getElementById('add-storage-form');
+    if (f) f.style.display = 'none';
   });
+  console.log('[sidebar] initSidebar complete, storage listeners attached v4');
 }
 
 // ── Zabbix Rescan ─────────────────────────────────────────────────────────────
