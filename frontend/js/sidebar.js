@@ -471,7 +471,7 @@ export function renderStoragesSection(server) {
       '<span style="font-weight:600;font-size:0.85rem">' + escHtml(st.name) + '</span>' +
       (st.raid_type ? '<span style="background:#312e81;color:#a5b4fc;border-radius:3px;padding:1px 6px;font-size:0.72rem">' + escHtml(st.raid_type) + '</span>' : '') +
       (st.disk_count ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.disk_count + '×</span>' : '') +
-      (st.size_gb ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.size_gb + ' GB</span>' : '');
+      (st.size_gb ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.size_gb + ' TB</span>' : '');
 
     const btnWrap = document.createElement('div');
     btnWrap.style.cssText = 'display:flex;gap:4px;margin-left:auto';
@@ -509,7 +509,7 @@ function editStorage(st, itemEl) {
     '</select>' +
     '<div style="display:flex;gap:4px">' +
     '<input id="st-edit-disks" type="number" value="' + (st.disk_count || '') + '" placeholder="Disks" style="width:70px"/>' +
-    '<input id="st-edit-size" type="number" value="' + (st.size_gb || '') + '" placeholder="Größe GB" style="flex:1"/>' +
+    '<input id="st-edit-size" type="number" value="' + (st.size_gb || '') + '" placeholder="Größe TB" style="flex:1"/>' +
     '</div>' +
     '<input id="st-edit-desc" type="text" value="' + escHtml(st.description || '') + '" placeholder="Beschreibung"/>' +
     '<div style="display:flex;gap:4px">' +

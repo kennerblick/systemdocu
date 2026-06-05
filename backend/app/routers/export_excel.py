@@ -524,7 +524,7 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
 
     ws = wb.create_sheet("Storages")
     ws.freeze_panes = "A2"
-    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (GB)", "Services", "Beschreibung"])
+    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (TB)", "Services", "Beschreibung"])
     _col_widths(ws, [22, 10, 16, 24, 14, 8, 12, 36, 36])
 
     row, si, i = 2, 0, 0
