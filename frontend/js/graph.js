@@ -331,7 +331,7 @@ export function computeHierarchicalPositions(opts = {}) {
   const _externSrvs = _servers.filter(isExternServer);
   const _colSrvs    = _servers.filter(s => !isExternServer(s));
 
-  const sortByName = arr => [...arr].sort((a, b) => a.hostname.localeCompare(b.hostname));
+  const sortByName = arr => [...arr].sort((a, b) => displayName(a).localeCompare(displayName(b)));
   const isVmHost   = s => (s.services || []).some(svc =>
     VM_SVC_TYPES.has(svc.type) &&
     (svc.instances || []).some(inst => !_instF || _instF.has(inst.id)));
