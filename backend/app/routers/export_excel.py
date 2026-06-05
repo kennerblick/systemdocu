@@ -524,8 +524,8 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
 
     ws = wb.create_sheet("Storages")
     ws.freeze_panes = "A2"
-    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "Größe (TB)", "Services", "Beschreibung"])
-    _col_widths(ws, [22, 10, 16, 24, 14, 8, 12, 36, 36])
+    _header_row(ws, ["Server", "OS", "IP", "Storage-Name", "RAID-Typ", "Disks", "RAID (TB)", "Disk (TB)", "Services", "Beschreibung"])
+    _col_widths(ws, [22, 10, 16, 24, 14, 8, 10, 10, 36, 36])
 
     row, si, i = 2, 0, 0
     while i < len(rows):
@@ -538,8 +538,8 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
             inst_names = ", ".join(storage_instances.get(st.id, []))
             vals   = [srv.hostname, srv.os_type, srv.ip or "",
                       st.name, st.raid_type or "", st.disk_count or "",
-                      st.size_gb or "", inst_names, st.description or ""]
-            aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT, LEFT]
+                      st.size_gb or "", st.disk_size_tb or "", inst_names, st.description or ""]
+            aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, CENTER, LEFT, LEFT]
             for col, (v, a) in enumerate(zip(vals, aligns), 1):
                 _cell(ws, row, col, v, band, DATA_FONT, a)
             row += 1

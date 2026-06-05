@@ -50,6 +50,7 @@ class Storage(Base):
     raid_type = Column(String(50), nullable=True)
     disk_count = Column(Integer, nullable=True)
     size_gb = Column(Integer, nullable=True)
+    disk_size_tb = Column(Integer, nullable=True)
     description = Column(Text, nullable=True)
 
     server = relationship("Server", back_populates="storages")

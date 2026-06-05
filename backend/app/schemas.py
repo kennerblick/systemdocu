@@ -8,6 +8,7 @@ class StorageCreate(BaseModel):
     raid_type: Optional[str] = None
     disk_count: Optional[int] = None
     size_gb: Optional[int] = None
+    disk_size_tb: Optional[int] = None
     description: Optional[str] = None
 
 
@@ -16,6 +17,7 @@ class StorageUpdate(BaseModel):
     raid_type: Optional[str] = None
     disk_count: Optional[int] = None
     size_gb: Optional[int] = None
+    disk_size_tb: Optional[int] = None
     description: Optional[str] = None
 
 

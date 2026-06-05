@@ -471,7 +471,8 @@ export function renderStoragesSection(server) {
       '<span style="font-weight:600;font-size:0.85rem">' + escHtml(st.name) + '</span>' +
       (st.raid_type ? '<span style="background:#312e81;color:#a5b4fc;border-radius:3px;padding:1px 6px;font-size:0.72rem">' + escHtml(st.raid_type) + '</span>' : '') +
       (st.disk_count ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.disk_count + '×</span>' : '') +
-      (st.size_gb ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.size_gb + ' TB</span>' : '');
+      (st.size_gb ? '<span style="color:#9ca3af;font-size:0.75rem">' + st.size_gb + ' TB</span>' : '') +
+      (st.disk_size_tb ? '<span style="color:#9ca3af;font-size:0.75rem">Disk ' + st.disk_size_tb + ' TB</span>' : '');
 
     const btnWrap = document.createElement('div');
     btnWrap.style.cssText = 'display:flex;gap:4px;margin-left:auto';
@@ -509,7 +510,8 @@ function editStorage(st, itemEl) {
     '</select>' +
     '<div style="display:flex;gap:4px">' +
     '<input id="st-edit-disks" type="number" value="' + (st.disk_count || '') + '" placeholder="Disks" style="width:70px"/>' +
-    '<input id="st-edit-size" type="number" value="' + (st.size_gb || '') + '" placeholder="Größe TB" style="flex:1"/>' +
+    '<input id="st-edit-size" type="number" value="' + (st.size_gb || '') + '" placeholder="RAID-Größe TB" style="flex:1"/>' +
+    '<input id="st-edit-disksize" type="number" value="' + (st.disk_size_tb || '') + '" placeholder="Disk TB" style="width:80px"/>' +
     '</div>' +
     '<input id="st-edit-desc" type="text" value="' + escHtml(st.description || '') + '" placeholder="Beschreibung"/>' +
     '<div style="display:flex;gap:4px">' +
@@ -524,11 +526,12 @@ function editStorage(st, itemEl) {
 async function saveStorageEdit(storageId) {
   const name      = document.getElementById('st-edit-name').value.trim();
   const raid_type = document.getElementById('st-edit-raid').value || null;
-  const disk_count = parseInt(document.getElementById('st-edit-disks').value) || null;
-  const size_gb    = parseInt(document.getElementById('st-edit-size').value) || null;
+  const disk_count  = parseInt(document.getElementById('st-edit-disks').value) || null;
+  const size_gb     = parseInt(document.getElementById('st-edit-size').value) || null;
+  const disk_size_tb = parseInt(document.getElementById('st-edit-disksize').value) || null;
   const description = document.getElementById('st-edit-desc').value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('PUT', '/storages/' + storageId, { name, raid_type, disk_count, size_gb, description }); }
+  try { await api('PUT', '/storages/' + storageId, { name, raid_type, disk_count, size_gb, disk_size_tb, description }); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }
@@ -550,17 +553,19 @@ export function toggleAddStorage() {
 export async function saveNewStorage() {
   const name      = document.getElementById('storage-name-input').value.trim();
   const raid_type = document.getElementById('storage-raid-input').value || null;
-  const disk_count = parseInt(document.getElementById('storage-disks-input').value) || null;
-  const size_gb    = parseInt(document.getElementById('storage-size-input').value) || null;
+  const disk_count  = parseInt(document.getElementById('storage-disks-input').value) || null;
+  const size_gb     = parseInt(document.getElementById('storage-size-input').value) || null;
+  const disk_size_tb = parseInt(document.getElementById('storage-disksize-input').value) || null;
   const description = document.getElementById('storage-desc-input').value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/servers/' + currentServerId + '/storages', { name, raid_type, disk_count, size_gb, description }); }
+  try { await api('POST', '/servers/' + currentServerId + '/storages', { name, raid_type, disk_count, size_gb, disk_size_tb, description }); }
   catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('add-storage-form').style.display = 'none';
   document.getElementById('storage-name-input').value = '';
   document.getElementById('storage-raid-input').value = '';
   document.getElementById('storage-disks-input').value = '';
   document.getElementById('storage-size-input').value = '';
+  document.getElementById('storage-disksize-input').value = '';
   document.getElementById('storage-desc-input').value = '';
   await loadAll();
 }
