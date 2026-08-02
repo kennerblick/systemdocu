@@ -60,6 +60,9 @@ POSTGRES_USER=systemdocu
 POSTGRES_PASSWORD=geheim
 POSTGRES_DB=systemdocu
 
+AUTH_USER=admin
+AUTH_PASSWORD=geheim
+
 ZABBIX_URL=https://monitoring.example.com/
 ZABBIX_API_TOKEN=<api-token>
 ZABBIX_VERIFY_SSL=false
@@ -70,6 +73,8 @@ ZABBIX_VERIFY_SSL=false
 | `POSTGRES_USER` | ✓ | Datenbankbenutzer |
 | `POSTGRES_PASSWORD` | ✓ | Datenbankpasswort |
 | `POSTGRES_DB` | ✓ | Datenbankname |
+| `AUTH_USER` | ✓ | Benutzername für HTTP-Basic-Auth (schützt die komplette API) |
+| `AUTH_PASSWORD` | ✓ | Passwort für HTTP-Basic-Auth — unbedingt vom Standardwert `admin` ändern |
 | `ZABBIX_URL` | — | Zabbix-API-URL (z. B. `https://zabbix.example.com/`) |
 | `ZABBIX_API_TOKEN` | — | API-Token (empfohlen) |
 | `ZABBIX_USER` | — | Zabbix-Benutzer (Alternative zu Token) |
@@ -91,7 +96,7 @@ ZABBIX_VERIFY_SSL=false
   - `clusters`: Name, Beschreibung, Service-Typ, Domain als Strings.
   - `internet_routers`: Name, Anbieter, externe/interne IP als Strings, Upstream-Router-Referenz, verknüpfter Server als Foreign Key.
   - `relations` und `instance_relations`: Relationale Verknüpfungen zwischen Servern, Instanzen oder Clustern, gespeichert als Foreign-Key-IDs plus `type`/`direction` als Strings.
-  - Join-Tabellen für M:N-Beziehungen: `server_tags`, `server_environments`, `instance_environments`, `instance_applications`, `router_environments`, `cluster_members`.
+  - Join-Tabellen für M:N-Beziehungen: `server_environments`, `instance_environments`, `instance_applications`, `router_environments`, `cluster_members`.
 - Schemaänderungen werden per Alembic in `backend/alembic` verwaltet und beim Start automatisch angewendet.
 - Docker speichert die PostgreSQL-Daten dauerhaft im Host-Verzeichnis `/opt/docker/systemdocu/postgres`.
 - Logs des Backends liegen im Host-Verzeichnis `/opt/docker/systemdocu/logs`.
@@ -486,4 +491,4 @@ Interaktive Swagger-Doku: `http://<server-ip>:9191/api/docs`
 | GET | `/api/zabbix/ping` | Zabbix-Verbindungsstatus |
 | GET | `/api/zabbix/hosts` | Zabbix-Hosts auflisten |
 | POST | `/api/zabbix/scan` | Host scannen |
-| POST | `/api/import/zabbix` | Scan-Ergebnis importieren |
+| POST | `/api/zabbix/import` | Scan-Ergebnis importieren |

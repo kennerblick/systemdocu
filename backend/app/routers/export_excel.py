@@ -97,7 +97,6 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
             selectinload(Server.services)
             .selectinload(Service.instances)
             .selectinload(ServiceInstance.storage),
-            selectinload(Server.tags),
             selectinload(Server.environments),
             selectinload(Server.storages),
         )
@@ -108,10 +107,10 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
     _build_sheet1(wb, servers)
     _build_sheet2(wb, servers)
     _build_sheet_vms(wb, servers)
-    _build_sheet_db(wb, servers)
-    _build_sheet_samba(wb, servers)
-    _build_sheet_docker(wb, servers)
-    _build_sheet_nfs(wb, servers)
+    _build_svc_sheet(wb, servers, "postgresql", "Datenbanken", "Datenbank", 28, version_col=True)
+    _build_svc_sheet(wb, servers, "samba", "Samba-Freigaben", "Freigabe", 28)
+    _build_svc_sheet(wb, servers, "docker", "Docker-Container", "Container", 30)
+    _build_svc_sheet(wb, servers, "nfs", "NFS-Exporte", "Export/Mount", 30)
     _build_sheet_storages(wb, servers)
 
     buf = io.BytesIO()
@@ -350,92 +349,39 @@ def _build_svc_instances_sheet(
             )
 
 
-def _build_sheet_samba(wb: openpyxl.Workbook, servers: list) -> None:
-    svc_hex = SVC_HEX["samba"]
-    rows    = _collect_svc_rows(servers, {"samba"})
+def _build_svc_sheet(
+    wb: openpyxl.Workbook, servers: list, svc_type: str, title: str,
+    name_header: str, name_col_width: int, version_col: bool = False,
+) -> None:
+    """One row per instance of `svc_type` across all servers (Storage/Server/OS/IP/Umgebungen,
+    plus an optional service-version column). Used for Samba/Datenbanken/Docker/NFS sheets —
+    the only difference between those is the service type, sheet title, first-column label/width,
+    and whether a version column is shown."""
+    svc_hex = SVC_HEX.get(svc_type, "4B5563")
+    rows    = _collect_svc_rows(servers, {svc_type})
+
+    headers    = [name_header, "Storage", "Server", "OS", "IP", "Umgebungen"]
+    col_widths = [name_col_width, 20, 22, 10, 16, 22]
+    merge_cols = [3, 4, 5, 6]
+    if version_col:
+        headers.append("PG-Version")
+        col_widths.append(12)
+        merge_cols.append(7)
 
     def _write(ws, row, e, band):
         storage = e["inst"].storage.name if e["inst"].storage else ""
         vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
                   e["srv"].ip or "", e["envs"]]
         aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
+        if version_col:
+            vals.append(e["svc"].version or "")
+            aligns.append(CENTER)
         for col, (v, a) in enumerate(zip(vals, aligns), 1):
             _cell(ws, row, col, v, band, DATA_FONT, a)
         ws.cell(row=row, column=1).fill = _fill(svc_hex)
         ws.cell(row=row, column=1).font = WHITE_BOLD
 
-    _build_svc_instances_sheet(
-        wb, "Samba-Freigaben",
-        ["Freigabe", "Storage", "Server", "OS", "IP", "Umgebungen"],
-        [28, 20, 22, 10, 16, 22],
-        rows, _write, [3, 4, 5, 6],
-    )
-
-
-def _build_sheet_db(wb: openpyxl.Workbook, servers: list) -> None:
-    svc_hex = SVC_HEX["postgresql"]
-    rows    = _collect_svc_rows(servers, {"postgresql"})
-
-    def _write(ws, row, e, band):
-        storage = e["inst"].storage.name if e["inst"].storage else ""
-        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
-                  e["srv"].ip or "", e["envs"], e["svc"].version or ""]
-        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT, CENTER]
-        for col, (v, a) in enumerate(zip(vals, aligns), 1):
-            _cell(ws, row, col, v, band, DATA_FONT, a)
-        ws.cell(row=row, column=1).fill = _fill(svc_hex)
-        ws.cell(row=row, column=1).font = WHITE_BOLD
-
-    _build_svc_instances_sheet(
-        wb, "Datenbanken",
-        ["Datenbank", "Storage", "Server", "OS", "IP", "Umgebungen", "PG-Version"],
-        [28, 20, 22, 10, 16, 22, 12],
-        rows, _write, [3, 4, 5, 6, 7],
-    )
-
-
-def _build_sheet_docker(wb: openpyxl.Workbook, servers: list) -> None:
-    svc_hex = SVC_HEX["docker"]
-    rows    = _collect_svc_rows(servers, {"docker"})
-
-    def _write(ws, row, e, band):
-        storage = e["inst"].storage.name if e["inst"].storage else ""
-        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
-                  e["srv"].ip or "", e["envs"]]
-        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
-        for col, (v, a) in enumerate(zip(vals, aligns), 1):
-            _cell(ws, row, col, v, band, DATA_FONT, a)
-        ws.cell(row=row, column=1).fill = _fill(svc_hex)
-        ws.cell(row=row, column=1).font = WHITE_BOLD
-
-    _build_svc_instances_sheet(
-        wb, "Docker-Container",
-        ["Container", "Storage", "Server", "OS", "IP", "Umgebungen"],
-        [30, 20, 22, 10, 16, 22],
-        rows, _write, [3, 4, 5, 6],
-    )
-
-
-def _build_sheet_nfs(wb: openpyxl.Workbook, servers: list) -> None:
-    svc_hex = SVC_HEX["nfs"]
-    rows    = _collect_svc_rows(servers, {"nfs"})
-
-    def _write(ws, row, e, band):
-        storage = e["inst"].storage.name if e["inst"].storage else ""
-        vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
-                  e["srv"].ip or "", e["envs"]]
-        aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
-        for col, (v, a) in enumerate(zip(vals, aligns), 1):
-            _cell(ws, row, col, v, band, DATA_FONT, a)
-        ws.cell(row=row, column=1).fill = _fill(svc_hex)
-        ws.cell(row=row, column=1).font = WHITE_BOLD
-
-    _build_svc_instances_sheet(
-        wb, "NFS-Exporte",
-        ["Export/Mount", "Storage", "Server", "OS", "IP", "Umgebungen"],
-        [30, 20, 22, 10, 16, 22],
-        rows, _write, [3, 4, 5, 6],
-    )
+    _build_svc_instances_sheet(wb, title, headers, col_widths, rows, _write, merge_cols)
 
 
 def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:

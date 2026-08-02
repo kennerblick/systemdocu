@@ -10,10 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Relation, Environment, Application, InternetRouter
-from .schemas import RelationCreate, RelationOut, ZabbixImportPayload, EnvironmentOut, ApplicationOut
+from .models import Server, Service, Relation
+from .schemas import RelationCreate, RelationOut
 from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet, clusters, storages
 from .events import bus
+from .auth import require_auth
 from typing import List
 
 LOG_DIR = os.getenv("LOG_DIR", "/logs")
@@ -35,7 +36,11 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 logger = logging.getLogger("systemdocu")
 
-app = FastAPI(title="systemdocu")
+app = FastAPI(
+    title="systemdocu",
+    dependencies=[Depends(require_auth)],
+    docs_url=None, redoc_url=None, openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -167,42 +172,3 @@ async def export_json(db: AsyncSession = Depends(get_db)):
             for r in rels_result.scalars().all()
         ],
     }
-
-
-@app.post("/api/import/zabbix")
-async def import_zabbix(payload: ZabbixImportPayload, db: AsyncSession = Depends(get_db)):
-    created = updated = skipped = 0
-    for host in payload.hosts:
-        try:
-            result = await db.execute(select(Server).where(Server.hostname == host.hostname))
-            server = result.scalar_one_or_none()
-            if server is None:
-                server = Server(
-                    hostname=host.hostname,
-                    ip=host.ip,
-                    os_type=host.os_type,
-                )
-                db.add(server)
-                await db.flush()
-                created += 1
-            else:
-                if host.ip:
-                    server.ip = host.ip
-                server.os_type = host.os_type
-                updated += 1
-
-            existing_types = {s.type for s in (
-                await db.execute(select(Service).where(Service.server_id == server.id))
-            ).scalars().all()}
-
-            for svc in host.services:
-                if svc.type not in existing_types:
-                    db.add(Service(server_id=server.id, **svc.model_dump()))
-        except Exception as e:
-            logger.error("import_zabbix: error processing host %s: %s", host.hostname, e)
-            skipped += 1
-
-    await db.commit()
-    await bus.broadcast("data_changed", {"entity": "server"})
-    logger.warning("import_zabbix finished: created=%d updated=%d skipped=%d", created, updated, skipped) if skipped else None
-    return {"created": created, "updated": updated, "skipped": skipped}

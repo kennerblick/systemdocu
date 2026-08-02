@@ -1,6 +1,34 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
+# A server/instance/environment may point at exactly one gateway target
+# (a router, a plain server, or — for instances only — another instance),
+# never several at once, since "which one wins" would be ambiguous both in
+# the API response and in the graph rendering. Each group below is only
+# checked on models that actually declare 2+ of its fields, so this one
+# mixin covers Server, ServiceInstance and Environment. The same invariant
+# is enforced at the database level via CHECK constraints (migration 0008)
+# so it holds even for a future endpoint that forgets to use these schemas.
+_GATEWAY_FIELD_GROUPS = [
+    ("gateway_router_id", "gateway_server_id", "gateway_instance_id"),
+    ("default_gateway_router_id", "default_gateway_server_id"),
+]
+
+
+class _SingleGatewayMixin(BaseModel):
+    @model_validator(mode="after")
+    def _check_single_gateway(self):
+        for group in _GATEWAY_FIELD_GROUPS:
+            present = [f for f in group if hasattr(self, f)]
+            if len(present) < 2:
+                continue
+            set_fields = [f for f in present if getattr(self, f) is not None]
+            if len(set_fields) > 1:
+                raise ValueError(
+                    f"Nur eines von {', '.join(present)} darf gesetzt sein (gefunden: {', '.join(set_fields)})"
+                )
+        return self
 
 
 class StorageCreate(BaseModel):
@@ -39,11 +67,11 @@ class EnvironmentBase(BaseModel):
     default_gateway_server_id: Optional[int] = None
 
 
-class EnvironmentCreate(EnvironmentBase):
+class EnvironmentCreate(EnvironmentBase, _SingleGatewayMixin):
     pass
 
 
-class EnvironmentUpdate(BaseModel):
+class EnvironmentUpdate(_SingleGatewayMixin):
     name: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
@@ -90,11 +118,11 @@ class ServiceInstanceBase(BaseModel):
     gateway_instance_id: Optional[int] = None
 
 
-class ServiceInstanceCreate(ServiceInstanceBase):
+class ServiceInstanceCreate(ServiceInstanceBase, _SingleGatewayMixin):
     pass
 
 
-class ServiceInstanceUpdate(BaseModel):
+class ServiceInstanceUpdate(_SingleGatewayMixin):
     name: Optional[str] = None
     description: Optional[str] = None
     fqdn: Optional[str] = None
@@ -163,11 +191,11 @@ class ServerBase(BaseModel):
     gateway_server_id: Optional[int] = None
 
 
-class ServerCreate(ServerBase):
+class ServerCreate(ServerBase, _SingleGatewayMixin):
     pass
 
 
-class ServerUpdate(BaseModel):
+class ServerUpdate(_SingleGatewayMixin):
     hostname: Optional[str] = None
     common_name: Optional[str] = None
     ip: Optional[str] = None
@@ -300,15 +328,3 @@ class InternetRouterOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class ZabbixHost(BaseModel):
-    hostname: str
-    fqdn: Optional[str] = None
-    ip: Optional[str] = None
-    os_type: str = "linux"
-    services: List[ServiceCreate] = []
-
-
-class ZabbixImportPayload(BaseModel):
-    hosts: List[ZabbixHost]

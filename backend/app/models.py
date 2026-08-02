@@ -1,15 +1,27 @@
+"""Domain model for systemdocu's heterogeneous-network CMDB.
+
+Server           physical/virtual host (os_type distinguishes hypervisor hosts).
+Service          a kind of software present on a Server or a standalone ServiceInstance.
+ServiceInstance  one concrete instance of a Service (a VM, a database, a container...) —
+                 can carry its own IP, gateway, Environment(s) and Application(s)
+                 independent of its parent Server.
+Environment      a logical/physical network segment (subnet + gateway) — the
+                 "logisches Netzwerk" servers/instances/routers are placed into.
+Application      a cross-cutting logical grouping of instances (e.g. "CRM"),
+                 independent of which servers/environments they run in.
+Cluster          a group of ServiceInstances acting as one unit (e.g. a DB or
+                 k8s cluster) — see the two membership kinds on the class itself.
+InternetRouter   a physical/logical internet uplink, chainable via upstream_router_id.
+Relation / InstanceRelation
+                 arbitrary dependency edges — server-level and instance/cluster-level
+                 respectively; see the comment on Relation for why both exist.
+"""
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, Table, Boolean
 )
 from sqlalchemy.orm import relationship
 from .database import Base
-
-server_tags = Table(
-    "server_tags", Base.metadata,
-    Column("server_id", Integer, ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-)
 
 server_environments = Table(
     "server_environments", Base.metadata,
@@ -68,13 +80,16 @@ class Server(Base):
     os_type = Column(String(50), default="linux")
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # is_gateway: OTHER nodes may point their gateway_*_id at this server.
+    # gateway_router_id / gateway_server_id: where THIS server's own traffic exits —
+    # at most one of the two may be set (enforced in schemas.py + a DB CHECK
+    # constraint), never both.
     is_gateway = Column(Boolean, default=False)
     gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
     storages = relationship("Storage", back_populates="server", cascade="all, delete-orphan")
-    tags = relationship("Tag", secondary=server_tags, back_populates="servers")
     environments = relationship("Environment", secondary=server_environments, back_populates="servers")
     outgoing_relations = relationship("Relation", foreign_keys="Relation.source_id", back_populates="source", cascade="all, delete-orphan")
     incoming_relations = relationship("Relation", foreign_keys="Relation.target_id", back_populates="target")
@@ -108,6 +123,8 @@ class ServiceInstance(Base):
     description = Column(Text)
     ip = Column(String(45))
     gateway = Column(String(45))
+    # Same "at most one" rule as Server.gateway_*_id, extended with a third option
+    # (another instance) since e.g. a VM's gateway can itself be a VM.
     gateway_router_id = Column(Integer, ForeignKey("internet_routers.id", ondelete="SET NULL"), nullable=True)
     gateway_server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
 
@@ -158,6 +175,13 @@ class Cluster(Base):
     description = Column(Text, nullable=True)
     service_type = Column(String(50), nullable=False)
     domain = Column(String(255), nullable=True)
+    # Two distinct, non-overlapping ways an instance can belong to a cluster:
+    # - members: existing ServiceInstances (already attached to a Server/Service)
+    #   added via the cluster_members M:N table — e.g. a Postgres instance
+    #   joining a replication cluster.
+    # - own_instances: ServiceInstances created directly under this cluster with
+    #   no Server/Service parent (POST /clusters/{id}/own-instances) — e.g. a
+    #   cluster VIP that isn't tied to one physical host.
     members = relationship("ServiceInstance", secondary=cluster_members, back_populates="clusters")
     own_instances = relationship("ServiceInstance", back_populates="cluster",
                                  foreign_keys="[ServiceInstance.cluster_id]",
@@ -175,15 +199,6 @@ class InstanceRelation(Base):
     direction = Column(String(10), nullable=False, default="to")
 
 
-class Tag(Base):
-    __tablename__ = "tags"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, nullable=False)
-    color = Column(String(7), default="#888888")
-
-    servers = relationship("Server", secondary=server_tags, back_populates="tags")
-
-
 class InternetRouter(Base):
     __tablename__ = "internet_routers"
     id = Column(Integer, primary_key=True, index=True)
@@ -199,6 +214,11 @@ class InternetRouter(Base):
     server = relationship("Server", foreign_keys=[server_id])
 
 
+# Server-level counterpart to InstanceRelation above: a coarser dependency edge
+# between two Servers, used when the relationship isn't specific to one service
+# instance. Kept as a separate table/endpoint rather than folded into
+# InstanceRelation since the two operate at different granularity (server vs.
+# instance/cluster) and the frontend queries them independently.
 class Relation(Base):
     __tablename__ = "relations"
     id = Column(Integer, primary_key=True, index=True)
