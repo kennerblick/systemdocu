@@ -16,7 +16,7 @@ import {
   isExternServer,
 } from './state.js';
 
-import { computeHierarchicalPositions } from './graph.js';
+import { computeHierarchicalPositions, fitVisible } from './graph.js';
 
 /**
  * Populates the environment and application filter dropdowns from current data.
@@ -37,6 +37,45 @@ export function updateFilters() {
 }
 
 /**
+ * Shows/hides the "N von M Server sichtbar" badge and reset button, and
+ * highlights the filter bar while a filter is active.
+ */
+function _updateFilterStatus(active, visibleCount, totalCount) {
+  const bar    = document.getElementById('filter-bar');
+  const status = document.getElementById('filter-status');
+  const reset  = document.getElementById('filter-reset-btn');
+  if (!bar || !status || !reset) return;
+  bar.classList.toggle('active', !!active);
+  status.style.display = active ? '' : 'none';
+  reset.style.display  = active ? '' : 'none';
+  if (active) status.textContent = visibleCount + ' von ' + totalCount + ' Servern';
+  _updateEmptyHint(active && visibleCount === 0 && totalCount > 0);
+}
+
+/** Shows/hides the "no matches" overlay in the graph area when a filter matches nothing. */
+function _updateEmptyHint(show) {
+  const graphEl = document.getElementById('graph');
+  if (!graphEl) return;
+  let hint = document.getElementById('filter-empty-hint');
+  if (show && !hint) {
+    hint = document.createElement('div');
+    hint.id = 'filter-empty-hint';
+    hint.innerHTML = '<i class="fa-solid fa-filter-circle-xmark"></i><span>Keine Server entsprechen dem aktuellen Filter</span>';
+    graphEl.appendChild(hint);
+  }
+  if (hint) hint.style.display = show ? 'flex' : 'none';
+}
+
+/**
+ * Clears both filter dropdowns and re-applies (i.e. resets) the filter.
+ */
+export function resetFilters() {
+  document.getElementById('env-filter').value = '';
+  document.getElementById('app-filter').value = '';
+  applyFilters();
+}
+
+/**
  * Applies the current env/app filter selection to show/hide nodes and edges.
  */
 export function applyFilters(skipFit = false) {
@@ -47,19 +86,20 @@ export function applyFilters(skipFit = false) {
   const nodeUpdates = [], edgeUpdates = [];
 
   if (!isFiltered) {
+    _updateFilterStatus(false, 0, allServers.length);
     setHiddenByFilter(new Set());
     allServers.forEach(s => {
       const hideExt = isExternServer(s) && !showInternet;
-      nodeUpdates.push({ id: s.id, hidden: hideExt });
+      nodeUpdates.push({ id: s.id, hidden: hideExt, physics: !hideExt });
       (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
-        if (nodes.get('inst_' + inst.id)) nodeUpdates.push({ id: 'inst_' + inst.id, hidden: hideExt });
+        if (nodes.get('inst_' + inst.id)) nodeUpdates.push({ id: 'inst_' + inst.id, hidden: hideExt, physics: !hideExt });
         if (edges.get('si_'  + inst.id)) edgeUpdates.push({ id: 'si_'  + inst.id, hidden: hideExt });
       }));
     });
     allClusters.forEach(cl => {
-      if (nodes.get('cluster_' + cl.id)) nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: false });
+      if (nodes.get('cluster_' + cl.id)) nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: false, physics: true });
     });
-    inetNodeIds.forEach(id => { if (nodes.get(id)) nodeUpdates.push({ id, hidden: !showInternet }); });
+    inetNodeIds.forEach(id => { if (nodes.get(id)) nodeUpdates.push({ id, hidden: !showInternet, physics: showInternet }); });
     edges.forEach(e => {
       const id = e.id;
       if (typeof id !== 'string') return;
@@ -85,7 +125,7 @@ export function applyFilters(skipFit = false) {
       });
     }
     if (!skipFit) {
-      network.fit();
+      fitVisible();
       if (layoutMode !== 'hierarchical') network.stabilize(150);
     }
     network.redraw();
@@ -113,6 +153,7 @@ export function applyFilters(skipFit = false) {
     else newHiddenByFilter.add(s.id);
   });
   setHiddenByFilter(newHiddenByFilter);
+  _updateFilterStatus(true, visibleSrvIds.size, allServers.length);
 
   // ── 3. Environments reachable from visible servers/instances ──────────────
   const visibleEnvIds = new Set();
@@ -159,27 +200,34 @@ export function applyFilters(skipFit = false) {
   // ── 6. Node updates ───────────────────────────────────────────────────────
   allServers.forEach(s => {
     const hidden = !visibleSrvIds.has(s.id);
-    nodeUpdates.push({ id: s.id, hidden });
+    nodeUpdates.push({ id: s.id, hidden, physics: !hidden });
     (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
       const ih = hidden || !matchingInstIds.has(inst.id);
-      if (nodes.get('inst_' + inst.id)) nodeUpdates.push({ id: 'inst_' + inst.id, hidden: ih });
+      if (nodes.get('inst_' + inst.id)) nodeUpdates.push({ id: 'inst_' + inst.id, hidden: ih, physics: !ih });
       if (edges.get('si_'  + inst.id)) edgeUpdates.push({ id: 'si_'  + inst.id, hidden: ih });
     }));
   });
   allRouters.forEach(r => {
     const id = 'router_' + r.id;
-    if (nodes.get(id)) nodeUpdates.push({ id, hidden: !showInternet || hiddenRouterIds.has(r.id) });
+    const rHidden = !showInternet || hiddenRouterIds.has(r.id);
+    if (nodes.get(id)) nodeUpdates.push({ id, hidden: rHidden, physics: !rHidden });
   });
   const anyExternVisible = allServers.some(s => isExternServer(s) && visibleSrvIds.has(s.id));
-  if (nodes.get('internet_cloud'))
-    nodeUpdates.push({ id: 'internet_cloud', hidden: (!showInternet || !anyRouterVisible) && !anyExternVisible });
+  if (nodes.get('internet_cloud')) {
+    const cloudHidden = (!showInternet || !anyRouterVisible) && !anyExternVisible;
+    nodeUpdates.push({ id: 'internet_cloud', hidden: cloudHidden, physics: !cloudHidden });
+  }
   nodes.forEach(n => {
-    if (typeof n.id === 'string' && n.id.startsWith('provider_'))
-      nodeUpdates.push({ id: n.id, hidden: !showInternet || !visibleProviders.has(n.id.replace('provider_', '')) });
+    if (typeof n.id === 'string' && n.id.startsWith('provider_')) {
+      const pHidden = !showInternet || !visibleProviders.has(n.id.replace('provider_', ''));
+      nodeUpdates.push({ id: n.id, hidden: pHidden, physics: !pHidden });
+    }
   });
   allClusters.forEach(cl => {
-    if (nodes.get('cluster_' + cl.id))
-      nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: hiddenClusterIds.has(cl.id) });
+    if (nodes.get('cluster_' + cl.id)) {
+      const clHidden = hiddenClusterIds.has(cl.id);
+      nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: clHidden, physics: !clHidden });
+    }
   });
 
   // ── 7. Edge updates ───────────────────────────────────────────────────────
@@ -234,7 +282,7 @@ export function applyFilters(skipFit = false) {
     });
   }
   if (!skipFit) {
-    network.fit();
+    fitVisible();
     if (layoutMode !== 'hierarchical') network.stabilize(150);
   }
   network.redraw();
@@ -246,13 +294,13 @@ export function applyFilters(skipFit = false) {
 export function toggleInternet() {
   setShowInternet(document.getElementById('show-internet').checked);
   if (!nodes || !edges) return;
-  inetNodeIds.forEach(id => { if (nodes.get(id)) nodes.update({ id, hidden: !showInternet }); });
+  inetNodeIds.forEach(id => { if (nodes.get(id)) nodes.update({ id, hidden: !showInternet, physics: showInternet }); });
   inetEdgeIds.forEach(id => { if (edges.get(id)) edges.update({ id, hidden: !showInternet }); });
   const envId = parseInt(document.getElementById('env-filter').value) || 0;
   const appId = parseInt(document.getElementById('app-filter').value) || 0;
   if (!envId && !appId) {
     allServers.filter(isExternServer).forEach(s => {
-      if (nodes.get(s.id)) nodes.update({ id: s.id, hidden: !showInternet });
+      if (nodes.get(s.id)) nodes.update({ id: s.id, hidden: !showInternet, physics: showInternet });
       const eid = 'inet_extern_' + s.id;
       if (edges.get(eid)) edges.update({ id: eid, hidden: !showInternet });
     });
@@ -273,4 +321,5 @@ export function initFilters() {
     document.getElementById(id).addEventListener('change', () => applyFilters());
   });
   document.getElementById('show-internet').addEventListener('change', toggleInternet);
+  document.getElementById('filter-reset-btn').addEventListener('click', resetFilters);
 }

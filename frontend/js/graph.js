@@ -25,7 +25,7 @@ import {
   currentServerId, currentClusterId,
 } from './state.js';
 
-import { buildInstServerMap, displayName } from './utils.js';
+import { buildInstServerMap, displayName, escHtml } from './utils.js';
 import { applyFilters } from './filters.js';
 import { stopBlink } from './search.js';
 import { openSidebar, closeSidebar } from './sidebar.js';
@@ -49,41 +49,39 @@ export function buildNode(server) {
     size: 18,
     color: { background: col, border: col, highlight: { background: col, border: '#fff' } },
     font: { color: '#e0e0e0', size: 13 },
-    title: '[' + server.os_type + '] ' + server.hostname +
-           (server.common_name ? ' (' + server.common_name + ')' : '') +
-           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
+    title: '[' + escHtml(server.os_type) + '] ' + escHtml(server.hostname) +
+           (server.common_name ? ' (' + escHtml(server.common_name) + ')' : '') +
+           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).map(escHtml).join('<br>') : '') +
            (server.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
-           (server.gateway_router_id ? '<br>GW: ' + ((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
-           (server.gateway_server_id ? '<br>GW: ' + ((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
+           (server.gateway_router_id ? '<br>GW: ' + escHtml((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
+           (server.gateway_server_id ? '<br>GW: ' + escHtml((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
   };
 }
 
 /** Builds instance nodes, cluster nodes, and all associated edges for zoomed-in view. */
 function buildInstanceNodesEdges() {
   const instNodes = [], siEdges = [], irInstEdges = [], gwInstEdges = [];
+  const im = buildInstServerMap();
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
       const col = SVC_COLORS[svc.type] || '#4b5563';
       (svc.instances || []).forEach(inst => {
         const gwR = inst.gateway_router_id ? allRouters.find(r => r.id === inst.gateway_router_id) : null;
         const gwS = inst.gateway_server_id ? allServers.find(sv => sv.id === inst.gateway_server_id) : null;
-        const gwI = inst.gateway_instance_id ? (() => {
-          for (const srv2 of allServers) for (const svc2 of (srv2.services || [])) for (const i2 of (svc2.instances || [])) if (i2.id === inst.gateway_instance_id) return i2;
-          return null;
-        })() : null;
+        const gwI = inst.gateway_instance_id ? im[inst.gateway_instance_id] : null;
         instNodes.push({
           id: 'inst_' + inst.id,
           label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
-          title: inst.name +
+          title: escHtml(inst.name) +
                  (inst.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
-                 (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).join('<br>') : '') +
+                 (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).map(escHtml).join('<br>') : '') +
                  (inst.environments && inst.environments.length
-                   ? '<br>🌍 ' + inst.environments.map(e => e.name).join(', ') : '') +
-                 (gwR ? '<br>GW: ' + gwR.name : '') +
-                 (gwS ? '<br>GW: ' + gwS.hostname : '') +
-                 (gwI ? '<br>GW: ' + gwI.name : '') +
+                   ? '<br>🌍 ' + inst.environments.map(e => escHtml(e.name)).join(', ') : '') +
+                 (gwR ? '<br>GW: ' + escHtml(gwR.name) : '') +
+                 (gwS ? '<br>GW: ' + escHtml(gwS.hostname) : '') +
+                 (gwI ? '<br>GW: ' + escHtml(gwI.name) : '') +
                  ((inst.own_services || []).length
-                   ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type] || '⚙') + ' ' + s.type + (s.port ? ':' + s.port : '')).join('  ') : ''),
+                   ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type] || '⚙') + ' ' + escHtml(s.type) + (s.port ? ':' + s.port : '')).join('  ') : ''),
           shape: 'box',
           color: { background: col + 'bb', border: col, highlight: { background: col, border: '#fff' } },
           font: { color: '#f0f0f0', size: 11 },
@@ -98,7 +96,7 @@ function buildInstanceNodesEdges() {
           dashes: isVM ? false : [3, 6],
           arrows: '',
           length: isVM ? 85 : 140,
-          title: s.hostname + ' → ' + svc.type + ': ' + inst.name,
+          title: escHtml(s.hostname) + ' → ' + escHtml(svc.type) + ': ' + escHtml(inst.name),
         });
         if (inst.gateway_router_id) {
           gwInstEdges.push({
@@ -106,7 +104,7 @@ function buildInstanceNodesEdges() {
             from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
             arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#f97316', opacity: 0.65 },
-            title: 'Gateway: ' + ((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
+            title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
           });
         } else if (inst.gateway_server_id) {
@@ -115,7 +113,7 @@ function buildInstanceNodesEdges() {
             from: inst.gateway_server_id, to: 'inst_' + inst.id,
             arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
-            title: 'Gateway: ' + ((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
+            title: 'Gateway: ' + escHtml((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
         } else if (inst.gateway_instance_id) {
           gwInstEdges.push({
@@ -123,13 +121,12 @@ function buildInstanceNodesEdges() {
             from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
             arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
-            title: 'Gateway: ' + (gwI ? gwI.name : inst.gateway_instance_id),
+            title: 'Gateway: ' + escHtml(gwI ? gwI.name : String(inst.gateway_instance_id)),
           });
         }
       });
     });
   });
-  const im = buildInstServerMap();
 
   const clusterNodes = [];
   const clusterEdges = [];
@@ -138,10 +135,10 @@ function buildInstanceNodesEdges() {
     clusterNodes.push({
       id: 'cluster_' + cl.id,
       label: '◆ ' + cl.name + (cl.domain ? '\n' + cl.domain : ''),
-      title: cl.name + ' [' + cl.service_type + ']' +
-             (cl.domain ? '<br>🌐 ' + cl.domain : '') +
-             (cl.description ? '<br>' + cl.description : '') +
-             (cl.members && cl.members.length ? '<br>Mitglieder: ' + cl.members.map(m => m.name).join(', ') : ''),
+      title: escHtml(cl.name) + ' [' + escHtml(cl.service_type) + ']' +
+             (cl.domain ? '<br>🌐 ' + escHtml(cl.domain) : '') +
+             (cl.description ? '<br>' + escHtml(cl.description) : '') +
+             (cl.members && cl.members.length ? '<br>Mitglieder: ' + cl.members.map(m => escHtml(m.name)).join(', ') : ''),
       shape: 'diamond',
       size: 20,
       color: { background: col + 'cc', border: col, highlight: { background: col, border: '#fff' } },
@@ -153,7 +150,7 @@ function buildInstanceNodesEdges() {
         from: 'cluster_' + cl.id, to: 'inst_' + m.id,
         arrows: '', width: 1, dashes: [4, 4],
         color: { color: col, opacity: 0.6 },
-        title: cl.name + ' → ' + m.name,
+        title: escHtml(cl.name) + ' → ' + escHtml(m.name),
       });
     });
   });
@@ -167,8 +164,8 @@ function buildInstanceNodesEdges() {
     const tgtCl = r.target_cluster_id ? allClusters.find(c => c.id === r.target_cluster_id) : null;
     const srcSrv = src ? allServers.find(s => s.id === src.serverId) : null;
     const tgtSrv = tgt ? allServers.find(s => s.id === tgt.serverId) : null;
-    const srcLabel = srcCl ? srcCl.name : (src ? src.svcType + ': ' + src.name + ' @ ' + (srcSrv ? srcSrv.hostname : '?') : '?');
-    const tgtLabel = tgtCl ? tgtCl.name : (tgt ? tgt.svcType + ': ' + tgt.name + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') : '?');
+    const srcLabel = escHtml(srcCl ? srcCl.name : (src ? src.svcType + ': ' + src.name + ' @ ' + (srcSrv ? srcSrv.hostname : '?') : '?'));
+    const tgtLabel = escHtml(tgtCl ? tgtCl.name : (tgt ? tgt.svcType + ': ' + tgt.name + ' @ ' + (tgtSrv ? tgtSrv.hostname : '?') : '?'));
     const dir = r.direction || 'to';
     irInstEdges.push({
       id: 'ir_inst_' + r.id,
@@ -181,7 +178,7 @@ function buildInstanceNodesEdges() {
       color: { color: '#7c3aed' },
       title: srcLabel +
              (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : dir === 'from' ? ' ← ' : ' → ') +
-             tgtLabel + '<br>' + r.type,
+             tgtLabel + '<br>' + escHtml(r.type),
     });
   });
   return { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges };
@@ -241,15 +238,15 @@ function buildInternetGraph() {
   const n = allRouters.length;
   allRouters.forEach((r, idx) => {
     const titleParts = [];
-    if (r.provider)    titleParts.push('Anbieter: ' + r.provider);
-    if (r.external_ip) titleParts.push('Externe IP: ' + r.external_ip);
-    if (r.internal_ip) titleParts.push('Interne IP: ' + r.internal_ip);
+    if (r.provider)    titleParts.push('Anbieter: ' + escHtml(r.provider));
+    if (r.external_ip) titleParts.push('Externe IP: ' + escHtml(r.external_ip));
+    if (r.internal_ip) titleParts.push('Interne IP: ' + escHtml(r.internal_ip));
     if (r.server_id) {
       const srv = allServers.find(s => s.id === r.server_id);
-      if (srv) titleParts.push('Server: ' + srv.hostname);
+      if (srv) titleParts.push('Server: ' + escHtml(srv.hostname));
     }
     if (r.environments && r.environments.length)
-      titleParts.push('Netze: ' + r.environments.map(e => e.subnet || e.name).join(', '));
+      titleParts.push('Netze: ' + r.environments.map(e => escHtml(e.subnet || e.name)).join(', '));
 
     const fromNode = 'router_' + r.id;
     const y = (idx - (n - 1) / 2) * 160;
@@ -263,7 +260,7 @@ function buildInternetGraph() {
       margin: { top: 6, bottom: 6, left: 9, right: 9 },
       borderWidth: 1.5,
       hidden,
-      title: titleParts.join('<br>') || r.name,
+      title: titleParts.join('<br>') || escHtml(r.name),
     });
     newInetNodeIds.push(fromNode);
 
@@ -295,7 +292,7 @@ function buildInternetGraph() {
       width: r.upstream_router_id ? 1.5 : 2,
       dashes: r.upstream_router_id ? [5, 3] : false,
       color: { color: r.upstream_router_id ? '#f97316' : '#38bdf8' },
-      title: r.upstream_router_id ? 'Routing → ' + r.name : (r.external_ip || 'Anschluss'),
+      title: r.upstream_router_id ? 'Routing → ' + escHtml(r.name) : escHtml(r.external_ip || 'Anschluss'),
       hidden,
     });
     newInetEdgeIds.push(edgeId);
@@ -504,6 +501,23 @@ export function computeHierarchicalPositions(opts = {}) {
 }
 
 /**
+ * Fits the viewport to only the currently visible (non-hidden) nodes.
+ * vis-network's own fit() includes hidden nodes' positions in its bounding-box
+ * calculation, which leaves large empty margins whenever a filter or the
+ * internet toggle hides part of the graph — passing an explicit node list works
+ * around that.
+ */
+export function fitVisible(animate = true) {
+  if (!network || !nodes) return;
+  const visibleIds = nodes.get().filter(n => !n.hidden).map(n => n.id);
+  if (!visibleIds.length) return;
+  network.fit({
+    nodes: visibleIds,
+    animation: animate ? { duration: 300, easingFunction: 'easeInOutQuad' } : false,
+  });
+}
+
+/**
  * Toggles between physics and hierarchical layout modes, destroying and rebuilding the graph.
  */
 export function toggleLayout() {
@@ -529,7 +543,7 @@ export function renderGraph(skipFit = false) {
   const isHierG = layoutMode === 'hierarchical';
   allServers.forEach((s, i) => {
     if (!isExternServer(s)) return;
-    if (!showInternet) nodeData[i].hidden = true;
+    if (!showInternet) { nodeData[i].hidden = true; nodeData[i].physics = false; }
     if (!isHierG) { nodeData[i].x = -1700; nodeData[i].y = 0; }
   });
 
@@ -539,8 +553,8 @@ export function renderGraph(skipFit = false) {
     edgeData.push({
       id: 'sr_' + r.id, from: r.source_id, to: r.target_id,
       arrows: 'to', color: { color: '#4b5563' },
-      title: (srcSrv ? srcSrv.hostname : r.source_id) + ' → ' +
-             (tgtSrv ? tgtSrv.hostname : r.target_id) + '<br>' + r.type,
+      title: escHtml(srcSrv ? srcSrv.hostname : String(r.source_id)) + ' → ' +
+             escHtml(tgtSrv ? tgtSrv.hostname : String(r.target_id)) + '<br>' + escHtml(r.type),
     });
   });
 
@@ -558,9 +572,9 @@ export function renderGraph(skipFit = false) {
       srvPairMap.set(key, { from: src.serverId, to: tgt.serverId, lines: [] });
     }
     srvPairMap.get(key).lines.push(
-      src.svcType + ': ' + src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' +
-      ' → ' + tgt.svcType + ': ' + tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')' +
-      '<br><em>' + r.type + '</em>'
+      escHtml(src.svcType + ': ' + src.name + ' (' + (srcSrv ? srcSrv.hostname : '?') + ')' +
+      ' → ' + tgt.svcType + ': ' + tgt.name + ' (' + (tgtSrv ? tgtSrv.hostname : '?') + ')') +
+      '<br><em>' + escHtml(r.type) + '</em>'
     );
   });
   const newIrSrvEdgeIds = [];
@@ -587,7 +601,7 @@ export function renderGraph(skipFit = false) {
         id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
         arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#f97316', opacity: 0.65 },
-        title: 'Gateway: ' + (gwR ? gwR.name : s.gateway_router_id),
+        title: 'Gateway: ' + escHtml(gwR ? gwR.name : String(s.gateway_router_id)),
         hidden: !showInternet,
       });
       inetEdgeIds.push(eid);
@@ -598,7 +612,7 @@ export function renderGraph(skipFit = false) {
         id: eid, from: s.gateway_server_id, to: s.id,
         arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#22d3ee', opacity: 0.65 },
-        title: 'Gateway: ' + (gwS ? gwS.hostname : s.gateway_server_id),
+        title: 'Gateway: ' + escHtml(gwS ? gwS.hostname : String(s.gateway_server_id)),
       });
     }
   });
@@ -654,7 +668,7 @@ export function renderGraph(skipFit = false) {
   if (layoutMode === 'hierarchical') {
     setShowingInstances(true);
     irSrvEdgeIds.forEach(id => { if (curEdges.get(id)) curEdges.update({ id, hidden: true }); });
-    net.once('afterDrawing', () => net.fit());
+    net.once('afterDrawing', () => fitVisible(false));
   }
 
   const graphEl = document.getElementById('graph');
@@ -897,6 +911,6 @@ export function renderLegend() {
     Array.from(present.entries()).map(([type, { color, icon }]) =>
       '<div class="leg-row">' +
       '<span class="leg-dot" style="background:' + color + '"></span>' +
-      '<span>' + icon + ' ' + type + '</span></div>'
+      '<span>' + icon + ' ' + escHtml(type) + '</span></div>'
     ).join('');
 }
