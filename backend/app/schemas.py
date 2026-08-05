@@ -212,6 +212,7 @@ class ServerOut(ServerBase):
     created_at: datetime
     services: List[ServiceOut] = []
     environments: List[EnvironmentOut] = []
+    applications: List[ApplicationOut] = []
     storages: List[StorageOut] = []
 
     class Config:

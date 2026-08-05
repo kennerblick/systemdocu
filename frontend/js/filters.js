@@ -149,7 +149,12 @@ export function applyFilters(skipFit = false) {
       (svc.instances || []).some(inst => matchingInstIds.has(inst.id)));
     const bareInEnv = envId && !appId && (s.environments || []).some(e => e.id === envId) &&
       !(s.services || []).some(svc => (svc.instances || []).length > 0);
-    if (hasMatchingInst || bareInEnv) visibleSrvIds.add(s.id);
+    // A server assigned directly to the selected application (as a whole,
+    // not via one of its instances) is visible regardless of whether it
+    // has instances — and must still satisfy an active env filter itself.
+    const srvAppMatch = appId && (s.applications || []).some(a => a.id === appId) &&
+      (!envId || (s.environments || []).some(e => e.id === envId));
+    if (hasMatchingInst || bareInEnv || srvAppMatch) visibleSrvIds.add(s.id);
     else newHiddenByFilter.add(s.id);
   });
   setHiddenByFilter(newHiddenByFilter);

@@ -41,6 +41,12 @@ instance_applications = Table(
     Column("application_id", Integer, ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True),
 )
 
+server_applications = Table(
+    "server_applications", Base.metadata,
+    Column("server_id", Integer, ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
+    Column("application_id", Integer, ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True),
+)
+
 router_environments = Table(
     "router_environments", Base.metadata,
     Column("router_id", Integer, ForeignKey("internet_routers.id", ondelete="CASCADE"), primary_key=True),
@@ -91,6 +97,7 @@ class Server(Base):
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
     storages = relationship("Storage", back_populates="server", cascade="all, delete-orphan")
     environments = relationship("Environment", secondary=server_environments, back_populates="servers")
+    applications = relationship("Application", secondary=server_applications, back_populates="servers")
     outgoing_relations = relationship("Relation", foreign_keys="Relation.source_id", back_populates="source", cascade="all, delete-orphan")
     incoming_relations = relationship("Relation", foreign_keys="Relation.target_id", back_populates="target")
 
@@ -166,6 +173,7 @@ class Application(Base):
     color = Column(String(7), default="#8b5cf6")
 
     instances = relationship("ServiceInstance", secondary=instance_applications, back_populates="applications")
+    servers = relationship("Server", secondary=server_applications, back_populates="applications")
 
 
 class Cluster(Base):

@@ -71,6 +71,24 @@ export function openSidebar(serverId) {
     envChips.appendChild(c);
   });
 
+  const appChips = document.getElementById('sb-apps');
+  appChips.innerHTML = '';
+  (server.applications || []).forEach(app => {
+    const c = document.createElement('span');
+    c.className = 'chip'; c.style.background = app.color;
+    c.innerHTML = escHtml(app.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
+    c.onclick = () => removeServerApp(app.id);
+    appChips.appendChild(c);
+  });
+  const appBtnWrap = document.getElementById('sb-apps-btn-wrap');
+  appBtnWrap.innerHTML = '';
+  if (allApplications.length) {
+    const assignedAppIds = new Set((server.applications || []).map(a => a.id));
+    appBtnWrap.appendChild(makeInstDropdownBtn('Anwendung',
+      () => allApplications.filter(a => !assignedAppIds.has(a.id)).map(a => ({ id: a.id, label: a.name, color: a.color })),
+      id => assignServerApp(id), 'Alle Anwendungen bereits vergeben'));
+  }
+
   const relSel = document.getElementById('rel-target');
   relSel.innerHTML = '';
   [...allServers].sort((a, b) => displayName(a).localeCompare(displayName(b))).forEach(s => {
@@ -939,6 +957,22 @@ export async function assignServerEnv(envId) {
 
 async function removeServerEnv(envId) {
   try { await api('DELETE', '/servers/' + currentServerId + '/environments/' + envId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+/**
+ * Assigns an application directly to the current server (independent of its instances).
+ */
+async function assignServerApp(appId) {
+  if (!appId) return;
+  try { await api('POST', '/servers/' + currentServerId + '/applications/' + appId); }
+  catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function removeServerApp(appId) {
+  try { await api('DELETE', '/servers/' + currentServerId + '/applications/' + appId); }
   catch (e) { return alert('Fehler: ' + e.message); }
   await loadAll();
 }

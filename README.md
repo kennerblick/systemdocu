@@ -151,6 +151,7 @@ Datenbankmigrationen werden beim Start automatisch per **Alembic** angewendet �
 ```
 Server
 ├── Environments (M:N)          — Umgebungszugehörigkeit (z. B. Produktion, DMZ)
+├── Anwendungen (M:N)           — Server, die komplett zu einer Anwendung gehören
 ├── Gateway-Gerät               — Internet-Router ODER Gateway-Server (FK, optional)
 ├── is_gateway                  — markiert den Server als nutzbares Gateway
 └── Services (1:N)              — installierte Dienste (PostgreSQL, Docker, Hyper-V …)
@@ -162,7 +163,7 @@ Server
         └── Eigene Dienste (1:N) — vom VM angebotene Services (Webserver, MQTT …)
 
 Environment
-├── Subnetz (z. B. 192.168.1.0/24)
+├── Subnetz (z. B. 203.0.113.0/24)
 ├── Gateway-IP                  — freitextlich (veraltet, wird durch Gerät-Links ersetzt)
 └── Default-Gateway-Gerät       — Internet-Router ODER Gateway-Server;
                                    wird neuen Mitgliedern automatisch zugewiesen
@@ -225,8 +226,10 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 ### Server anlegen
 
 1. Schaltfläche **+ Server** → Hostname, IP(s), OS-Typ, Beschreibung eintragen
-2. IP-Felder akzeptieren mehrere Adressen kommagetrennt (z. B. `10.0.1.10, 192.168.2.3`)
+2. IP-Felder akzeptieren mehrere Adressen kommagetrennt (z. B. `198.51.100.10, 203.0.113.20`)
 3. **Als Gateway markieren**: Checkbox „Ist Gateway-Server" — macht den Server in allen Gateway-Dropdowns auswählbar
+
+**Anwendungen**: Im Bereich „Anwendungen" der Server-Sidebar lässt sich der **ganze Server** direkt einer Anwendung zuordnen (unabhängig von den Anwendungen seiner einzelnen Instanzen) — für Hosts, die komplett einer Anwendung gehören. Wird im Anwendungs-Filter berücksichtigt und erscheint im Excel-Export als „— ganzer Server —".
 
 ### Services & Instanzen
 
@@ -266,7 +269,7 @@ Das Dropdown zeigt alle Internet-Router sowie alle als Gateway markierten Server
 
 Schaltfläche **Umgebungen**:
 
-- Farbe, Name, Subnetz (`192.168.1.0/24`), Gateway-IP nachträglich bearbeitbar (Stift-Icon)
+- Farbe, Name, Subnetz (`203.0.113.0/24`), Gateway-IP nachträglich bearbeitbar (Stift-Icon)
 - **Default-Gateway-Gerät**: Dropdown mit allen Internet-Routern und Gateway-Servern, gruppiert nach Typ. Wird neuen Server- und Instanz-Mitgliedern automatisch als Gateway gesetzt.
 - Farb-Dot direkt anklicken für schnellen Farbwechsel
 - Umgebungen werden Servern **und** einzelnen Instanzen (z. B. VMs) zugeordnet
@@ -277,21 +280,21 @@ Schaltfläche **Anschlüsse** (sichtbar wenn Toggle **🌐 Internet** aktiv oder
 
 | Feld | Beschreibung |
 |---|---|
-| Name / Firewall | Bezeichnung des Geräts (z. B. `FW-Telekom`, `GW-Server3`) |
-| Anbieter | ISP-Name (z. B. `Telekom`, `Vodafone`) |
+| Name / Firewall | Bezeichnung des Geräts (z. B. `FW-Provider`, `GW-Server1`) |
+| Anbieter | ISP-Name (z. B. `Provider A`, `Provider B`) |
 | Externe IP | Öffentliche IP oder `DHCP` |
 | Interne IP | LAN-seitige IP des Routers/Gateways |
 | Upstream-Router | Gerät Richtung Internet (für Ketten-Visualisierung) |
 | Verknüpfter Server | Vorhandener Server, der als Gateway fungiert |
 | Umgebungen | Alle Subnetze/Umgebungen, für die dieser Eintrag Gateway ist |
 
-**Beispiel: Server3 ist Gateway für mehrere Subnetze, hinter einer Firewall:**
+**Beispiel: Server1 ist Gateway für mehrere Subnetze, hinter einer Firewall:**
 
-1. Eintrag „FW-Telekom" anlegen — kein verknüpfter Server, Upstream leer → erscheint links fixiert
-2. Server3 → Bearbeiten → „Ist Gateway-Server" aktivieren
-3. Umgebungen (`192.168.6.0/24`, `192.168.7.0/24`, …) → Default-Gateway-Gerät: `GW-Server3` wählen
+1. Eintrag „FW-Provider" anlegen — kein verknüpfter Server, Upstream leer → erscheint links fixiert
+2. Server1 → Bearbeiten → „Ist Gateway-Server" aktivieren
+3. Umgebungen (`198.51.100.0/24`, `203.0.113.0/24`, …) → Default-Gateway-Gerät: `GW-Server1` wählen
 4. Mit Toggle **🌐 Internet** einblenden → Graph zeigt:
-   `🌐 Internet → 🔒 FW-Telekom → server3 → alle Server in diesen Netzen`
+   `🌐 Internet → 🔒 FW-Provider → server1 → alle Server in diesen Netzen`
 
 ### Server-Relationen
 

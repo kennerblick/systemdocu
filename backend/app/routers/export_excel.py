@@ -98,6 +98,7 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
             .selectinload(Service.instances)
             .selectinload(ServiceInstance.storage),
             selectinload(Server.environments),
+            selectinload(Server.applications),
             selectinload(Server.storages),
         )
     )
@@ -143,13 +144,14 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
     row = 2
     for si, srv in enumerate(servers):
         envs = ", ".join(e.name for e in srv.environments)
+        srv_apps = sorted(a.name for a in srv.applications)
         srv_hex = _srv_hex(srv)
         band    = BANDS1[si % 2]
         srv_r0  = row
 
         services = srv.services or []
         if not services:
-            _write_srv_row(ws, row, srv, envs, "", "", "", "", "", band)
+            _write_srv_row(ws, row, srv, envs, "", "", "", "", ", ".join(srv_apps), band)
             row += 1
         else:
             for svc in services:
@@ -160,12 +162,12 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
                     _write_srv_row(ws, row, srv, envs,
                                    svc.type, svc.version or "",
                                    str(svc.port) if svc.port else "",
-                                   "", "", band)
+                                   "", ", ".join(srv_apps), band)
                     _apply_svc_cell(ws, row, svc_hex)
                     row += 1
                 else:
                     for inst in instances:
-                        apps = ", ".join(a.name for a in inst.applications)
+                        apps = ", ".join(sorted(set(srv_apps) | {a.name for a in inst.applications}))
                         _write_srv_row(ws, row, srv, envs,
                                        svc.type, svc.version or "",
                                        str(svc.port) if svc.port else "",
@@ -225,12 +227,18 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
     ])
     _col_widths(ws, [24, 22, 14, 10, 20, 10, 16, 22])
 
-    # Build app → [(inst, svc, srv, envs)] map preserving app order
+    # Build app → [(inst, svc, srv, envs)] map preserving app order.
+    # inst/svc are None for a whole Server assigned directly to the application
+    # (not via one of its instances).
     app_map: dict[int, dict] = {}
     no_app: list[tuple] = []
 
     for srv in servers:
         envs = ", ".join(e.name for e in srv.environments)
+        for app in (srv.applications or []):
+            if app.id not in app_map:
+                app_map[app.id] = {"app": app, "rows": []}
+            app_map[app.id]["rows"].append((None, None, srv, envs))
         for svc in (srv.services or []):
             for inst in (svc.instances or []):
                 if inst.applications:
@@ -249,8 +257,10 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
         app_hex = _h(app.color)
 
         for inst, svc, srv, envs in entry["rows"]:
-            svc_hex = SVC_HEX.get(svc.type, "4B5563")
-            vals = [app.name, inst.name, svc.type, svc.version or "",
+            is_whole_server = inst is None
+            svc_hex = "6B7280" if is_whole_server else SVC_HEX.get(svc.type, "4B5563")
+            vals = [app.name, "— ganzer Server —" if is_whole_server else inst.name,
+                    "" if is_whole_server else svc.type, "" if is_whole_server else (svc.version or ""),
                     srv.hostname, srv.os_type, srv.ip or "", envs]
             aligns = [LEFT, LEFT, CENTER, CENTER, LEFT, CENTER, CENTER, LEFT]
             for col, (v, a) in enumerate(zip(vals, aligns), 1):
@@ -259,11 +269,12 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
             ca = ws.cell(row=row, column=1)
             ca.fill = _fill(app_hex)
             ca.font = WHITE_BOLD
-            # Service cell: coloured
-            cs = ws.cell(row=row, column=3)
-            cs.fill = _fill(svc_hex)
-            cs.font = WHITE_BOLD
-            cs.alignment = CENTER
+            # Service cell: coloured (only when there is an actual service)
+            if not is_whole_server:
+                cs = ws.cell(row=row, column=3)
+                cs.fill = _fill(svc_hex)
+                cs.font = WHITE_BOLD
+                cs.alignment = CENTER
             row += 1
 
         _merge(ws, 1, app_r0, row - 1)

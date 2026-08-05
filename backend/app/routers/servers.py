@@ -7,7 +7,7 @@ from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Server, Service, ServiceInstance, Environment, Storage
+from ..models import Server, Service, ServiceInstance, Environment, Application, Storage
 from ..schemas import ServerCreate, ServerUpdate, ServerOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -23,6 +23,7 @@ _server_options = [
         .selectinload(Service.instances)
         .selectinload(ServiceInstance.own_services),
     selectinload(Server.environments),
+    selectinload(Server.applications),
     selectinload(Server.storages),
 ]
 
@@ -111,6 +112,29 @@ async def add_server_environment(server_id: int, env_id: int, db: AsyncSession =
 async def remove_server_environment(server_id: int, env_id: int, db: AsyncSession = Depends(get_db)):
     server = await get_server_or_404(server_id, db)
     server.environments = [e for e in server.environments if e.id != env_id]
+    await db.commit()
+    await bus.broadcast("data_changed", {"entity": "server"})
+    return await get_server_or_404(server_id, db)
+
+
+@router.post("/{server_id}/applications/{app_id}", response_model=ServerOut)
+async def add_server_application(server_id: int, app_id: int, db: AsyncSession = Depends(get_db)):
+    server = await get_server_or_404(server_id, db)
+    app_result = await db.execute(select(Application).where(Application.id == app_id))
+    app = app_result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if app not in server.applications:
+        server.applications.append(app)
+        await db.commit()
+        await bus.broadcast("data_changed", {"entity": "server"})
+    return await get_server_or_404(server_id, db)
+
+
+@router.delete("/{server_id}/applications/{app_id}", response_model=ServerOut)
+async def remove_server_application(server_id: int, app_id: int, db: AsyncSession = Depends(get_db)):
+    server = await get_server_or_404(server_id, db)
+    server.applications = [a for a in server.applications if a.id != app_id]
     await db.commit()
     await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)
