@@ -217,19 +217,22 @@ export function applyFilters(skipFit = false) {
       if (edges.get('si_'  + inst.id)) edgeUpdates.push({ id: 'si_'  + inst.id, hidden: ih });
     }));
   });
+  // Routers/providers/cloud relevant to the current filter (i.e. not in
+  // hiddenRouterIds / visibleProviders) stay visible regardless of the
+  // "🌐 Internet" toggle — the toggle only governs the unfiltered view.
   allRouters.forEach(r => {
     const id = 'router_' + r.id;
-    const rHidden = !showInternet || hiddenRouterIds.has(r.id);
+    const rHidden = hiddenRouterIds.has(r.id);
     if (nodes.get(id)) nodeUpdates.push({ id, hidden: rHidden, physics: !rHidden });
   });
   const anyExternVisible = allServers.some(s => isExternServer(s) && visibleSrvIds.has(s.id));
   if (nodes.get('internet_cloud')) {
-    const cloudHidden = (!showInternet || !anyRouterVisible) && !anyExternVisible;
+    const cloudHidden = !anyRouterVisible && !anyExternVisible;
     nodeUpdates.push({ id: 'internet_cloud', hidden: cloudHidden, physics: !cloudHidden });
   }
   nodes.forEach(n => {
     if (typeof n.id === 'string' && n.id.startsWith('provider_')) {
-      const pHidden = !showInternet || !visibleProviders.has(n.id.replace('provider_', ''));
+      const pHidden = !visibleProviders.has(n.id.replace('provider_', ''));
       nodeUpdates.push({ id: n.id, hidden: pHidden, physics: !pHidden });
     }
   });
@@ -241,9 +244,38 @@ export function applyFilters(skipFit = false) {
   });
 
   // ── 7. Edge updates ───────────────────────────────────────────────────────
+  // Gateway/internet-backbone edges are matched by prefix *before* the
+  // generic inetEdgeIds membership check below, so their visibility follows
+  // filter relevance (hiddenRouterIds/visibleSrvIds/visibleProviders)
+  // instead of being forced by the "🌐 Internet" toggle while a filter is
+  // active — a router-type gateway edge is a member of inetEdgeIds too
+  // (see graph.js), so it would otherwise be caught by that shortcut first.
   edges.forEach(e => {
     const id = e.id;
     if (typeof id !== 'string') return;
+    if (id.startsWith('gw_srv_')) {
+      const fromRouter = typeof e.from === 'string' && e.from.startsWith('router_');
+      const rHidden = fromRouter && hiddenRouterIds.has(parseInt(e.from.replace('router_', '')));
+      edgeUpdates.push({ id, hidden: !visibleSrvIds.has(e.to) || rHidden }); return;
+    }
+    if (id.startsWith('gw_inst_')) {
+      const instId = parseInt(id.replace('gw_inst_', ''));
+      edgeUpdates.push({ id, hidden: !matchingInstIds.has(instId) }); return;
+    }
+    if (id.startsWith('inet_up_')) {
+      const rid = parseInt(id.replace('inet_up_', ''));
+      edgeUpdates.push({ id, hidden: hiddenRouterIds.has(rid) }); return;
+    }
+    if (id.startsWith('inet_link_')) {
+      const rid = parseInt(id.replace('inet_link_', ''));
+      const r = allRouters.find(rt => rt.id === rid);
+      const linkHidden = hiddenRouterIds.has(rid) || (r && r.server_id != null && !visibleSrvIds.has(r.server_id));
+      edgeUpdates.push({ id, hidden: linkHidden }); return;
+    }
+    if (id.startsWith('inet_prov_')) {
+      const prov = id.replace('inet_prov_provider_', '');
+      edgeUpdates.push({ id, hidden: !visibleProviders.has(prov) }); return;
+    }
     if (inetEdgeIds.includes(id)) { edgeUpdates.push({ id, hidden: !showInternet }); return; }
     if (id.startsWith('inet_extern_')) {
       const srvId = parseInt(id.replace('inet_extern_', ''));
@@ -261,14 +293,6 @@ export function applyFilters(skipFit = false) {
       const tgtH = rel.target_instance_id ? !matchingInstIds.has(rel.target_instance_id)
                  : rel.target_cluster_id   ? hiddenClusterIds.has(rel.target_cluster_id) : false;
       edgeUpdates.push({ id, hidden: srcH || tgtH });
-    } else if (id.startsWith('gw_srv_')) {
-      const fromRouter = typeof e.from === 'string' && e.from.startsWith('router_');
-      const rHidden = fromRouter && hiddenRouterIds.has(parseInt(e.from.replace('router_', '')));
-      edgeUpdates.push({ id, hidden: !visibleSrvIds.has(e.to) || (fromRouter && (!showInternet || rHidden)) });
-    } else if (id.startsWith('gw_inst_')) {
-      const instId = parseInt(id.replace('gw_inst_', ''));
-      const fromRouter = typeof e.from === 'string' && e.from.startsWith('router_');
-      edgeUpdates.push({ id, hidden: !matchingInstIds.has(instId) || (fromRouter && !showInternet) });
     } else if (id.startsWith('cl_member_')) {
       const parts = id.split('_');
       const clId = parseInt(parts[2]), mId = parseInt(parts[3]);
@@ -300,27 +324,13 @@ export function applyFilters(skipFit = false) {
 
 /**
  * Handles the Internet-toggle checkbox — shows/hides internet nodes and extern servers.
+ * Delegates to applyFilters() so the toggle only controls visibility for the
+ * unfiltered view; while a filter is active, filter relevance decides and
+ * the toggle has no effect on already-relevant gateways/internet nodes.
  */
 export function toggleInternet() {
   setShowInternet(document.getElementById('show-internet').checked);
-  if (!nodes || !edges) return;
-  inetNodeIds.forEach(id => { if (nodes.get(id)) nodes.update({ id, hidden: !showInternet, physics: showInternet }); });
-  inetEdgeIds.forEach(id => { if (edges.get(id)) edges.update({ id, hidden: !showInternet }); });
-  const envId = parseInt(document.getElementById('env-filter').value) || 0;
-  const appId = parseInt(document.getElementById('app-filter').value) || 0;
-  if (!envId && !appId) {
-    allServers.filter(isExternServer).forEach(s => {
-      if (nodes.get(s.id)) nodes.update({ id: s.id, hidden: !showInternet, physics: showInternet });
-      const eid = 'inet_extern_' + s.id;
-      if (edges.get(eid)) edges.update({ id: eid, hidden: !showInternet });
-    });
-  }
-  if (showingInstances) {
-    allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
-      if (inst.gateway_router_id && edges.get('gw_inst_' + inst.id))
-        edges.update({ id: 'gw_inst_' + inst.id, hidden: !showInternet });
-    })));
-  }
+  applyFilters(true);
 }
 
 /**
