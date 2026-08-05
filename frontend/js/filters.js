@@ -133,13 +133,18 @@ export function applyFilters(skipFit = false) {
   }
 
   // ── 1. Matching instance IDs ──────────────────────────────────────────────
+  // An Application assigned to a Server as a whole is inherited by every
+  // Instance on that server for filtering purposes.
   const matchingInstIds = new Set();
-  allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
-    let ok = true;
-    if (envId && !(inst.environments || []).some(e => e.id === envId)) ok = false;
-    if (appId && !(inst.applications || []).some(a => a.id === appId)) ok = false;
-    if (ok) matchingInstIds.add(inst.id);
-  })));
+  allServers.forEach(s => {
+    const srvHasApp = appId && (s.applications || []).some(a => a.id === appId);
+    (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+      let ok = true;
+      if (envId && !(inst.environments || []).some(e => e.id === envId)) ok = false;
+      if (appId && !srvHasApp && !(inst.applications || []).some(a => a.id === appId)) ok = false;
+      if (ok) matchingInstIds.add(inst.id);
+    }));
+  });
 
   // ── 2. Visible servers ────────────────────────────────────────────────────
   const newHiddenByFilter = new Set();

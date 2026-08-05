@@ -320,6 +320,16 @@ export function renderServicesSection(server) {
         c.onclick = () => removeInstanceApp(inst.id, app.id);
         chipRow.appendChild(c);
       });
+      // Applications inherited from the server (assigned to the whole
+      // server, not this instance) — shown muted, not removable here.
+      const ownAppIds = new Set((inst.applications || []).map(a => a.id));
+      (server.applications || []).filter(a => !ownAppIds.has(a.id)).forEach(app => {
+        const c = document.createElement('span');
+        c.className = 'chip'; c.style.background = app.color; c.style.opacity = '0.55';
+        c.title = 'Vom Server geerbt';
+        c.textContent = app.name;
+        chipRow.appendChild(c);
+      });
       row.appendChild(chipRow);
 
       // Own services list

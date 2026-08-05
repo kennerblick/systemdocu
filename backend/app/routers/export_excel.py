@@ -227,27 +227,38 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
     ])
     _col_widths(ws, [24, 22, 14, 10, 20, 10, 16, 22])
 
-    # Build app → [(inst, svc, srv, envs)] map preserving app order.
-    # inst/svc are None for a whole Server assigned directly to the application
-    # (not via one of its instances).
+    # Build app → [(inst, svc, srv, envs)] map preserving app order. An
+    # Application assigned to a Server as a whole is inherited by every
+    # Instance on that server (in addition to whatever the instance itself
+    # carries). inst/svc are None only for the leftover case of a
+    # server-level Application on a server that has no instances at all —
+    # nothing else would represent that server under the application.
     app_map: dict[int, dict] = {}
     no_app: list[tuple] = []
 
     for srv in servers:
         envs = ", ".join(e.name for e in srv.environments)
-        for app in (srv.applications or []):
-            if app.id not in app_map:
-                app_map[app.id] = {"app": app, "rows": []}
-            app_map[app.id]["rows"].append((None, None, srv, envs))
+        srv_apps = {a.id: a for a in (srv.applications or [])}
+        has_instance = False
+
         for svc in (srv.services or []):
             for inst in (svc.instances or []):
-                if inst.applications:
-                    for app in inst.applications:
+                has_instance = True
+                effective_apps = dict(srv_apps)
+                effective_apps.update({a.id: a for a in inst.applications})
+                if effective_apps:
+                    for app in effective_apps.values():
                         if app.id not in app_map:
                             app_map[app.id] = {"app": app, "rows": []}
                         app_map[app.id]["rows"].append((inst, svc, srv, envs))
                 else:
                     no_app.append((inst, svc, srv, envs))
+
+        if not has_instance:
+            for app in srv_apps.values():
+                if app.id not in app_map:
+                    app_map[app.id] = {"app": app, "rows": []}
+                app_map[app.id]["rows"].append((None, None, srv, envs))
 
     row = 2
     for ai, entry in enumerate(sorted(app_map.values(), key=lambda e: e["app"].name.lower())):
