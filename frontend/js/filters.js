@@ -147,7 +147,6 @@ export function applyFilters(skipFit = false) {
   });
 
   // ── 2. Visible servers ────────────────────────────────────────────────────
-  const newHiddenByFilter = new Set();
   const visibleSrvIds = new Set();
   allServers.forEach(s => {
     const hasMatchingInst = (s.services || []).some(svc =>
@@ -160,8 +159,29 @@ export function applyFilters(skipFit = false) {
     const srvAppMatch = appId && (s.applications || []).some(a => a.id === appId) &&
       (!envId || (s.environments || []).some(e => e.id === envId));
     if (hasMatchingInst || bareInEnv || srvAppMatch) visibleSrvIds.add(s.id);
-    else newHiddenByFilter.add(s.id);
   });
+
+  // A Server used as the gateway (GW-Server) of an already-visible server or
+  // instance must stay visible too, even though it carries none of the
+  // filtered env/app tags itself — it can itself point at a further GW-Server,
+  // so resolve the whole chain.
+  let addedGwSrv = true;
+  while (addedGwSrv) {
+    addedGwSrv = false;
+    const neededGwSrvIds = new Set();
+    allServers.forEach(s => {
+      if (visibleSrvIds.has(s.id) && s.gateway_server_id) neededGwSrvIds.add(s.gateway_server_id);
+      (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+        if (matchingInstIds.has(inst.id) && inst.gateway_server_id) neededGwSrvIds.add(inst.gateway_server_id);
+      }));
+    });
+    neededGwSrvIds.forEach(id => {
+      if (!visibleSrvIds.has(id)) { visibleSrvIds.add(id); addedGwSrv = true; }
+    });
+  }
+
+  const newHiddenByFilter = new Set();
+  allServers.forEach(s => { if (!visibleSrvIds.has(s.id)) newHiddenByFilter.add(s.id); });
   setHiddenByFilter(newHiddenByFilter);
   _updateFilterStatus(true, visibleSrvIds.size, allServers.length);
 
