@@ -50,6 +50,26 @@ services:
     networks:
       - internal
 
+  backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-systemdocu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-systemdocu}
+      POSTGRES_DB: ${POSTGRES_DB:-systemdocu}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+    volumes:
+      - ./backups:/backups
+    networks:
+      - internal
+
 networks:
   internal:
     driver: bridge
