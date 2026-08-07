@@ -25,7 +25,7 @@ LEFT        = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
 OS_HEX = {
     "linux": "3B82F6", "windows": "60A5FA",
-    "proxmox": "F97316", "esxi": "22C55E",
+    "proxmox": "F97316", "esxi": "22C55E", "hyperv": "00ADEF",
 }
 SVC_HEX = {
     "postgresql": "336791", "docker": "2496ED", "kubernetes": "326CE5",

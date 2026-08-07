@@ -226,8 +226,9 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 ### Server anlegen
 
 1. Schaltfläche **+ Server** → Hostname, IP(s), OS-Typ, Beschreibung eintragen
-2. IP-Felder akzeptieren mehrere Adressen kommagetrennt (z. B. `198.51.100.10, 203.0.113.20`)
-3. **Als Gateway markieren**: Checkbox „Ist Gateway-Server" — macht den Server in allen Gateway-Dropdowns auswählbar
+2. OS-Typ: Linux, Windows, Proxmox, ESXi, Hyper-V — bestimmt Icon-Farbe im Graph und im Excel-Export
+3. IP-Felder akzeptieren mehrere Adressen kommagetrennt (z. B. `198.51.100.10, 203.0.113.20`)
+4. **Als Gateway markieren**: Checkbox „Ist Gateway-Server" — macht den Server in allen Gateway-Dropdowns auswählbar
 
 **Anwendungen**: Im Bereich „Anwendungen" der Server-Sidebar lässt sich der **ganze Server** direkt einer Anwendung zuordnen — für Hosts, die komplett einer Anwendung gehören. Die Zuordnung vererbt sich automatisch an **alle** Services und Instanzen des Servers: sie gelten in Anwendungs-Filter und Excel-Export als zur Anwendung gehörig, auch ohne eigene Anwendungs-Zuordnung (in der Instanz-Sidebar als abgeblasste Chips erkennbar). Server ohne Instanzen erscheinen im Excel-Export als „— ganzer Server —".
 

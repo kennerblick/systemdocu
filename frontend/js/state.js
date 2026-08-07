@@ -98,6 +98,7 @@ export const OS_COLORS = {
   windows: '#60a5fa',
   proxmox: '#f97316',
   esxi:    '#22c55e',
+  hyperv:  '#00adef',
 };
 
 export const SVC_COLORS = {
