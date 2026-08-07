@@ -1,15 +1,46 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Environment
+from ..models import Environment, InternetRouter, Server
 from ..schemas import EnvironmentCreate, EnvironmentUpdate, EnvironmentOut
 
 router = APIRouter(prefix="/api/environments", tags=["environments"])
+
+
+async def _ensure_gateway_linked(db: AsyncSession, env: Environment) -> bool:
+    """A Standard-Gateway set on an environment must also be tagged as
+    belonging to that environment (router_environments / server_environments),
+    otherwise dropdowns that filter gateway candidates by environment
+    membership (e.g. the server/instance edit forms) never offer it —
+    those two relationships were previously maintained independently."""
+    changed = False
+    if env.default_gateway_router_id:
+        result = await db.execute(
+            select(InternetRouter)
+            .options(selectinload(InternetRouter.environments))
+            .where(InternetRouter.id == env.default_gateway_router_id)
+        )
+        router_obj = result.scalar_one_or_none()
+        if router_obj and env not in router_obj.environments:
+            router_obj.environments.append(env)
+            changed = True
+    if env.default_gateway_server_id:
+        result = await db.execute(
+            select(Server)
+            .options(selectinload(Server.environments))
+            .where(Server.id == env.default_gateway_server_id)
+        )
+        server_obj = result.scalar_one_or_none()
+        if server_obj and env not in server_obj.environments:
+            server_obj.environments.append(env)
+            changed = True
+    return changed
 
 
 @router.get("", response_model=List[EnvironmentOut])
@@ -28,6 +59,9 @@ async def create_environment(payload: EnvironmentCreate, db: AsyncSession = Depe
         await db.rollback()
         raise HTTPException(status_code=409, detail="Umgebung existiert bereits")
     await db.refresh(obj)
+    if await _ensure_gateway_linked(db, obj):
+        await db.commit()
+        await db.refresh(obj)
     await bus.broadcast("data_changed", {"entity": "environment"})
     return obj
 
@@ -46,6 +80,9 @@ async def update_environment(env_id: int, payload: EnvironmentUpdate, db: AsyncS
         await db.rollback()
         raise HTTPException(status_code=409, detail="Name bereits vergeben")
     await db.refresh(obj)
+    if await _ensure_gateway_linked(db, obj):
+        await db.commit()
+        await db.refresh(obj)
     await bus.broadcast("data_changed", {"entity": "environment"})
     return obj
 
