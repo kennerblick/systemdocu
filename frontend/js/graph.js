@@ -678,6 +678,13 @@ export function renderGraph(skipFit = false) {
 
   net.on('beforeDrawing', ctx => {
     if (!showingInstances) return;
+
+    const visibleServerPositions = [];
+    allServers.forEach(s => {
+      if (hiddenByFilter.has(s.id)) return;
+      try { visibleServerPositions.push({ id: s.id, pos: net.getPosition(s.id) }); } catch (e) {}
+    });
+
     allServers.forEach(server => {
       if (hiddenByFilter.has(server.id)) return;
       const vmInstIds = [];
@@ -687,16 +694,38 @@ export function renderGraph(skipFit = false) {
       });
       if (!vmInstIds.length) return;
 
-      const positions = [];
-      [server.id, ...vmInstIds].forEach(id => {
-        try { positions.push(net.getPosition(id)); } catch (e) {}
-      });
-      if (positions.length < 2) return;
+      let serverPos;
+      try { serverPos = net.getPosition(server.id); } catch (e) { return; }
 
+      const instPositions = [];
+      vmInstIds.forEach(id => {
+        try { instPositions.push(net.getPosition(id)); } catch (e) {}
+      });
+      if (!instPositions.length) return;
+
+      // Drop instances the physics simulation drifted far away from their own
+      // server, so a single stray VM doesn't balloon the frame across the canvas.
+      const dists = instPositions.map(p => Math.hypot(p.x - serverPos.x, p.y - serverPos.y));
+      const sortedDists = [...dists].sort((a, b) => a - b);
+      const mid = Math.floor(sortedDists.length / 2);
+      const median = sortedDists.length % 2 ? sortedDists[mid] : (sortedDists[mid - 1] + sortedDists[mid]) / 2;
+      const maxReasonable = Math.max(200, 2.5 * median);
+      const kept = instPositions.filter((p, i) => dists[i] <= maxReasonable);
+      if (!kept.length) return;
+
+      const positions = [serverPos, ...kept];
       const xs = positions.map(p => p.x), ys = positions.map(p => p.y);
       const pad = 48, r = 22;
       const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
       const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+
+      // Skip drawing if another server's node ends up inside this box — the
+      // free-form physics layout doesn't otherwise guarantee it's excluded,
+      // and a frame around an unrelated server would be misleading.
+      const foreignServerInside = visibleServerPositions.some(({ id, pos }) =>
+        id !== server.id && pos.x > x0 && pos.x < x1 && pos.y > y0 && pos.y < y1);
+      if (foreignServerInside) return;
+
       const col = serverColor(server);
 
       ctx.save();
