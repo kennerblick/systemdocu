@@ -81,7 +81,7 @@ class Server(Base):
     hostname = Column(String(255), unique=True, nullable=False)
     common_name = Column(String(255), nullable=True)
     fqdn = Column(String(255))
-    ip = Column(String(45))
+    ip = Column(Text)
     gateway = Column(String(45))
     os_type = Column(String(50), default="linux")
     description = Column(Text)
@@ -128,7 +128,7 @@ class ServiceInstance(Base):
     fqdn = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    ip = Column(String(45))
+    ip = Column(Text)
     gateway = Column(String(45))
     # Same "at most one" rule as Server.gateway_*_id, extended with a third option
     # (another instance) since e.g. a VM's gateway can itself be a VM.
