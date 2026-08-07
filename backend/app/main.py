@@ -148,7 +148,7 @@ async def create_relation(payload: RelationCreate, db: AsyncSession = Depends(ge
 @app.get("/api/export/json")
 async def export_json(db: AsyncSession = Depends(get_db)):
     servers_result = await db.execute(
-        select(Server).options(selectinload(Server.services))
+        select(Server).options(selectinload(Server.services), selectinload(Server.ips))
     )
     srvs = servers_result.scalars().all()
     rels_result = await db.execute(select(Relation))
@@ -157,7 +157,7 @@ async def export_json(db: AsyncSession = Depends(get_db)):
             {
                 "id": s.id,
                 "hostname": s.hostname,
-                "ip": s.ip,
+                "ip": ", ".join(x.ip for x in s.ips),
                 "os_type": s.os_type,
                 "description": s.description,
                 "services": [

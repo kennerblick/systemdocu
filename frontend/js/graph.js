@@ -51,7 +51,7 @@ export function buildNode(server) {
     font: { color: '#e0e0e0', size: 13 },
     title: '[' + escHtml(server.os_type) + '] ' + escHtml(server.hostname) +
            (server.common_name ? ' (' + escHtml(server.common_name) + ')' : '') +
-           (server.ip ? '<br>' + server.ip.split(',').map(s => s.trim()).filter(Boolean).map(escHtml).join('<br>') : '') +
+           (server.ips && server.ips.length ? '<br>' + server.ips.map(x => escHtml(x.ip)).join('<br>') : '') +
            (server.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
            (server.gateway_router_id ? '<br>GW: ' + escHtml((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
            (server.gateway_server_id ? '<br>GW: ' + escHtml((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
@@ -74,7 +74,7 @@ function buildInstanceNodesEdges() {
           label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
           title: escHtml(inst.name) +
                  (inst.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
-                 (inst.ip ? '<br>' + inst.ip.split(',').map(s => s.trim()).filter(Boolean).map(escHtml).join('<br>') : '') +
+                 (inst.ips && inst.ips.length ? '<br>' + inst.ips.map(x => escHtml(x.ip)).join('<br>') : '') +
                  (inst.environments && inst.environments.length
                    ? '<br>🌍 ' + inst.environments.map(e => escHtml(e.name)).join(', ') : '') +
                  (gwR ? '<br>GW: ' + escHtml(gwR.name) : '') +

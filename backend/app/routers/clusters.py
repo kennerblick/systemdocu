@@ -6,7 +6,7 @@ from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Cluster, ServiceInstance
+from ..models import Cluster, ServiceInstance, InstanceIP
 from ..schemas import ClusterCreate, ClusterUpdate, ClusterOut, ClusterOwnInstanceCreate
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
@@ -18,6 +18,7 @@ async def get_cluster_or_404(cluster_id: int, db: AsyncSession) -> Cluster:
         .options(
             selectinload(Cluster.members),
             selectinload(Cluster.own_instances).selectinload(ServiceInstance.environments),
+            selectinload(Cluster.own_instances).selectinload(ServiceInstance.ips),
         )
         .where(Cluster.id == cluster_id)
     )
@@ -33,6 +34,7 @@ async def list_clusters(db: AsyncSession = Depends(get_db)):
         select(Cluster).options(
             selectinload(Cluster.members),
             selectinload(Cluster.own_instances).selectinload(ServiceInstance.environments),
+            selectinload(Cluster.own_instances).selectinload(ServiceInstance.ips),
         )
     )
     return result.scalars().all()
@@ -90,7 +92,15 @@ async def remove_cluster_member(cluster_id: int, instance_id: int, db: AsyncSess
 @router.post("/{cluster_id}/own-instances", response_model=ClusterOut, status_code=201)
 async def create_cluster_own_instance(cluster_id: int, payload: ClusterOwnInstanceCreate, db: AsyncSession = Depends(get_db)):
     await get_cluster_or_404(cluster_id, db)
-    inst = ServiceInstance(cluster_id=cluster_id, **payload.model_dump())
+    data = payload.model_dump()
+    ips = data.pop("ips")
+    inst = ServiceInstance(cluster_id=cluster_id, **data)
+    seen_ips = set()
+    for ip in ips:
+        ip = ip.strip()
+        if ip and ip not in seen_ips:
+            seen_ips.add(ip)
+            inst.ips.append(InstanceIP(ip=ip))
     db.add(inst)
     await db.commit()
     await bus.broadcast("data_changed", {"entity": "cluster"})

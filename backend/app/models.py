@@ -18,7 +18,7 @@ Relation / InstanceRelation
 """
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, Table, Boolean
+    Column, Integer, String, Text, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -60,6 +60,26 @@ cluster_members = Table(
 )
 
 
+class ServerIP(Base):
+    __tablename__ = "server_ips"
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    ip = Column(String(45), nullable=False)
+    __table_args__ = (UniqueConstraint("server_id", "ip", name="uq_server_ip"),)
+
+    server = relationship("Server", back_populates="ips")
+
+
+class InstanceIP(Base):
+    __tablename__ = "instance_ips"
+    id = Column(Integer, primary_key=True, index=True)
+    instance_id = Column(Integer, ForeignKey("service_instances.id", ondelete="CASCADE"), nullable=False)
+    ip = Column(String(45), nullable=False)
+    __table_args__ = (UniqueConstraint("instance_id", "ip", name="uq_instance_ip"),)
+
+    instance = relationship("ServiceInstance", back_populates="ips")
+
+
 class Storage(Base):
     __tablename__ = "storages"
     id = Column(Integer, primary_key=True, index=True)
@@ -81,7 +101,6 @@ class Server(Base):
     hostname = Column(String(255), unique=True, nullable=False)
     common_name = Column(String(255), nullable=True)
     fqdn = Column(String(255))
-    ip = Column(Text)
     gateway = Column(String(45))
     os_type = Column(String(50), default="linux")
     description = Column(Text)
@@ -96,6 +115,7 @@ class Server(Base):
 
     services = relationship("Service", back_populates="server", cascade="all, delete-orphan")
     storages = relationship("Storage", back_populates="server", cascade="all, delete-orphan")
+    ips = relationship("ServerIP", back_populates="server", cascade="all, delete-orphan", order_by="ServerIP.id")
     environments = relationship("Environment", secondary=server_environments, back_populates="servers")
     applications = relationship("Application", secondary=server_applications, back_populates="servers")
     outgoing_relations = relationship("Relation", foreign_keys="Relation.source_id", back_populates="source", cascade="all, delete-orphan")
@@ -128,7 +148,6 @@ class ServiceInstance(Base):
     fqdn = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    ip = Column(Text)
     gateway = Column(String(45))
     # Same "at most one" rule as Server.gateway_*_id, extended with a third option
     # (another instance) since e.g. a VM's gateway can itself be a VM.
@@ -148,6 +167,7 @@ class ServiceInstance(Base):
     environments = relationship("Environment", secondary=instance_environments, back_populates="instances")
     applications = relationship("Application", secondary=instance_applications, back_populates="instances")
     clusters = relationship("Cluster", secondary=cluster_members, back_populates="members")
+    ips = relationship("InstanceIP", back_populates="instance", cascade="all, delete-orphan", order_by="InstanceIP.id")
 
 
 class Environment(Base):

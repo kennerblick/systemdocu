@@ -40,10 +40,11 @@ import sys
 
 import openpyxl
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
 from app.models import (
-    Server, Service, ServiceInstance, Environment, Application, Storage,
+    Server, Service, ServiceInstance, Environment, Application, Storage, ServerIP,
     server_environments, server_applications, instance_applications,
 )
 
@@ -94,20 +95,25 @@ async def get_or_create_server(db, cache, hostname, os_type, ip, stats) -> Serve
     if hostname in cache:
         srv = cache[hostname]
     else:
-        res = await db.execute(select(Server).where(Server.hostname == hostname))
+        res = await db.execute(
+            select(Server).options(selectinload(Server.ips)).where(Server.hostname == hostname)
+        )
         srv = res.scalar_one_or_none()
         if srv is None:
-            srv = Server(hostname=hostname, os_type=os_type or "linux", ip=ip)
+            srv = Server(hostname=hostname, os_type=os_type or "linux")
             db.add(srv)
             await db.flush()
             stats.bump("servers_created")
-            cache[hostname] = srv
-            return srv
         cache[hostname] = srv
     if os_type and not srv.os_type:
         srv.os_type = os_type
-    if ip and not srv.ip:
-        srv.ip = ip
+    if ip:
+        existing_ips = {x.ip for x in srv.ips}
+        for token in split_names(ip):
+            if token not in existing_ips:
+                srv.ips.append(ServerIP(ip=token))
+                existing_ips.add(token)
+                stats.bump("server_ips_created")
     return srv
 
 

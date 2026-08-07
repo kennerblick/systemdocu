@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from ..database import get_db
-from ..models import Server, Service, ServiceInstance
+from ..models import Server, Service, ServiceInstance, ServerIP
 from .zabbix_scanners import run_all_scanners
 
 logger = logging.getLogger("systemdocu")
@@ -187,7 +187,7 @@ def scan_host(zabbix_hostid: str):
 async def rescan_server(server_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Server)
-        .options(selectinload(Server.services).selectinload(Service.instances))
+        .options(selectinload(Server.services).selectinload(Service.instances), selectinload(Server.ips))
         .where(Server.id == server_id)
     )
     server = result.scalar_one_or_none()
@@ -197,8 +197,8 @@ async def rescan_server(server_id: int, db: AsyncSession = Depends(get_db)):
     zapi = _get_zapi()
 
     zbx_hosts = zapi.host.get(output=["hostid", "host"], filter={"host": server.hostname})
-    if not zbx_hosts and server.ip:
-        first_ip = server.ip.split(",")[0].strip()
+    if not zbx_hosts and server.ips:
+        first_ip = server.ips[0].ip
         ifaces = zapi.hostinterface.get(output=["hostid"], filter={"ip": first_ip})
         if ifaces:
             zbx_hosts = zapi.host.get(output=["hostid", "host"], hostids=[ifaces[0]["hostid"]])
@@ -381,16 +381,20 @@ class ZabbixScanImport(BaseModel):
 
 @router.post("/import")
 async def import_scan(payload: ZabbixScanImport, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Server).where(Server.hostname == payload.hostname))
+    result = await db.execute(
+        select(Server).options(selectinload(Server.ips)).where(Server.hostname == payload.hostname)
+    )
     server = result.scalar_one_or_none()
 
     if server is None:
-        server = Server(hostname=payload.hostname, fqdn=payload.fqdn, ip=payload.ip, os_type=payload.os_type)
+        server = Server(hostname=payload.hostname, fqdn=payload.fqdn, os_type=payload.os_type)
+        if payload.ip:
+            server.ips.append(ServerIP(ip=payload.ip.strip()))
         db.add(server)
         await db.flush()
     else:
-        if payload.ip:
-            server.ip = payload.ip
+        if payload.ip and payload.ip.strip() not in {x.ip for x in server.ips}:
+            server.ips.append(ServerIP(ip=payload.ip.strip()))
         if payload.fqdn:
             server.fqdn = payload.fqdn
         server.os_type = payload.os_type

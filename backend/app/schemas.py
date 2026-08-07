@@ -57,6 +57,18 @@ class StorageOut(StorageCreate):
         from_attributes = True
 
 
+class IpCreate(BaseModel):
+    ip: str
+
+
+class IpOut(BaseModel):
+    id: int
+    ip: str
+
+    class Config:
+        from_attributes = True
+
+
 class EnvironmentBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -109,7 +121,6 @@ class ServiceInstanceBase(BaseModel):
     name: str
     description: Optional[str] = None
     fqdn: Optional[str] = None
-    ip: Optional[str] = None
     is_gateway: bool = False
     available: bool = True
     gateway: Optional[str] = None
@@ -119,14 +130,13 @@ class ServiceInstanceBase(BaseModel):
 
 
 class ServiceInstanceCreate(ServiceInstanceBase, _SingleGatewayMixin):
-    pass
+    ips: List[str] = []
 
 
 class ServiceInstanceUpdate(_SingleGatewayMixin):
     name: Optional[str] = None
     description: Optional[str] = None
     fqdn: Optional[str] = None
-    ip: Optional[str] = None
     is_gateway: Optional[bool] = None
     available: Optional[bool] = None
     gateway: Optional[str] = None
@@ -164,6 +174,7 @@ class ServiceInstanceOut(ServiceInstanceBase):
     applications: List[ApplicationOut] = []
     environments: List[EnvironmentOut] = []
     own_services: List[ServiceSimpleOut] = []
+    ips: List[IpOut] = []
 
     class Config:
         from_attributes = True
@@ -182,7 +193,6 @@ class ServiceOut(ServiceBase):
 class ServerBase(BaseModel):
     hostname: str
     common_name: Optional[str] = None
-    ip: Optional[str] = None
     gateway: Optional[str] = None
     os_type: str = "linux"
     description: Optional[str] = None
@@ -192,13 +202,12 @@ class ServerBase(BaseModel):
 
 
 class ServerCreate(ServerBase, _SingleGatewayMixin):
-    pass
+    ips: List[str] = []
 
 
 class ServerUpdate(_SingleGatewayMixin):
     hostname: Optional[str] = None
     common_name: Optional[str] = None
-    ip: Optional[str] = None
     gateway: Optional[str] = None
     os_type: Optional[str] = None
     description: Optional[str] = None
@@ -214,6 +223,7 @@ class ServerOut(ServerBase):
     environments: List[EnvironmentOut] = []
     applications: List[ApplicationOut] = []
     storages: List[StorageOut] = []
+    ips: List[IpOut] = []
 
     class Config:
         from_attributes = True
@@ -268,7 +278,7 @@ class ClusterMemberOut(BaseModel):
 class ClusterOwnInstanceCreate(BaseModel):
     name: str
     fqdn: Optional[str] = None
-    ip: Optional[str] = None
+    ips: List[str] = []
     description: Optional[str] = None
 
 
@@ -276,7 +286,7 @@ class ClusterOwnInstanceOut(BaseModel):
     id: int
     name: str
     fqdn: Optional[str] = None
-    ip: Optional[str] = None
+    ips: List[IpOut] = []
     description: Optional[str] = None
     environments: List[EnvironmentOut] = []
 

@@ -23,13 +23,14 @@ import { updateInstanceVisibility } from './graph.js';
 function _buildSearchIndex() {
   const idx = [];
   allServers.forEach(srv => {
-    const ips = (srv.ip || '').split(',').map(s => s.trim()).filter(Boolean);
+    const ips = (srv.ips || []).map(x => x.ip);
     const label = (srv.common_name && srv.common_name.trim()) || srv.hostname;
     const sub = [srv.common_name && srv.common_name !== label ? srv.hostname : '', ips.join(', ')].filter(Boolean).join(' · ');
     idx.push({ nodeId: srv.id, label, hostname: srv.hostname, common_name: srv.common_name || '', sub, ips, type: 'server' });
     (srv.services || []).forEach(svc => {
       (svc.instances || []).forEach(inst => {
-        idx.push({ nodeId: 'inst_' + inst.id, label: inst.name, hostname: '', common_name: '', sub: label, ips: [], type: 'instance' });
+        const instIps = (inst.ips || []).map(x => x.ip);
+        idx.push({ nodeId: 'inst_' + inst.id, label: inst.name, hostname: '', common_name: '', sub: label, ips: instIps, type: 'instance' });
       });
     });
   });

@@ -40,11 +40,12 @@ export function openAddServer() {
 export async function createServer() {
   const hostname = document.getElementById('new-hostname').value.trim();
   if (!hostname) return alert('Hostname fehlt');
+  const ips = document.getElementById('new-ip').value.split(',').map(s => s.trim()).filter(Boolean);
   try {
     await api('POST', '/servers', {
       hostname,
       common_name: document.getElementById('new-common-name').value.trim() || null,
-      ip:          document.getElementById('new-ip').value || null,
+      ips,
       os_type:     document.getElementById('new-os').value,
       description: document.getElementById('new-desc').value || null,
       is_gateway:  document.getElementById('new-is-gateway').checked,
@@ -115,7 +116,7 @@ function renderEnvList() {
           '</optgroup>' : '') +
           (allServers.some(s => s.is_gateway) ? '<optgroup label="GW-Server">' +
             allServers.filter(s => s.is_gateway).map(s => '<option value="server_' + s.id + '"' + (e.default_gateway_server_id === s.id ? ' selected' : '') + '>' +
-              escHtml(s.hostname) + (s.ip ? ' (' + s.ip + ')' : '') + '</option>').join('') +
+              escHtml(s.hostname) + ((s.ips && s.ips.length) ? ' (' + s.ips.map(x => x.ip).join(', ') + ')' : '') + '</option>').join('') +
           '</optgroup>' : '') +
         '</select>' +
         '<input type="color" id="ee-color-' + e.id + '" value="' + e.color + '" style="width:34px;padding:2px"/>' +

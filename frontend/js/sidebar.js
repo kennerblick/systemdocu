@@ -33,11 +33,7 @@ export function openSidebar(serverId) {
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('sb-hostname').textContent = displayName(server);
 
-  const ipEl = document.getElementById('sb-ip');
-  const ips = (server.ip || '').split(',').map(s => s.trim()).filter(Boolean);
-  ipEl.innerHTML = ips.length
-    ? ips.map(ip => '<span style="background:#0f3460;border:1px solid #1d4ed8;border-radius:3px;padding:1px 7px;font-size:0.78rem;margin-right:3px;display:inline-block">' + escHtml(ip) + '</span>').join('')
-    : '—';
+  renderServerIps(server);
   document.getElementById('sb-os').textContent = server.os_type;
   document.getElementById('sb-desc').textContent = server.description || '—';
 
@@ -158,6 +154,53 @@ export function closeSidebar() {
   document.getElementById('sidebar-resizer').style.display = 'none';
 }
 
+// ── Server IPs ─────────────────────────────────────────────────────────────────
+
+/** Renders the server's IP chips (each individually removable) plus an add-input. */
+function renderServerIps(server) {
+  const ipEl = document.getElementById('sb-ip');
+  ipEl.innerHTML = '';
+  const ips = server.ips || [];
+  if (!ips.length) {
+    const none = document.createElement('span');
+    none.style.cssText = 'color:#6b7280;font-size:0.78rem;margin-right:4px';
+    none.textContent = '—';
+    ipEl.appendChild(none);
+  }
+  ips.forEach(ipObj => {
+    const c = document.createElement('span');
+    c.style.cssText = 'background:#0f3460;border:1px solid #1d4ed8;border-radius:3px;padding:1px 7px;font-size:0.78rem;margin-right:3px;display:inline-flex;align-items:center;gap:4px;cursor:pointer';
+    c.innerHTML = escHtml(ipObj.ip) + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
+    c.title = 'Klicken zum Entfernen';
+    c.onclick = () => deleteServerIp(ipObj.id);
+    ipEl.appendChild(c);
+  });
+  const addInp = document.createElement('input');
+  addInp.type = 'text'; addInp.placeholder = '+ IP';
+  addInp.style.cssText = 'width:105px;font-size:0.72rem;padding:1px 5px;margin-right:3px';
+  const addBtn = document.createElement('button');
+  addBtn.className = 'xs'; addBtn.textContent = '+';
+  const submit = () => { addServerIp(addInp.value); addInp.value = ''; };
+  addBtn.onclick = submit;
+  addInp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  ipEl.appendChild(addInp);
+  ipEl.appendChild(addBtn);
+}
+
+async function addServerIp(ip) {
+  ip = (ip || '').trim();
+  if (!ip) return;
+  try { await api('POST', '/servers/' + currentServerId + '/ips', { ip }); }
+  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteServerIp(ipId) {
+  try { await api('DELETE', '/servers/' + currentServerId + '/ips/' + ipId); }
+  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
+  await loadAll();
+}
+
 // ── Services section ──────────────────────────────────────────────────────────
 
 /**
@@ -216,15 +259,24 @@ export function renderServicesSection(server) {
       instDelBtn.onclick = () => deleteInstance(inst.id);
 
       if (VM_SVC_TYPES.has(svc.type)) {
-        const ipInp = document.createElement('input');
-        ipInp.type = 'text'; ipInp.value = inst.ip || ''; ipInp.placeholder = 'IP(s) kommagetrennt';
-        ipInp.style.cssText = 'width:115px;font-size:0.72rem;padding:1px 5px';
-        ipInp.title = 'IPs dieser VM (kommagetrennt)';
-        const ipBtn = document.createElement('button');
-        ipBtn.className = 'xs'; ipBtn.textContent = '+IP';
-        ipBtn.onclick = () => updateInstanceIp(inst.id, ipInp.value || null);
         const ipWrap = document.createElement('div');
-        ipWrap.style.cssText = 'display:flex;gap:3px;align-items:center;margin-left:auto';
+        ipWrap.style.cssText = 'display:flex;gap:3px;align-items:center;flex-wrap:wrap;margin-left:auto';
+        (inst.ips || []).forEach(ipObj => {
+          const c = document.createElement('span');
+          c.style.cssText = 'background:#0f3460;border:1px solid #1d4ed8;border-radius:3px;padding:0 5px;font-size:0.68rem;display:inline-flex;align-items:center;gap:3px;cursor:pointer';
+          c.innerHTML = escHtml(ipObj.ip) + ' <i class="fa-solid fa-xmark" style="font-size:0.58rem"></i>';
+          c.title = 'Klicken zum Entfernen';
+          c.onclick = () => deleteInstanceIp(inst.id, ipObj.id);
+          ipWrap.appendChild(c);
+        });
+        const ipInp = document.createElement('input');
+        ipInp.type = 'text'; ipInp.placeholder = '+ IP';
+        ipInp.style.cssText = 'width:80px;font-size:0.72rem;padding:1px 5px';
+        const ipBtn = document.createElement('button');
+        ipBtn.className = 'xs'; ipBtn.textContent = '+';
+        const submitIp = () => { addInstanceIp(inst.id, ipInp.value); ipInp.value = ''; };
+        ipBtn.onclick = submitIp;
+        ipInp.addEventListener('keydown', e => { if (e.key === 'Enter') submitIp(); });
         ipWrap.appendChild(ipInp); ipWrap.appendChild(ipBtn);
         nameDiv.appendChild(ipWrap);
 
@@ -752,7 +804,6 @@ export function toggleServerEdit() {
     if (!s) return;
     document.getElementById('edit-hostname').value = s.hostname || '';
     document.getElementById('edit-common-name').value = s.common_name || '';
-    document.getElementById('edit-ip').value = s.ip || '';
     document.getElementById('edit-os').value = s.os_type || 'linux';
     document.getElementById('edit-desc').value = s.description || '';
     document.getElementById('edit-is-gateway').checked = s.is_gateway || false;
@@ -773,7 +824,8 @@ export function toggleServerEdit() {
       if ((gs.environments || []).some(e => envIds.has(e.id))) {
         const opt = document.createElement('option');
         opt.value = 'server_' + gs.id;
-        opt.textContent = gs.hostname + (gs.ip ? ' (' + gs.ip + ')' : '') + ' [GW-Server]';
+        const gsIpLabel = (gs.ips && gs.ips.length) ? ' (' + gs.ips.map(x => x.ip).join(', ') + ')' : '';
+        opt.textContent = gs.hostname + gsIpLabel + ' [GW-Server]';
         if (s.gateway_server_id === gs.id) opt.selected = true;
         gwSel.appendChild(opt);
       }
@@ -790,7 +842,6 @@ export async function saveServerEdit() {
     await api('PUT', '/servers/' + currentServerId, {
       hostname:          document.getElementById('edit-hostname').value.trim() || undefined,
       common_name:       document.getElementById('edit-common-name').value.trim() || null,
-      ip:                document.getElementById('edit-ip').value || null,
       os_type:           document.getElementById('edit-os').value,
       description:       document.getElementById('edit-desc').value || null,
       is_gateway:        document.getElementById('edit-is-gateway').checked,
@@ -895,9 +946,17 @@ async function removeInstanceApp(instanceId, appId) {
   await loadAll();
 }
 
-async function updateInstanceIp(instanceId, ip) {
-  try { await api('PATCH', '/instances/' + instanceId, { ip: ip || null }); }
-  catch (e) { return alert('Fehler beim Speichern der IP: ' + e.message); }
+async function addInstanceIp(instanceId, ip) {
+  ip = (ip || '').trim();
+  if (!ip) return;
+  try { await api('POST', '/instances/' + instanceId + '/ips', { ip }); }
+  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteInstanceIp(instanceId, ipId) {
+  try { await api('DELETE', '/instances/' + instanceId + '/ips/' + ipId); }
+  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
   await loadAll();
 }
 

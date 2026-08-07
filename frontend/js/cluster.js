@@ -148,8 +148,24 @@ function renderClusterOwnInstances(cl) {
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap';
     header.innerHTML = '<span style="font-size:0.8rem;font-weight:500">' + escHtml(inst.name) + '</span>' +
-      (inst.fqdn ? '<span style="font-size:0.72rem;color:#60a5fa;font-family:monospace">' + escHtml(inst.fqdn) + '</span>' : '') +
-      (inst.ip ? '<span style="font-size:0.7rem;color:#9ca3af">' + escHtml(inst.ip) + '</span>' : '');
+      (inst.fqdn ? '<span style="font-size:0.72rem;color:#60a5fa;font-family:monospace">' + escHtml(inst.fqdn) + '</span>' : '');
+    (inst.ips || []).forEach(ipObj => {
+      const c = document.createElement('span');
+      c.style.cssText = 'background:#0f3460;border:1px solid #1d4ed8;border-radius:3px;padding:0 5px;font-size:0.68rem;display:inline-flex;align-items:center;gap:3px;cursor:pointer';
+      c.innerHTML = escHtml(ipObj.ip) + ' <i class="fa-solid fa-xmark" style="font-size:0.58rem"></i>';
+      c.title = 'Klicken zum Entfernen';
+      c.onclick = () => deleteClusterInstIp(inst.id, ipObj.id);
+      header.appendChild(c);
+    });
+    const ipInp = document.createElement('input');
+    ipInp.type = 'text'; ipInp.placeholder = '+ IP';
+    ipInp.style.cssText = 'width:75px;font-size:0.7rem;padding:1px 4px';
+    const ipAddBtn = document.createElement('button');
+    ipAddBtn.className = 'xs'; ipAddBtn.textContent = '+';
+    const submitClIp = () => { addClusterInstIp(inst.id, ipInp.value); ipInp.value = ''; };
+    ipAddBtn.onclick = submitClIp;
+    ipInp.addEventListener('keydown', e => { if (e.key === 'Enter') submitClIp(); });
+    header.appendChild(ipInp); header.appendChild(ipAddBtn);
     const delBtn = document.createElement('button');
     delBtn.className = 'xs danger'; delBtn.style.marginLeft = 'auto';
     delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
@@ -247,9 +263,9 @@ async function removeMemberFromClusterSidebar(clusterId, instanceId) {
 export async function addClusterOwnInstance() {
   const name = document.getElementById('cl-new-inst-name').value.trim();
   const fqdn = document.getElementById('cl-new-inst-fqdn').value.trim() || null;
-  const ip   = document.getElementById('cl-new-inst-ip').value.trim()   || null;
+  const ips  = document.getElementById('cl-new-inst-ip').value.split(',').map(s => s.trim()).filter(Boolean);
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/clusters/' + currentClusterId + '/own-instances', { name, fqdn, ip }); }
+  try { await api('POST', '/clusters/' + currentClusterId + '/own-instances', { name, fqdn, ips }); }
   catch (e) { return alert('Fehler: ' + e.message); }
   document.getElementById('cl-new-inst-name').value = '';
   document.getElementById('cl-new-inst-fqdn').value = '';
@@ -260,6 +276,20 @@ export async function addClusterOwnInstance() {
 async function deleteClusterOwnInstance(instanceId) {
   try { await api('DELETE', '/instances/' + instanceId); }
   catch (e) { return alert('Fehler: ' + e.message); }
+  await loadAll();
+}
+
+async function addClusterInstIp(instanceId, ip) {
+  ip = (ip || '').trim();
+  if (!ip) return;
+  try { await api('POST', '/instances/' + instanceId + '/ips', { ip }); }
+  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await loadAll();
+}
+
+async function deleteClusterInstIp(instanceId, ipId) {
+  try { await api('DELETE', '/instances/' + instanceId + '/ips/' + ipId); }
+  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
   await loadAll();
 }
 

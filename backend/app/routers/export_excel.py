@@ -51,6 +51,10 @@ def _srv_hex(srv: Server) -> str:
     return OS_HEX.get(srv.os_type, "888888")
 
 
+def _srv_ip(srv: Server) -> str:
+    return ", ".join(x.ip for x in srv.ips)
+
+
 def _cell(ws, row: int, col: int, value, bg: str, font: Font,
           align: Alignment = LEFT) -> None:
     c = ws.cell(row=row, column=col, value=value)
@@ -100,6 +104,7 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
             selectinload(Server.environments),
             selectinload(Server.applications),
             selectinload(Server.storages),
+            selectinload(Server.ips),
         )
     )
     servers = list(result.scalars().all())
@@ -198,7 +203,7 @@ def _build_sheet1(wb: openpyxl.Workbook, servers: list) -> None:
 
 
 def _write_srv_row(ws, row, srv, envs, svc_t, svc_v, svc_p, inst, apps, band):
-    vals = [srv.hostname, srv.os_type, srv.ip or "", envs,
+    vals = [srv.hostname, srv.os_type, _srv_ip(srv), envs,
             svc_t, svc_v, svc_p, inst, apps]
     aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT, LEFT]
     for col, (v, a) in enumerate(zip(vals, aligns), 1):
@@ -272,7 +277,7 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
             svc_hex = "6B7280" if is_whole_server else SVC_HEX.get(svc.type, "4B5563")
             vals = [app.name, "— ganzer Server —" if is_whole_server else inst.name,
                     "" if is_whole_server else svc.type, "" if is_whole_server else (svc.version or ""),
-                    srv.hostname, srv.os_type, srv.ip or "", envs]
+                    srv.hostname, srv.os_type, _srv_ip(srv), envs]
             aligns = [LEFT, LEFT, CENTER, CENTER, LEFT, CENTER, CENTER, LEFT]
             for col, (v, a) in enumerate(zip(vals, aligns), 1):
                 _cell(ws, row, col, v, band, DATA_FONT, a)
@@ -306,7 +311,7 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
         for inst, svc, srv, envs in no_app:
             svc_hex = SVC_HEX.get(svc.type, "4B5563")
             vals = ["(keine Anwendung)", inst.name, svc.type, svc.version or "",
-                    srv.hostname, srv.os_type, srv.ip or "", envs]
+                    srv.hostname, srv.os_type, _srv_ip(srv), envs]
             aligns = [LEFT, LEFT, CENTER, CENTER, LEFT, CENTER, CENTER, LEFT]
             for col, (v, a) in enumerate(zip(vals, aligns), 1):
                 _cell(ws, row, col, v, "F3F4F6", GREY_FONT, a)
@@ -393,7 +398,7 @@ def _build_svc_sheet(
     def _write(ws, row, e, band):
         storage = e["inst"].storage.name if e["inst"].storage else ""
         vals   = [e["inst"].name, storage, e["srv"].hostname, e["srv"].os_type,
-                  e["srv"].ip or "", e["envs"]]
+                  _srv_ip(e["srv"]), e["envs"]]
         aligns = [LEFT, LEFT, CENTER, CENTER, CENTER, LEFT]
         if version_col:
             vals.append(e["svc"].version or "")
@@ -444,7 +449,7 @@ def _build_sheet_vms(wb: openpyxl.Workbook, servers: list) -> None:
                 e = rows[k]
                 storage = e["inst"].storage.name if e["inst"].storage else ""
                 vals   = [e["inst"].name, typ_label, storage, srv.hostname,
-                          srv.os_type, srv.ip or "", e["envs"]]
+                          srv.os_type, _srv_ip(srv), e["envs"]]
                 aligns = [LEFT, CENTER, LEFT, CENTER, CENTER, CENTER, LEFT]
                 for col, (v, a) in enumerate(zip(vals, aligns), 1):
                     _cell(ws, row, col, v, band, DATA_FONT, a)
@@ -504,7 +509,7 @@ def _build_sheet_storages(wb: openpyxl.Workbook, servers: list) -> None:
         while i < len(rows) and rows[i]["srv"].id == srv.id:
             st = rows[i]["st"]
             inst_names = ", ".join(storage_instances.get(st.id, []))
-            vals   = [srv.hostname, srv.os_type, srv.ip or "",
+            vals   = [srv.hostname, srv.os_type, _srv_ip(srv),
                       st.name, st.raid_type or "", st.disk_count or "",
                       st.size_gb or "", st.disk_size_tb or "", inst_names, st.description or ""]
             aligns = [CENTER, CENTER, CENTER, LEFT, CENTER, CENTER, CENTER, CENTER, LEFT, LEFT]

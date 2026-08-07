@@ -7,8 +7,8 @@ from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Server, Service, ServiceInstance, Environment, Application, Storage
-from ..schemas import ServerCreate, ServerUpdate, ServerOut
+from ..models import Server, Service, ServiceInstance, Environment, Application, Storage, ServerIP
+from ..schemas import ServerCreate, ServerUpdate, ServerOut, IpCreate, IpOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 
@@ -25,6 +25,7 @@ _server_options = [
     selectinload(Server.environments),
     selectinload(Server.applications),
     selectinload(Server.storages),
+    selectinload(Server.ips),
 ]
 
 
@@ -55,7 +56,15 @@ async def get_server(server_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=ServerOut, status_code=201)
 async def create_server(payload: ServerCreate, db: AsyncSession = Depends(get_db)):
-    server = Server(**payload.model_dump())
+    data = payload.model_dump()
+    ips = data.pop("ips")
+    server = Server(**data)
+    seen_ips = set()
+    for ip in ips:
+        ip = ip.strip()
+        if ip and ip not in seen_ips:
+            seen_ips.add(ip)
+            server.ips.append(ServerIP(ip=ip))
     db.add(server)
     try:
         await db.commit()
@@ -138,3 +147,34 @@ async def remove_server_application(server_id: int, app_id: int, db: AsyncSessio
     await db.commit()
     await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)
+
+
+@router.post("/{server_id}/ips", response_model=IpOut, status_code=201)
+async def add_server_ip(server_id: int, payload: IpCreate, db: AsyncSession = Depends(get_db)):
+    await get_server_or_404(server_id, db)
+    ip = payload.ip.strip()
+    if not ip:
+        raise HTTPException(status_code=422, detail="IP darf nicht leer sein")
+    server_ip = ServerIP(server_id=server_id, ip=ip)
+    db.add(server_ip)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"IP '{ip}' ist bei diesem Server bereits erfasst")
+    await db.refresh(server_ip)
+    await bus.broadcast("data_changed", {"entity": "server"})
+    return server_ip
+
+
+@router.delete("/{server_id}/ips/{ip_id}", status_code=204)
+async def delete_server_ip(server_id: int, ip_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ServerIP).where(ServerIP.id == ip_id, ServerIP.server_id == server_id)
+    )
+    server_ip = result.scalar_one_or_none()
+    if not server_ip:
+        raise HTTPException(status_code=404, detail="IP not found")
+    await db.delete(server_ip)
+    await db.commit()
+    await bus.broadcast("data_changed", {"entity": "server"})

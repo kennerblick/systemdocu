@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation
-from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, InstanceRelationUpdate, ServiceCreate, ServiceSimpleOut
+from ..models import Service, ServiceInstance, Environment, Application, InstanceRelation, InstanceIP
+from ..schemas import ServiceInstanceCreate, ServiceInstanceUpdate, ServiceInstanceOut, InstanceRelationCreate, InstanceRelationOut, InstanceRelationUpdate, ServiceCreate, ServiceSimpleOut, IpCreate, IpOut
 
 router = APIRouter(tags=["instances"])
 
@@ -19,6 +20,7 @@ async def get_instance_or_404(instance_id: int, db: AsyncSession) -> ServiceInst
             selectinload(ServiceInstance.environments),
             selectinload(ServiceInstance.applications),
             selectinload(ServiceInstance.own_services),
+            selectinload(ServiceInstance.ips),
         )
         .where(ServiceInstance.id == instance_id)
     )
@@ -35,6 +37,7 @@ async def list_instances(service_id: int, db: AsyncSession = Depends(get_db)):
         .options(
             selectinload(ServiceInstance.environments),
             selectinload(ServiceInstance.applications),
+            selectinload(ServiceInstance.ips),
         )
         .where(ServiceInstance.service_id == service_id)
     )
@@ -46,7 +49,15 @@ async def create_instance(service_id: int, payload: ServiceInstanceCreate, db: A
     svc_result = await db.execute(select(Service).where(Service.id == service_id))
     if not svc_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Service not found")
-    obj = ServiceInstance(service_id=service_id, **payload.model_dump())
+    data = payload.model_dump()
+    ips = data.pop("ips")
+    obj = ServiceInstance(service_id=service_id, **data)
+    seen_ips = set()
+    for ip in ips:
+        ip = ip.strip()
+        if ip and ip not in seen_ips:
+            seen_ips.add(ip)
+            obj.ips.append(InstanceIP(ip=ip))
     db.add(obj)
     await db.commit()
     await bus.broadcast("data_changed", {"entity": "instance"})
@@ -183,5 +194,36 @@ async def delete_instance_service(instance_id: int, service_id: int, db: AsyncSe
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     await db.delete(svc)
+    await db.commit()
+    await bus.broadcast("data_changed", {"entity": "instance"})
+
+
+@router.post("/api/instances/{instance_id}/ips", response_model=IpOut, status_code=201)
+async def add_instance_ip(instance_id: int, payload: IpCreate, db: AsyncSession = Depends(get_db)):
+    await get_instance_or_404(instance_id, db)
+    ip = payload.ip.strip()
+    if not ip:
+        raise HTTPException(status_code=422, detail="IP darf nicht leer sein")
+    instance_ip = InstanceIP(instance_id=instance_id, ip=ip)
+    db.add(instance_ip)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"IP '{ip}' ist bei dieser Instanz bereits erfasst")
+    await db.refresh(instance_ip)
+    await bus.broadcast("data_changed", {"entity": "instance"})
+    return instance_ip
+
+
+@router.delete("/api/instances/{instance_id}/ips/{ip_id}", status_code=204)
+async def delete_instance_ip(instance_id: int, ip_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(InstanceIP).where(InstanceIP.id == ip_id, InstanceIP.instance_id == instance_id)
+    )
+    instance_ip = result.scalar_one_or_none()
+    if not instance_ip:
+        raise HTTPException(status_code=404, detail="IP not found")
+    await db.delete(instance_ip)
     await db.commit()
     await bus.broadcast("data_changed", {"entity": "instance"})
