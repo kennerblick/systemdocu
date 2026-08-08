@@ -1,7 +1,8 @@
 /*
  * cluster.js — cluster sidebar open/close, own-instance rendering, member management,
  *              cluster-level instance relations, and cluster sidebar edit.
- * Exports: openClusterSidebar, closeClusterSidebar, renderClusterList, initCluster.
+ * Exports: openClusterSidebar, renderClusterList, initCluster.
+ * (Closing the cluster sidebar is just closeSidebar from sidebar.js — import that directly.)
  */
 'use strict';
 
@@ -12,7 +13,7 @@ import {
   SVC_COLORS,
 } from './state.js';
 
-import { api, loadAll } from './api.js';
+import { api, apiCall, loadAll } from './api.js';
 import { escHtml, buildInstServerMap } from './utils.js';
 import { startEditInstRel } from './sidebar.js';
 
@@ -83,12 +84,6 @@ export function openClusterSidebar(clusterId) {
   renderClusterInstRelSection();
 }
 
-/**
- * Closes the cluster sidebar (delegates to the shared closeSidebar in sidebar.js).
- * This function is kept here for symmetry and direct import.
- */
-export { closeSidebar as closeClusterSidebar } from './sidebar.js';
-
 // ── Cluster sidebar edit ──────────────────────────────────────────────────────
 
 /** Toggles the inline cluster name/description/domain edit form. */
@@ -114,8 +109,7 @@ export async function saveClusterSidebarEdit() {
   const domain      = document.getElementById('cl-edit-domain').value.trim() || null;
   const description = document.getElementById('cl-edit-desc').value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('PATCH', '/clusters/' + currentClusterId, { name, domain, description }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PATCH', '/clusters/' + currentClusterId, { name, domain, description }));
   await loadAll();
 }
 
@@ -124,8 +118,7 @@ export async function saveClusterSidebarEdit() {
  */
 export async function deleteCurrentCluster() {
   if (!confirm('Cluster löschen?')) return;
-  try { await api('DELETE', '/clusters/' + currentClusterId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/clusters/' + currentClusterId));
   await loadAll();
   // closeSidebar imported below
   const { closeSidebar } = await import('./sidebar.js');
@@ -246,14 +239,12 @@ export function populateClusterSbInstSel() {
 export async function addClusterMemberFromSidebar() {
   const instanceId = parseInt(document.getElementById('cl-sb-inst-sel').value);
   if (!instanceId) return alert('Bitte Instanz auswählen');
-  try { await api('POST', '/clusters/' + currentClusterId + '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/clusters/' + currentClusterId + '/instances/' + instanceId));
   await loadAll();
 }
 
 async function removeMemberFromClusterSidebar(clusterId, instanceId) {
-  try { await api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId));
   await loadAll();
 }
 
@@ -265,8 +256,7 @@ export async function addClusterOwnInstance() {
   const fqdn = document.getElementById('cl-new-inst-fqdn').value.trim() || null;
   const ips  = document.getElementById('cl-new-inst-ip').value.split(',').map(s => s.trim()).filter(Boolean);
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/clusters/' + currentClusterId + '/own-instances', { name, fqdn, ips }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/clusters/' + currentClusterId + '/own-instances', { name, fqdn, ips }));
   document.getElementById('cl-new-inst-name').value = '';
   document.getElementById('cl-new-inst-fqdn').value = '';
   document.getElementById('cl-new-inst-ip').value = '';
@@ -274,34 +264,29 @@ export async function addClusterOwnInstance() {
 }
 
 async function deleteClusterOwnInstance(instanceId) {
-  try { await api('DELETE', '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId));
   await loadAll();
 }
 
 async function addClusterInstIp(instanceId, ip) {
   ip = (ip || '').trim();
   if (!ip) return;
-  try { await api('POST', '/instances/' + instanceId + '/ips', { ip }); }
-  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/ips', { ip }), 'Fehler beim Hinzufügen der IP');
   await loadAll();
 }
 
 async function deleteClusterInstIp(instanceId, ipId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/ips/' + ipId); }
-  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/ips/' + ipId), 'Fehler beim Löschen der IP');
   await loadAll();
 }
 
 async function addClusterInstEnv(instanceId, envId) {
-  try { await api('POST', '/instances/' + instanceId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/environments/' + envId));
   await loadAll();
 }
 
 async function removeClusterInstEnv(instanceId, envId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/environments/' + envId));
   await loadAll();
 }
 
@@ -433,16 +418,14 @@ async function saveClusterEdit(clusterId) {
   const description = document.getElementById('ce-desc-'   + clusterId).value.trim() || null;
   const domain      = document.getElementById('ce-domain-' + clusterId).value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('PATCH', '/clusters/' + clusterId, { name, description, domain }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PATCH', '/clusters/' + clusterId, { name, description, domain }));
   await loadAll();
   renderClusterList();
 }
 
 async function deleteCluster(clusterId) {
   if (!confirm('Cluster löschen?')) return;
-  try { await api('DELETE', '/clusters/' + clusterId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/clusters/' + clusterId));
   await loadAll();
   renderClusterList();
 }
@@ -452,8 +435,7 @@ async function deleteCluster(clusterId) {
  */
 export async function addClusterMember(clusterId, instanceId) {
   if (!instanceId) return alert('Bitte Instanz auswählen');
-  try { await api('POST', '/clusters/' + clusterId + '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/clusters/' + clusterId + '/instances/' + instanceId));
   await loadAll();
   renderClusterList();
   toggleClusterEdit(clusterId);
@@ -463,8 +445,7 @@ export async function addClusterMember(clusterId, instanceId) {
  * Removes an instance from a cluster (used by member chips in modal list).
  */
 export async function removeClusterMember(clusterId, instanceId) {
-  try { await api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/clusters/' + clusterId + '/instances/' + instanceId));
   await loadAll();
   renderClusterList();
 }
@@ -551,14 +532,12 @@ async function addClusterInstRel() {
   else if (tgtInstVal && tgtInstVal.startsWith('inst_')) payload.target_instance_id = parseInt(tgtInstVal.replace('inst_', ''));
   else return alert('Bitte Ziel auswählen');
   if (!payload.source_cluster_id && !payload.source_instance_id) return alert('Bitte Quelle auswählen');
-  try { await api('POST', '/instance-relations', payload); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instance-relations', payload));
   await loadAll();
 }
 
 async function deleteClusterInstRel(relId) {
-  try { await api('DELETE', '/instance-relations/' + relId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instance-relations/' + relId));
   await loadAll();
 }
 

@@ -1,6 +1,6 @@
 /*
  * api.js — fetch wrapper, bulk data loader, and SSE client.
- * Exports: api, loadAll, initSSE.
+ * Exports: api, apiCall, loadAll, initSSE.
  */
 'use strict';
 
@@ -31,6 +31,21 @@ export async function api(method, path, body) {
   if (!r.ok) throw new Error(await r.text());
   if (r.status === 204) return null;
   return r.json();
+}
+
+/**
+ * Runs an async action; on failure, shows an alert (optionally with a custom
+ * message prefix) and rethrows, so the caller's subsequent code (typically
+ * `await loadAll()`) is skipped — same behaviour as the try/catch/alert
+ * block this replaces, without repeating it at every call site.
+ */
+export async function apiCall(fn, prefix = 'Fehler') {
+  try {
+    return await fn();
+  } catch (e) {
+    alert(prefix + ': ' + e.message);
+    throw e;
+  }
 }
 
 /**

@@ -14,7 +14,7 @@ import {
   INST_ICONS, INST_SVC_TYPES,
 } from './state.js';
 
-import { api, loadAll } from './api.js';
+import { api, apiCall, loadAll } from './api.js';
 import { escHtml, buildInstServerMap, makeInstDropdownBtn, displayName } from './utils.js';
 
 // ── Sidebar open/close ────────────────────────────────────────────────────────
@@ -190,14 +190,12 @@ function renderServerIps(server) {
 async function addServerIp(ip) {
   ip = (ip || '').trim();
   if (!ip) return;
-  try { await api('POST', '/servers/' + currentServerId + '/ips', { ip }); }
-  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/ips', { ip }), 'Fehler beim Hinzufügen der IP');
   await loadAll();
 }
 
 async function deleteServerIp(ipId) {
-  try { await api('DELETE', '/servers/' + currentServerId + '/ips/' + ipId); }
-  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
+  await apiCall(() => api('DELETE', '/servers/' + currentServerId + '/ips/' + ipId), 'Fehler beim Löschen der IP');
   await loadAll();
 }
 
@@ -611,15 +609,13 @@ async function saveStorageEdit(storageId) {
   const disk_size_tb = parseInt(document.getElementById('st-edit-disksize').value) || null;
   const description = document.getElementById('st-edit-desc').value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('PUT', '/storages/' + storageId, { name, raid_type, disk_count, size_gb, disk_size_tb, description }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PUT', '/storages/' + storageId, { name, raid_type, disk_count, size_gb, disk_size_tb, description }));
   await loadAll();
 }
 
 async function deleteStorage(storageId) {
   if (!confirm('Storage wirklich löschen? Instanzen verlieren die Zuordnung.')) return;
-  try { await api('DELETE', '/storages/' + storageId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/storages/' + storageId));
   await loadAll();
 }
 
@@ -638,8 +634,7 @@ export async function saveNewStorage() {
   const disk_size_tb = parseInt(document.getElementById('storage-disksize-input').value) || null;
   const description = document.getElementById('storage-desc-input').value.trim() || null;
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/servers/' + currentServerId + '/storages', { name, raid_type, disk_count, size_gb, disk_size_tb, description }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/storages', { name, raid_type, disk_count, size_gb, disk_size_tb, description }));
   document.getElementById('add-storage-form').style.display = 'none';
   document.getElementById('storage-name-input').value = '';
   document.getElementById('storage-raid-input').value = '';
@@ -651,8 +646,7 @@ export async function saveNewStorage() {
 }
 
 async function setInstanceStorage(instanceId, storageId) {
-  try { await api('PUT', '/instances/' + instanceId + '/storage', { storage_id: storageId || null }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PUT', '/instances/' + instanceId + '/storage', { storage_id: storageId || null }));
   await loadAll();
 }
 
@@ -762,8 +756,7 @@ export function startEditInstRel(btn, relId, currentType, currentDir) {
 async function saveEditInstRel(relId) {
   const type      = document.getElementById('ire-type-' + relId).value;
   const direction = document.getElementById('ire-dir-'  + relId).value;
-  try { await api('PATCH', '/instance-relations/' + relId, { type, direction }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PATCH', '/instance-relations/' + relId, { type, direction }));
   await loadAll();
 }
 
@@ -781,14 +774,12 @@ async function addInstRel() {
   else if (tgtInstVal && tgtInstVal.startsWith('inst_')) payload.target_instance_id = parseInt(tgtInstVal.replace('inst_', ''));
   else return alert('Bitte Ziel auswählen');
   if (!payload.source_cluster_id && !payload.source_instance_id) return alert('Bitte Quelle auswählen');
-  try { await api('POST', '/instance-relations', payload); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instance-relations', payload));
   await loadAll();
 }
 
 async function deleteInstRel(relId) {
-  try { await api('DELETE', '/instance-relations/' + relId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instance-relations/' + relId));
   await loadAll();
 }
 
@@ -837,9 +828,9 @@ export function toggleServerEdit() {
  * Saves the server edit form and reloads.
  */
 export async function saveServerEdit() {
-  try {
+  await apiCall(() => {
     const gwVal = document.getElementById('edit-gateway-device').value;
-    await api('PUT', '/servers/' + currentServerId, {
+    return api('PUT', '/servers/' + currentServerId, {
       hostname:          document.getElementById('edit-hostname').value.trim() || undefined,
       common_name:       document.getElementById('edit-common-name').value.trim() || null,
       os_type:           document.getElementById('edit-os').value,
@@ -848,7 +839,7 @@ export async function saveServerEdit() {
       gateway_router_id: gwVal.startsWith('router_') ? parseInt(gwVal.replace('router_', '')) : null,
       gateway_server_id: gwVal.startsWith('server_') ? parseInt(gwVal.replace('server_', '')) : null,
     });
-  } catch (e) { return alert('Fehler: ' + e.message); }
+  });
   document.getElementById('sb-edit-form').style.display = 'none';
   await loadAll();
 }
@@ -858,8 +849,7 @@ export async function saveServerEdit() {
  */
 export async function deleteCurrentServer() {
   if (!confirm('Server wirklich löschen?')) return;
-  try { await api('DELETE', '/servers/' + currentServerId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/servers/' + currentServerId));
   closeSidebar();
   await loadAll();
 }
@@ -877,26 +867,24 @@ export async function addService() {
   const type    = document.getElementById('svc-type').value;
   const version = document.getElementById('svc-version').value || null;
   const port    = parseInt(document.getElementById('svc-port').value) || null;
-  try { await api('POST', '/servers/' + currentServerId + '/services', { type, version, port }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/services', { type, version, port }));
   await loadAll();
   document.getElementById('add-service-form').style.display = 'none';
 }
 
 async function deleteService(serviceId) {
   if (!confirm('Service und alle Instanzen löschen?')) return;
-  try { await api('DELETE', '/services/' + serviceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/services/' + serviceId));
   await loadAll();
 }
 
 async function mergeService(sourceId, targetId, instances) {
   const n = instances.length;
   if (!confirm('Alle ' + n + ' Instanz(en) aus diesem Service in den anderen verschieben und diesen Service danach löschen?\n\nKeine Daten gehen verloren.')) return;
-  try {
+  await apiCall(async () => {
     for (const inst of instances) await api('PATCH', '/instances/' + inst.id, { service_id: targetId });
     await api('DELETE', '/services/' + sourceId);
-  } catch (e) { return alert('Fehler beim Zusammenführen: ' + e.message); }
+  }, 'Fehler beim Zusammenführen');
   await loadAll();
 }
 
@@ -905,81 +893,70 @@ async function mergeService(sourceId, targetId, instances) {
 async function addInstance(serviceId, name, description, svcType, server) {
   name = name.trim();
   if (!name) return alert('Instanzname fehlt');
-  try {
+  await apiCall(async () => {
     const inst = await api('POST', '/services/' + serviceId + '/instances', { name, description: description || null });
     if (inst && svcType && HOST_ENV_SVC_TYPES.has(svcType) && server) {
       for (const env of (server.environments || [])) {
         try { await api('POST', '/instances/' + inst.id + '/environments/' + env.id); } catch (e) {}
       }
     }
-  } catch (e) { return alert('Fehler: ' + e.message); }
+  });
   await loadAll();
 }
 
 async function deleteInstance(instanceId) {
-  try { await api('DELETE', '/instances/' + instanceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId));
   await loadAll();
 }
 
 async function addInstanceEnv(instanceId, envId) {
-  try { await api('POST', '/instances/' + instanceId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/environments/' + envId));
   await loadAll();
 }
 
 async function removeInstanceEnv(instanceId, envId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/environments/' + envId));
   await loadAll();
 }
 
 async function addInstanceApp(instanceId, appId) {
-  try { await api('POST', '/instances/' + instanceId + '/applications/' + appId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/applications/' + appId));
   await loadAll();
 }
 
 async function removeInstanceApp(instanceId, appId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/applications/' + appId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/applications/' + appId));
   await loadAll();
 }
 
 async function addInstanceIp(instanceId, ip) {
   ip = (ip || '').trim();
   if (!ip) return;
-  try { await api('POST', '/instances/' + instanceId + '/ips', { ip }); }
-  catch (e) { return alert('Fehler beim Hinzufügen der IP: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/ips', { ip }), 'Fehler beim Hinzufügen der IP');
   await loadAll();
 }
 
 async function deleteInstanceIp(instanceId, ipId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/ips/' + ipId); }
-  catch (e) { return alert('Fehler beim Löschen der IP: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/ips/' + ipId), 'Fehler beim Löschen der IP');
   await loadAll();
 }
 
 async function addInstanceService(instanceId, type, version, port) {
-  try { await api('POST', '/instances/' + instanceId + '/services', { type, version: version || null, port: parseInt(port) || null }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/instances/' + instanceId + '/services', { type, version: version || null, port: parseInt(port) || null }));
   await loadAll();
 }
 
 async function deleteInstanceService(instanceId, serviceId) {
-  try { await api('DELETE', '/instances/' + instanceId + '/services/' + serviceId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/instances/' + instanceId + '/services/' + serviceId));
   await loadAll();
 }
 
 async function updateInstanceGateway(instanceId, gateway_router_id, gateway_server_id, gateway_instance_id) {
-  try {
-    await api('PATCH', '/instances/' + instanceId, {
-      gateway_router_id:   gateway_router_id   || null,
-      gateway_server_id:   gateway_server_id   || null,
-      gateway_instance_id: gateway_instance_id || null,
-    });
-  } catch (e) { return alert('Fehler beim Speichern des Gateways: ' + e.message); }
+  await apiCall(() => api('PATCH', '/instances/' + instanceId, {
+    gateway_router_id:   gateway_router_id   || null,
+    gateway_server_id:   gateway_server_id   || null,
+    gateway_instance_id: gateway_instance_id || null,
+  }), 'Fehler beim Speichern des Gateways');
   await loadAll();
 }
 
@@ -1019,14 +996,12 @@ export function toggleEnvDropdown(e) {
  */
 export async function assignServerEnv(envId) {
   if (!envId) return;
-  try { await api('POST', '/servers/' + currentServerId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/environments/' + envId));
   await loadAll();
 }
 
 async function removeServerEnv(envId) {
-  try { await api('DELETE', '/servers/' + currentServerId + '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/servers/' + currentServerId + '/environments/' + envId));
   await loadAll();
 }
 
@@ -1035,14 +1010,12 @@ async function removeServerEnv(envId) {
  */
 async function assignServerApp(appId) {
   if (!appId) return;
-  try { await api('POST', '/servers/' + currentServerId + '/applications/' + appId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/applications/' + appId));
   await loadAll();
 }
 
 async function removeServerApp(appId) {
-  try { await api('DELETE', '/servers/' + currentServerId + '/applications/' + appId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/servers/' + currentServerId + '/applications/' + appId));
   await loadAll();
 }
 
@@ -1053,8 +1026,7 @@ export async function addRelation() {
   const target_id = parseInt(document.getElementById('rel-target').value);
   const type = document.getElementById('rel-type').value;
   if (!target_id) return;
-  try { await api('POST', '/relations', { source_id: currentServerId, target_id, type }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/relations', { source_id: currentServerId, target_id, type }));
   await loadAll();
 }
 

@@ -6,7 +6,7 @@
 
 import {
   allServers, allClusters, allRouters,
-  SVC_COLORS,
+  SVC_COLORS, AUTO_COLORS,
 } from './state.js';
 
 /**
@@ -137,11 +137,6 @@ export async function checkZabbixStatus() {
  * Returns the next unused auto-colour from the palette, cycling when exhausted.
  */
 export function nextColor(usedColors) {
-  const AUTO_COLORS = [
-    '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
-    '#06b6d4','#84cc16','#f97316','#ec4899','#6366f1',
-    '#14b8a6','#eab308','#a855f7','#0ea5e9','#22c55e',
-  ];
   for (const c of AUTO_COLORS) {
     if (!usedColors.includes(c)) return c;
   }

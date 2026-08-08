@@ -12,7 +12,7 @@ import {
   zbxScanData, setZbxScanData,
 } from './state.js';
 
-import { api, loadAll } from './api.js';
+import { api, apiCall, loadAll } from './api.js';
 import { escHtml, nextColor } from './utils.js';
 import { renderClusterList } from './cluster.js';
 
@@ -41,16 +41,14 @@ export async function createServer() {
   const hostname = document.getElementById('new-hostname').value.trim();
   if (!hostname) return alert('Hostname fehlt');
   const ips = document.getElementById('new-ip').value.split(',').map(s => s.trim()).filter(Boolean);
-  try {
-    await api('POST', '/servers', {
-      hostname,
-      common_name: document.getElementById('new-common-name').value.trim() || null,
-      ips,
-      os_type:     document.getElementById('new-os').value,
-      description: document.getElementById('new-desc').value || null,
-      is_gateway:  document.getElementById('new-is-gateway').checked,
-    });
-  } catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/servers', {
+    hostname,
+    common_name: document.getElementById('new-common-name').value.trim() || null,
+    ips,
+    os_type:     document.getElementById('new-os').value,
+    description: document.getElementById('new-desc').value || null,
+    is_gateway:  document.getElementById('new-is-gateway').checked,
+  }));
   closeModal('modal-add-server');
   ['new-hostname', 'new-common-name', 'new-ip', 'new-desc'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('new-is-gateway').checked = false;
@@ -147,8 +145,7 @@ function pickEnvColor(envId, dotEl) {
   document.body.appendChild(inp);
   inp.click();
   inp.addEventListener('change', async () => {
-    try { await api('PUT', '/environments/' + envId, { color: inp.value }); }
-    catch (e) { return alert('Fehler: ' + e.message); }
+    await apiCall(() => api('PUT', '/environments/' + envId, { color: inp.value }));
     await loadAll(); renderEnvList();
     document.body.removeChild(inp);
   });
@@ -164,8 +161,7 @@ async function saveEnvEdit(envId) {
   const default_gateway_router_id = gwVal.startsWith('router_') ? parseInt(gwVal.replace('router_', '')) : null;
   const default_gateway_server_id = gwVal.startsWith('server_') ? parseInt(gwVal.replace('server_', '')) : null;
   if (!name) return alert('Name fehlt');
-  try { await api('PUT', '/environments/' + envId, { name, subnet, color, default_gateway_router_id, default_gateway_server_id }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PUT', '/environments/' + envId, { name, subnet, color, default_gateway_router_id, default_gateway_server_id }));
   await loadAll(); renderEnvList();
 }
 
@@ -178,16 +174,14 @@ export async function createEnvironment() {
   const subnet      = document.getElementById('new-env-subnet').value.trim() || null;
   if (!name) return;
   const color = nextColor(allEnvironments.map(e => e.color));
-  try { await api('POST', '/environments', { name, description, color, subnet }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/environments', { name, description, color, subnet }));
   ['new-env-name', 'new-env-desc', 'new-env-subnet'].forEach(id => document.getElementById(id).value = '');
   await loadAll();
   renderEnvList();
 }
 
 async function deleteEnvironment(envId) {
-  try { await api('DELETE', '/environments/' + envId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/environments/' + envId));
   await loadAll();
   renderEnvList();
 }
@@ -227,8 +221,7 @@ export async function createApplication() {
   const description = document.getElementById('new-app-desc').value || null;
   if (!name) return;
   const color = nextColor(allApplications.map(a => a.color));
-  try { await api('POST', '/applications', { name, description, color }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/applications', { name, description, color }));
   document.getElementById('new-app-name').value = '';
   document.getElementById('new-app-desc').value = '';
   await loadAll();
@@ -236,8 +229,7 @@ export async function createApplication() {
 }
 
 async function deleteApplication(appId) {
-  try { await api('DELETE', '/applications/' + appId); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/applications/' + appId));
   await loadAll();
   renderAppList();
 }
@@ -261,8 +253,7 @@ export async function createCluster() {
   const domain       = document.getElementById('new-cluster-domain').value.trim() || null;
   const service_type = document.getElementById('new-cluster-type').value;
   if (!name) return alert('Name fehlt');
-  try { await api('POST', '/clusters', { name, description, service_type, domain }); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/clusters', { name, description, service_type, domain }));
   document.getElementById('new-cluster-name').value = '';
   document.getElementById('new-cluster-desc').value = '';
   document.getElementById('new-cluster-domain').value = '';
@@ -427,8 +418,7 @@ async function saveRouterEdit(routerId) {
     server_id:          parseInt(document.getElementById('re-server-'   + routerId).value) || null,
     environment_ids:    _collectEnvIds('re-envs-' + routerId),
   };
-  try { await api('PUT', '/internet-routers/' + routerId, payload); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('PUT', '/internet-routers/' + routerId, payload));
   await loadAll();
   renderInternetList();
 }
@@ -448,8 +438,7 @@ export async function createInternetRouter() {
     server_id:          parseInt(document.getElementById('new-router-server').value) || null,
     environment_ids:    _collectEnvIds('new-router-envs'),
   };
-  try { await api('POST', '/internet-routers', payload); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('POST', '/internet-routers', payload));
   ['new-router-name', 'new-router-provider', 'new-router-ext-ip', 'new-router-int-ip']
     .forEach(id => document.getElementById(id).value = '');
   await loadAll();
@@ -457,8 +446,7 @@ export async function createInternetRouter() {
 }
 
 async function deleteInternetRouter(id) {
-  try { await api('DELETE', '/internet-routers/' + id); }
-  catch (e) { return alert('Fehler: ' + e.message); }
+  await apiCall(() => api('DELETE', '/internet-routers/' + id));
   await loadAll();
   renderInternetList();
 }
