@@ -18,8 +18,31 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE servers ALTER COLUMN ip TYPE TEXT")
-    op.execute("ALTER TABLE service_instances ALTER COLUMN ip TYPE TEXT")
+    # Guarded: on a brand-new database, migration 0001 creates the schema from
+    # the *current* models.py (via Base.metadata.create_all), which by now
+    # already has no servers.ip / service_instances.ip column — 0011 replaced
+    # it with server_ips/instance_ips. Without this guard, a fresh install
+    # fails here since the column this migration widens never existed.
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='servers' AND column_name='ip'
+          ) THEN
+            ALTER TABLE servers ALTER COLUMN ip TYPE TEXT;
+          END IF;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='service_instances' AND column_name='ip'
+          ) THEN
+            ALTER TABLE service_instances ALTER COLUMN ip TYPE TEXT;
+          END IF;
+        END $$
+    """)
 
 
 def downgrade() -> None:

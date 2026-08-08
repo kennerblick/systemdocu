@@ -36,19 +36,36 @@ def upgrade() -> None:
         )
     """)
 
+    # Guarded like the 0010 fix: on a brand-new database (schema created from
+    # the current, already-refactored models.py) servers.ip / service_instances.ip
+    # never existed, so there is nothing to backfill from.
     op.execute("""
-        INSERT INTO server_ips (server_id, ip)
-        SELECT s.id, trim(ip_val)
-        FROM servers s, LATERAL unnest(string_to_array(s.ip, ',')) AS ip_val
-        WHERE s.ip IS NOT NULL AND trim(ip_val) <> ''
-        ON CONFLICT (server_id, ip) DO NOTHING
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='servers' AND column_name='ip'
+          ) THEN
+            INSERT INTO server_ips (server_id, ip)
+            SELECT s.id, trim(ip_val)
+            FROM servers s, LATERAL unnest(string_to_array(s.ip, ',')) AS ip_val
+            WHERE s.ip IS NOT NULL AND trim(ip_val) <> ''
+            ON CONFLICT (server_id, ip) DO NOTHING;
+          END IF;
+        END $$
     """)
     op.execute("""
-        INSERT INTO instance_ips (instance_id, ip)
-        SELECT i.id, trim(ip_val)
-        FROM service_instances i, LATERAL unnest(string_to_array(i.ip, ',')) AS ip_val
-        WHERE i.ip IS NOT NULL AND trim(ip_val) <> ''
-        ON CONFLICT (instance_id, ip) DO NOTHING
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='service_instances' AND column_name='ip'
+          ) THEN
+            INSERT INTO instance_ips (instance_id, ip)
+            SELECT i.id, trim(ip_val)
+            FROM service_instances i, LATERAL unnest(string_to_array(i.ip, ',')) AS ip_val
+            WHERE i.ip IS NOT NULL AND trim(ip_val) <> ''
+            ON CONFLICT (instance_id, ip) DO NOTHING;
+          END IF;
+        END $$
     """)
 
     op.execute("ALTER TABLE servers DROP COLUMN IF EXISTS ip")

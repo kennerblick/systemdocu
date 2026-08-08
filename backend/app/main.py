@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from .database import engine, Base, get_db
-from .models import Server, Service, Relation
+from .models import Server, Service, Relation, ServerIP
 from .schemas import RelationCreate, RelationOut
 from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet, clusters, storages
 from .events import bus
@@ -78,14 +78,20 @@ async def seed_data():
         if result.scalars().first():
             return
 
-        srv1 = Server(hostname="lin-app01", ip="10.0.1.10", os_type="linux",
+        srv1 = Server(hostname="lin-app01", os_type="linux",
                       description="Main application server")
-        srv2 = Server(hostname="win-dc01", ip="10.0.1.20", os_type="windows",
+        srv2 = Server(hostname="win-dc01", os_type="windows",
                       description="Active Directory domain controller")
-        srv3 = Server(hostname="prx-host01", ip="10.0.1.30", os_type="proxmox",
+        srv3 = Server(hostname="prx-host01", os_type="proxmox",
                       description="Proxmox hypervisor node")
         db.add_all([srv1, srv2, srv3])
         await db.flush()
+
+        db.add_all([
+            ServerIP(server_id=srv1.id, ip="10.0.1.10"),
+            ServerIP(server_id=srv2.id, ip="10.0.1.20"),
+            ServerIP(server_id=srv3.id, ip="10.0.1.30"),
+        ])
 
         db.add_all([
             Service(server_id=srv1.id, type="postgresql", version="16", port=5432),
