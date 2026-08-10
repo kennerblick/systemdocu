@@ -81,6 +81,39 @@ function drawAppBadge(ctx, x, y, r, apps) {
   ctx.restore();
 }
 
+// Gentle "flow toward the gateway" animation on the switch→gateway and
+// direct override gateway edges — a slow-shifting dash overlay drawn on top
+// of the real (static) edge, since vis-network itself has no animated-dash
+// option. One shared ticker for the whole page, started lazily on first
+// renderGraph() call.
+let _flowPhase = 0;
+let _flowAnimStarted = false;
+
+function _ensureFlowAnimation() {
+  if (_flowAnimStarted) return;
+  _flowAnimStarted = true;
+  setInterval(() => {
+    _flowPhase += 1;
+    if (network) network.redraw();
+  }, 60);
+}
+
+/** Draws a slow-flowing dashed overlay from (x1,y1) to (x2,y2), moving
+ * toward the end point (i.e. toward the arrowhead) as `phase` advances. */
+function drawFlowOverlay(ctx, x1, y1, x2, y2, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.8;
+  ctx.setLineDash([5, 9]);
+  ctx.lineDashOffset = -_flowPhase * 0.4;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
  * Builds a vis-network node object for the given server.
  */
@@ -155,7 +188,7 @@ function buildInstanceNodesEdges() {
         (inst.environments || []).forEach(env => {
           switchInstEdges.push({
             id: 'switch_mem_inst_' + inst.id + '_' + env.id, from: 'switch_' + env.id, to: 'inst_' + inst.id,
-            arrows: '', dashes: [2, 4], width: 1, length: 110,
+            arrows: '', dashes: [2, 4], width: 2, length: 110,
             color: { color: env.color, opacity: 0.3 },
           });
         });
@@ -172,7 +205,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#f97316', opacity: 0.65 },
             title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
@@ -181,7 +214,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: inst.gateway_server_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + escHtml((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
@@ -189,7 +222,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + escHtml(gwI ? gwI.name : String(inst.gateway_instance_id)),
           });
@@ -414,7 +447,7 @@ function buildEnvironmentSwitches() {
     memberServers.forEach(s => {
       swEdges.push({
         id: 'switch_mem_srv_' + s.id + '_' + env.id, from: nodeId, to: s.id,
-        arrows: '', dashes: [2, 4], width: 1, length: 110,
+        arrows: '', dashes: [2, 4], width: 2, length: 110,
         color: { color: env.color, opacity: 0.3 },
       });
     });
@@ -423,7 +456,7 @@ function buildEnvironmentSwitches() {
       const r = allRouters.find(rt => rt.id === env.default_gateway_router_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: 'router_' + env.default_gateway_router_id,
-        arrows: 'to', width: 1.5, dashes: [4, 2], physics: false,
+        arrows: 'to', width: 0.75, dashes: [4, 2], physics: false,
         color: { color: env.color, opacity: 0.75 },
         title: 'Gateway: ' + escHtml(r ? r.name : String(env.default_gateway_router_id)),
       });
@@ -431,7 +464,7 @@ function buildEnvironmentSwitches() {
       const gs = allServers.find(sv => sv.id === env.default_gateway_server_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: env.default_gateway_server_id,
-        arrows: 'to', width: 1.5, dashes: [4, 2], physics: false,
+        arrows: 'to', width: 0.75, dashes: [4, 2], physics: false,
         color: { color: env.color, opacity: 0.75 },
         title: 'Gateway: ' + escHtml(gs ? gs.hostname : String(env.default_gateway_server_id)),
       });
@@ -744,7 +777,7 @@ export function renderGraph(skipFit = false) {
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
         id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
-        arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
+        arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#f97316', opacity: 0.65 },
         title: 'Gateway: ' + escHtml(gwR ? gwR.name : String(s.gateway_router_id)),
         hidden: !showInternet,
@@ -755,7 +788,7 @@ export function renderGraph(skipFit = false) {
       const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
       edgeData.push({
         id: eid, from: s.gateway_server_id, to: s.id,
-        arrows: 'to', width: 1, dashes: [4, 4], physics: false, smooth: { enabled: false },
+        arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
         color: { color: '#22d3ee', opacity: 0.65 },
         title: 'Gateway: ' + escHtml(gwS ? gwS.hostname : String(s.gateway_server_id)),
       });
@@ -810,6 +843,7 @@ export function renderGraph(skipFit = false) {
   const curEdges = edges;
   const net = new Network(document.getElementById('graph'), { nodes: curNodes, edges: curEdges }, netOpts);
   setNetwork(net);
+  _ensureFlowAnimation();
 
   if (layoutMode === 'hierarchical') {
     setShowingInstances(true);
@@ -923,6 +957,19 @@ export function renderGraph(skipFit = false) {
       ctx.setLineDash([6, 4]);
       ctx.stroke();
       ctx.restore();
+    });
+  });
+
+  net.on('afterDrawing', ctx => {
+    edges.forEach(e => {
+      const id = e.id;
+      if (typeof id !== 'string') return;
+      if (!(id.startsWith('switch_gw_') || id.startsWith('gw_srv_') || id.startsWith('gw_inst_'))) return;
+      if (e.hidden) return;
+      let p1, p2;
+      try { p1 = net.getPosition(e.from); p2 = net.getPosition(e.to); } catch (err) { return; }
+      const col = (e.color && e.color.color) || '#f97316';
+      drawFlowOverlay(ctx, p1.x, p1.y, p2.x, p2.y, col);
     });
   });
 
