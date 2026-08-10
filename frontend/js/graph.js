@@ -160,6 +160,7 @@ function buildInstanceNodesEdges() {
           id: 'inst_' + inst.id,
           label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
           title: escHtml(inst.name) +
+                 '<br>🖥 ' + escHtml(s.hostname) +
                  (inst.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
                  (inst.ips && inst.ips.length ? '<br>' + inst.ips.map(x => escHtml(x.ip)).join('<br>') : '') +
                  (inst.environments && inst.environments.length
@@ -190,6 +191,7 @@ function buildInstanceNodesEdges() {
             id: 'switch_mem_inst_' + inst.id + '_' + env.id, from: 'switch_' + env.id, to: 'inst_' + inst.id,
             arrows: '', dashes: [2, 4], width: 2, length: 110,
             color: { color: env.color, opacity: 0.3 },
+            title: 'Quelle: 🔌 ' + escHtml(env.name) + '<br>Ziel: ' + escHtml(s.hostname) + ' / ' + escHtml(inst.name),
           });
         });
         // Same redundancy check as the server-level gw_srv_ edges: skip when
@@ -449,6 +451,7 @@ function buildEnvironmentSwitches() {
         id: 'switch_mem_srv_' + s.id + '_' + env.id, from: nodeId, to: s.id,
         arrows: '', dashes: [2, 4], width: 2, length: 110,
         color: { color: env.color, opacity: 0.3 },
+        title: 'Quelle: 🔌 ' + escHtml(env.name) + '<br>Ziel: ' + escHtml(s.hostname),
       });
     });
 
@@ -964,10 +967,16 @@ export function renderGraph(skipFit = false) {
     edges.forEach(e => {
       const id = e.id;
       if (typeof id !== 'string') return;
-      if (!(id.startsWith('switch_gw_') || id.startsWith('gw_srv_') || id.startsWith('gw_inst_'))) return;
+      // switch_gw_ points switch → gateway (gateway = e.to), but gw_srv_/
+      // gw_inst_ point gateway → dependent (gateway = e.from) — the flow
+      // must always drift toward whichever endpoint is the actual gateway.
+      let sourceId, gatewayId;
+      if (id.startsWith('switch_gw_')) { sourceId = e.from; gatewayId = e.to; }
+      else if (id.startsWith('gw_srv_') || id.startsWith('gw_inst_')) { sourceId = e.to; gatewayId = e.from; }
+      else return;
       if (e.hidden) return;
       let p1, p2;
-      try { p1 = net.getPosition(e.from); p2 = net.getPosition(e.to); } catch (err) { return; }
+      try { p1 = net.getPosition(sourceId); p2 = net.getPosition(gatewayId); } catch (err) { return; }
       const col = (e.color && e.color.color) || '#f97316';
       drawFlowOverlay(ctx, p1.x, p1.y, p2.x, p2.y, col);
     });
