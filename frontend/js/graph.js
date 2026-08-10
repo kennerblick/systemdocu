@@ -502,16 +502,37 @@ export function computeHierarchicalPositions(opts = {}) {
 
   const sortByName = arr => [...arr].sort((a, b) => displayName(a).localeCompare(displayName(b)));
   const envName    = id => (allEnvironments.find(e => e.id === id) || {}).name || '';
-  const isVmHost   = s => (s.services || []).some(svc =>
-    VM_SVC_TYPES.has(svc.type) &&
-    (svc.instances || []).some(inst => !_instF || _instF.has(inst.id)));
 
-  function maxVmCols(servers) {
-    return servers.filter(isVmHost).reduce((m, host) => {
-      const n = (host.services || []).filter(svc => VM_SVC_TYPES.has(svc.type))
-        .reduce((s, svc) => s + (svc.instances || []).filter(i => !_instF || _instF.has(i.id)).length, 0);
-      return Math.max(m, n ? Math.ceil(Math.sqrt(n)) : 1);
-    }, 1);
+  // Every server becomes a "unit": the server node plus a small grid of its
+  // *own* instances (VM or not) directly below it — instances stay next to
+  // their actual parent server instead of being pooled into a shared block
+  // far away, which made it unclear which instance belonged to which server.
+  function serverUnit(s) {
+    const instIds = [];
+    (s.services || []).forEach(svc => {
+      [...(svc.instances || [])].filter(inst => !_instF || _instF.has(inst.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach(inst => instIds.push('inst_' + inst.id));
+    });
+    const cols = instIds.length ? Math.ceil(Math.sqrt(instIds.length)) : 0;
+    const rows = instIds.length ? Math.ceil(instIds.length / cols) : 0;
+    return {
+      server: s, instIds, cols,
+      widthUnits: Math.max(1, cols),
+      height: NODE_H + (instIds.length ? INST_GAP + rows * INST_H : 0),
+    };
+  }
+
+  // How many NODE_W-wide slots a column needs: a roughly-square grid of
+  // server units, each as wide as its own (widest) instance grid — a column
+  // with dozens of servers, or one server with dozens of instances, would
+  // otherwise become an unreadably tall single-file spike.
+  function colWidthUnits(servers) {
+    if (!servers.length) return 1;
+    const units = servers.map(serverUnit);
+    const gridCols = Math.ceil(Math.sqrt(units.length));
+    const maxUnitWidth = Math.max(1, ...units.map(u => u.widthUnits));
+    return gridCols * maxUnitWidth;
   }
 
   // ── Which environments have an actual member server in the current
@@ -578,15 +599,15 @@ export function computeHierarchicalPositions(opts = {}) {
     }
     g.envIds.forEach(envId => {
       const servers = envServerMap.get(envId) || [];
-      colDefs.push({ envId, servers, colW: maxVmCols(servers) * NODE_W, groupKey: g.router.id });
+      colDefs.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W, groupKey: g.router.id });
     });
   });
   looseEnvIds.forEach(envId => {
     const servers = envServerMap.get(envId) || [];
-    colDefs.push({ envId, servers, colW: maxVmCols(servers) * NODE_W, groupKey: 'loose' });
+    colDefs.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W, groupKey: 'loose' });
   });
   if (looseNoEnvServers.length)
-    colDefs.push({ envId: null, servers: looseNoEnvServers, colW: maxVmCols(looseNoEnvServers) * NODE_W, groupKey: 'none' });
+    colDefs.push({ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W, groupKey: 'none' });
 
   const gapAfter = i => (i >= colDefs.length - 1) ? 0
     : (colDefs[i + 1].groupKey === colDefs[i].groupKey ? COL_GAP : GROUP_GAP);
@@ -604,29 +625,31 @@ export function computeHierarchicalPositions(opts = {}) {
   envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -SWITCH_GAP }; });
 
   function placeColumn(servers, cx) {
-    let y = 0;
-    const plain   = sortByName(servers.filter(s => !isVmHost(s)));
-    const vmHosts = sortByName(servers.filter(isVmHost));
-    plain.forEach(s => { pos[s.id] = { x: cx, y }; y += NODE_H; });
-    if (plain.length && vmHosts.length) y += INST_GAP;
-    vmHosts.forEach(host => {
-      pos[host.id] = { x: cx, y }; y += NODE_H;
-      const vms = [];
-      (host.services || []).forEach(svc => {
-        if (VM_SVC_TYPES.has(svc.type))
-          [...(svc.instances || [])].filter(inst => !_instF || _instF.has(inst.id))
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .forEach(inst => vms.push('inst_' + inst.id));
-      });
-      if (vms.length) {
-        const vc = Math.ceil(Math.sqrt(vms.length));
-        vms.forEach((vmId, vi) => {
-          pos[vmId] = { x: cx + (vi % vc - (vc - 1) / 2) * NODE_W, y: y + Math.floor(vi / vc) * INST_H };
-        });
-        y += Math.ceil(vms.length / vc) * INST_H + INST_GAP;
-      }
+    const units = sortByName(servers).map(serverUnit);
+    if (!units.length) return 0;
+    const gridCols = Math.ceil(Math.sqrt(units.length));
+    const colWidthPx = Math.max(1, ...units.map(u => u.widthUnits)) * NODE_W;
+    const rowHeights = [];
+    units.forEach((u, i) => {
+      const row = Math.floor(i / gridCols);
+      rowHeights[row] = Math.max(rowHeights[row] || 0, u.height);
     });
-    return y;
+    let y = 0;
+    for (let row = 0; row * gridCols < units.length; row++) {
+      const rowUnits = units.slice(row * gridCols, row * gridCols + gridCols);
+      rowUnits.forEach((u, colIdx) => {
+        const ux = cx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
+        pos[u.server.id] = { x: ux, y };
+        u.instIds.forEach((instId, vi) => {
+          pos[instId] = {
+            x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
+            y: y + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
+          };
+        });
+      });
+      y += rowHeights[row] + INST_GAP;
+    }
+    return y - INST_GAP;
   }
 
   let maxColH = 0;
@@ -643,32 +666,26 @@ export function computeHierarchicalPositions(opts = {}) {
   };
   const clusterIds = _clusters.map(c => 'cluster_' + c.id);
   if (clusterIds.length) { y += placeGrid(clusterIds, y, NODE_H) + BELOW_GAP; }
-  const instByColCx = new Map();
-  const noColInsts = [];
-  sortByName(_colSrvs).forEach(s => (s.services || []).forEach(svc => {
-    if (VM_SVC_TYPES.has(svc.type)) return;
-    [...(svc.instances || [])].filter(inst => !_instF || _instF.has(inst.id))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach(inst => {
-        const cx = [...(inst.environments || []), ...(s.environments || [])]
-          .map(e => envColCx.get(e.id))
-          .find(x => x !== undefined);
-        if (cx !== undefined) {
-          if (!instByColCx.has(cx)) instByColCx.set(cx, []);
-          instByColCx.get(cx).push('inst_' + inst.id);
-        } else {
-          noColInsts.push('inst_' + inst.id);
-        }
-      });
-  }));
-  instByColCx.forEach((insts, cx) => {
-    const n = insts.length;
-    const cols = Math.ceil(Math.sqrt(n));
-    insts.forEach((id, i) => {
-      pos[id] = { x: cx + (i % cols - (cols - 1) / 2) * NODE_W, y: y + Math.floor(i / cols) * INST_H };
-    });
-  });
-  if (noColInsts.length) placeGrid(noColInsts, y, INST_H);
+
+  // ── Switches for environments with no server-member column (only
+  // instance members, or only a configured gateway and no members at all
+  // in the current view) still need a position — without this they'd stay
+  // wherever vis last put them (usually near the origin), disconnected
+  // from their actual members/gateway. Group them in their own small row.
+  const positionedEnvIds = new Set(envColCx.keys());
+  const fallbackSwitchEnvs = allEnvironments
+    .filter(env => !positionedEnvIds.has(env.id))
+    .filter(env => {
+      const hasInstMember = _servers.some(s => (s.services || []).some(svc =>
+        (svc.instances || []).some(inst => (!_instF || _instF.has(inst.id)) &&
+          (inst.environments || []).some(e => e.id === env.id))));
+      return hasInstMember || env.default_gateway_router_id || env.default_gateway_server_id;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (fallbackSwitchEnvs.length) {
+    y += BELOW_GAP;
+    y += placeGrid(fallbackSwitchEnvs.map(env => 'switch_' + env.id), y, NODE_H * 0.6);
+  }
 
   // ── Routers: centered over their own group's column span (not an
   // average across possibly-distant environments), so a router always sits
@@ -1093,8 +1110,13 @@ export function renderGraph(skipFit = false) {
 
 /** Computes a node's diff signature for cheap change detection in patchGraph. */
 function _nodeSignature(n) {
+  // Includes x/y so a hierarchical-mode re-layout (nodeData carries fixed
+  // x/y there) still updates a node whose other visuals didn't change —
+  // otherwise patchGraph() would leave it at its old position after e.g. an
+  // SSE-triggered reload that only changed unrelated nodes' layout.
   return n.label + '|' + n.shape + '|' + (n.borderWidth || 1) + '|' +
-         JSON.stringify(n.color) + '|' + (n.title || '');
+         JSON.stringify(n.color) + '|' + (n.title || '') + '|' +
+         (n.x !== undefined ? n.x.toFixed(1) : '') + '|' + (n.y !== undefined ? n.y.toFixed(1) : '');
 }
 
 /** Computes an edge's diff signature for cheap change detection in patchGraph. */
