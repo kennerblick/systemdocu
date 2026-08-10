@@ -110,6 +110,12 @@ class ApplicationCreate(ApplicationBase):
     pass
 
 
+class ApplicationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+
 class ApplicationOut(ApplicationBase):
     id: int
 

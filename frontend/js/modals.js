@@ -200,17 +200,81 @@ function renderAppList() {
   const list = document.getElementById('app-list');
   list.innerHTML = '';
   [...allApplications].sort((a, b) => a.name.localeCompare(b.name)).forEach(a => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border-bottom:1px solid #0f3460;padding:6px 0';
+
     const row = document.createElement('div');
     row.className = 'list-item';
-    row.innerHTML = '<div class="dot" style="background:' + a.color + '"></div>' +
-      '<span style="flex:1">' + escHtml(a.name) + '</span>' +
+    row.style.borderBottom = 'none';
+
+    const dotEl = document.createElement('div');
+    dotEl.className = 'dot';
+    dotEl.style.cssText = 'background:' + a.color + ';cursor:pointer';
+    dotEl.title = 'Farbe ändern';
+    dotEl.addEventListener('click', () => pickAppColor(a.id, dotEl));
+    row.appendChild(dotEl);
+
+    row.innerHTML += '<span style="flex:1">' + escHtml(a.name) + '</span>' +
       (a.description ? '<span style="font-size:0.75rem;color:#6b7280">' + escHtml(a.description) + '</span>' : '');
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'xs'; editBtn.style.marginLeft = '6px';
+    editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+    editBtn.addEventListener('click', () => toggleAppEdit(a.id));
     const delBtn = document.createElement('button');
     delBtn.className = 'xs danger'; delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     delBtn.addEventListener('click', () => deleteApplication(a.id));
-    row.appendChild(delBtn);
-    list.appendChild(row);
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    wrap.appendChild(row);
+
+    const form = document.createElement('div');
+    form.id = 'app-edit-' + a.id;
+    form.style.cssText = 'display:none;flex-direction:column;gap:5px;padding:6px 0 2px 18px';
+    form.innerHTML =
+      '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
+        '<input type="text" id="ae-name-' + a.id + '" value="' + escHtml(a.name) + '" placeholder="Name" style="flex:1;min-width:100px"/>' +
+        '<input type="text" id="ae-desc-' + a.id + '" value="' + escHtml(a.description || '') + '" placeholder="Beschreibung" style="flex:2;min-width:130px"/>' +
+        '<input type="color" id="ae-color-' + a.id + '" value="' + a.color + '" style="width:34px;padding:2px"/>' +
+      '</div>' +
+      '<div style="display:flex;gap:5px">' +
+        '<button class="small" id="ae-save-' + a.id + '">Speichern</button>' +
+        '<button class="small" id="ae-cancel-' + a.id + '">Abbrechen</button>' +
+      '</div>';
+    wrap.appendChild(form);
+    list.appendChild(wrap);
+
+    document.getElementById('ae-save-' + a.id).addEventListener('click', () => saveAppEdit(a.id));
+    document.getElementById('ae-cancel-' + a.id).addEventListener('click', () => toggleAppEdit(a.id));
   });
+}
+
+function toggleAppEdit(appId) {
+  const f = document.getElementById('app-edit-' + appId);
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+
+function pickAppColor(appId, dotEl) {
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.value = dotEl.style.background;
+  inp.style.position = 'fixed'; inp.style.opacity = '0';
+  document.body.appendChild(inp);
+  inp.click();
+  inp.addEventListener('change', async () => {
+    await apiCall(() => api('PUT', '/applications/' + appId, { color: inp.value }));
+    await loadAll(); renderAppList();
+    document.body.removeChild(inp);
+  });
+  inp.addEventListener('blur', () => { setTimeout(() => { if (document.body.contains(inp)) document.body.removeChild(inp); }, 200); });
+}
+
+async function saveAppEdit(appId) {
+  const name        = document.getElementById('ae-name-'  + appId).value.trim();
+  const description = document.getElementById('ae-desc-'  + appId).value.trim() || null;
+  const color       = document.getElementById('ae-color-' + appId).value;
+  if (!name) return alert('Name fehlt');
+  await apiCall(() => api('PUT', '/applications/' + appId, { name, description, color }));
+  await loadAll(); renderAppList();
 }
 
 /**
