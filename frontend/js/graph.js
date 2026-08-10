@@ -489,7 +489,8 @@ function buildEnvironmentSwitches() {
  */
 export function computeHierarchicalPositions(opts = {}) {
   const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
-        SWITCH_GAP = 60, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70;
+        SWITCH_GAP = 60, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
+        APP_GROUP_GAP = 50;
   const pos = {};
 
   const _servers  = opts.srvFilter  ? allServers.filter(s => opts.srvFilter.has(s.id))   : allServers;
@@ -523,16 +524,60 @@ export function computeHierarchicalPositions(opts = {}) {
     };
   }
 
-  // How many NODE_W-wide slots a column needs: a roughly-square grid of
-  // server units, each as wide as its own (widest) instance grid — a column
-  // with dozens of servers, or one server with dozens of instances, would
-  // otherwise become an unreadably tall single-file spike.
+  // Servers within a column are sub-grouped by their (first, alphabetically)
+  // application so the applications inside one environment render as
+  // distinct side-by-side blocks instead of one mixed grid — servers with no
+  // application form their own trailing "no application" group.
+  function appGroupKey(s) {
+    const apps = s.applications || [];
+    if (!apps.length) return '__none__';
+    return String([...apps].sort((a, b) => a.name.localeCompare(b.name))[0].id);
+  }
+  function groupByApplication(servers) {
+    const groups = new Map(); // key -> { label, servers: [] }
+    sortByName(servers).forEach(s => {
+      const key = appGroupKey(s);
+      if (!groups.has(key)) {
+        const apps = s.applications || [];
+        const label = apps.length ? [...apps].sort((a, b) => a.name.localeCompare(b.name))[0].name : '';
+        groups.set(key, { label, servers: [] });
+      }
+      groups.get(key).servers.push(s);
+    });
+    const none = groups.get('__none__');
+    groups.delete('__none__');
+    const list = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+    if (none) list.push(none);
+    return list;
+  }
+
+  // Packs a flat list of server units into a roughly-square grid, each unit
+  // as wide as its own (widest) instance grid — a group with dozens of
+  // servers, or one server with dozens of instances, would otherwise become
+  // an unreadably tall single-file spike.
+  function gridPack(units) {
+    if (!units.length) return { gridCols: 0, colWidthPx: 0, rowHeights: [], width: 0, height: 0 };
+    const gridCols = Math.ceil(Math.sqrt(units.length));
+    const colWidthPx = Math.max(1, ...units.map(u => u.widthUnits)) * NODE_W;
+    const rowHeights = [];
+    units.forEach((u, i) => {
+      const row = Math.floor(i / gridCols);
+      rowHeights[row] = Math.max(rowHeights[row] || 0, u.height);
+    });
+    const height = rowHeights.reduce((a, b) => a + b, 0) + (rowHeights.length - 1) * INST_GAP;
+    return { gridCols, colWidthPx, rowHeights, width: gridCols * colWidthPx, height };
+  }
+
+  // How many NODE_W-wide slots a column needs: the application sub-groups'
+  // packed widths side by side, plus a small gap between them.
   function colWidthUnits(servers) {
     if (!servers.length) return 1;
-    const units = servers.map(serverUnit);
-    const gridCols = Math.ceil(Math.sqrt(units.length));
-    const maxUnitWidth = Math.max(1, ...units.map(u => u.widthUnits));
-    return gridCols * maxUnitWidth;
+    const groups = groupByApplication(servers);
+    const totalWidthPx = groups.reduce((sum, g, i) => {
+      const w = gridPack(g.servers.map(serverUnit)).width;
+      return sum + w + (i > 0 ? APP_GROUP_GAP : 0);
+    }, 0);
+    return Math.max(1, totalWidthPx / NODE_W);
   }
 
   // ── Which environments have an actual member server in the current
@@ -625,31 +670,35 @@ export function computeHierarchicalPositions(opts = {}) {
   envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -SWITCH_GAP }; });
 
   function placeColumn(servers, cx) {
-    const units = sortByName(servers).map(serverUnit);
-    if (!units.length) return 0;
-    const gridCols = Math.ceil(Math.sqrt(units.length));
-    const colWidthPx = Math.max(1, ...units.map(u => u.widthUnits)) * NODE_W;
-    const rowHeights = [];
-    units.forEach((u, i) => {
-      const row = Math.floor(i / gridCols);
-      rowHeights[row] = Math.max(rowHeights[row] || 0, u.height);
-    });
-    let y = 0;
-    for (let row = 0; row * gridCols < units.length; row++) {
-      const rowUnits = units.slice(row * gridCols, row * gridCols + gridCols);
-      rowUnits.forEach((u, colIdx) => {
-        const ux = cx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
-        pos[u.server.id] = { x: ux, y };
-        u.instIds.forEach((instId, vi) => {
-          pos[instId] = {
-            x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
-            y: y + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
-          };
+    const groups = groupByApplication(servers)
+      .map(g => ({ units: g.servers.map(serverUnit) }))
+      .map(g => ({ ...g, pack: gridPack(g.units) }));
+    if (!groups.length) return 0;
+    const totalWidthPx = groups.reduce((sum, g, i) => sum + g.pack.width + (i > 0 ? APP_GROUP_GAP : 0), 0);
+    let gx = cx - totalWidthPx / 2;
+    let maxHeight = 0;
+    groups.forEach(g => {
+      const gcx = gx + g.pack.width / 2;
+      const { gridCols, colWidthPx, rowHeights } = g.pack;
+      let y = 0;
+      for (let row = 0; row * gridCols < g.units.length; row++) {
+        const rowUnits = g.units.slice(row * gridCols, row * gridCols + gridCols);
+        rowUnits.forEach((u, colIdx) => {
+          const ux = gcx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
+          pos[u.server.id] = { x: ux, y };
+          u.instIds.forEach((instId, vi) => {
+            pos[instId] = {
+              x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
+              y: y + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
+            };
+          });
         });
-      });
-      y += rowHeights[row] + INST_GAP;
-    }
-    return y - INST_GAP;
+        y += rowHeights[row] + INST_GAP;
+      }
+      maxHeight = Math.max(maxHeight, y - INST_GAP);
+      gx += g.pack.width + APP_GROUP_GAP;
+    });
+    return maxHeight;
   }
 
   let maxColH = 0;
