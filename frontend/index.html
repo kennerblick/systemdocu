@@ -29,6 +29,7 @@
   <button id="btn-manage-clusters"><i class="fa-solid fa-object-group"></i> Cluster</button>
   <button id="zbx-btn"><i class="fa-solid fa-radar"></i> Scan Zabbix</button>
   <button id="btn-export-excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
+  <button id="btn-db-transfer"><i class="fa-solid fa-database"></i> DB Import/Export</button>
   <div id="search-wrap" style="position:relative;display:flex;align-items:center">
     <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:8px;color:#6b7280;font-size:0.75rem;pointer-events:none"></i>
     <input type="text" id="search-input" placeholder="Server, Instanz, IP…" autocomplete="off"
@@ -343,6 +344,31 @@
       <button id="create-app-btn">Erstellen</button>
     </div>
     <div class="modal-actions"><button id="close-modal-apps">Schließen</button></div>
+  </div>
+</div>
+
+<!-- Modal: DB Import/Export -->
+<div class="modal-backdrop" id="modal-db-transfer">
+  <div class="modal">
+    <h3><i class="fa-solid fa-database"></i> Datenbank Import/Export</h3>
+    <p style="font-size:0.82rem;color:#9ca3af">
+      Vollständiger, verlustfreier JSON-Export/-Import — anders als der Excel-Export
+      bleiben IDs, Router, Cluster, Relationen und alle Felder erhalten.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button id="db-export-btn"><i class="fa-solid fa-download"></i> Export herunterladen</button>
+    </div>
+    <hr style="border-color:#0f3460;margin:10px 0"/>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <p style="font-size:0.82rem;color:#f87171;margin:0">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Import ersetzt <strong>alle</strong> vorhandenen Daten unwiderruflich mit dem Inhalt der Datei.
+      </p>
+      <input type="file" id="db-import-file" accept="application/json"/>
+      <button id="db-import-btn" class="danger"><i class="fa-solid fa-upload"></i> Import starten</button>
+    </div>
+    <div id="db-transfer-status" style="font-size:0.82rem;margin-top:8px"></div>
+    <div class="modal-actions"><button id="close-modal-db-transfer">Schließen</button></div>
   </div>
 </div>
 

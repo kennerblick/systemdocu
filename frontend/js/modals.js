@@ -627,6 +627,56 @@ export async function zbxImport() {
   await loadAll();
 }
 
+// ── DB Import/Export modal ──────────────────────────────────────────────────
+
+/**
+ * Opens the DB import/export modal.
+ */
+export function openDbTransfer() {
+  document.getElementById('db-transfer-status').textContent = '';
+  document.getElementById('db-import-file').value = '';
+  document.getElementById('modal-db-transfer').classList.add('open');
+}
+
+/**
+ * Triggers the browser to download the full, lossless JSON export.
+ */
+function exportDb() {
+  const a = document.createElement('a');
+  a.href = '/api/db-export';
+  a.download = 'systemdocu-export.json';
+  a.click();
+}
+
+/**
+ * Uploads the selected JSON file and replaces the entire database with its
+ * contents, after an explicit confirmation (this is irreversible).
+ */
+async function importDb() {
+  const fileInput = document.getElementById('db-import-file');
+  const status = document.getElementById('db-transfer-status');
+  const file = fileInput.files[0];
+  if (!file) return alert('Bitte zuerst eine Export-Datei auswählen');
+  if (!confirm('Import startet? Das ersetzt ALLE vorhandenen Daten unwiderruflich mit dem Inhalt dieser Datei.')) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+  status.textContent = 'Import läuft…';
+  status.style.color = '#9ca3af';
+  try {
+    const res = await fetch('/api/db-import', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    const total = Object.values(result.tables_imported || {}).reduce((a, b) => a + b, 0);
+    status.textContent = 'Import erfolgreich — ' + total + ' Datensätze importiert.';
+    status.style.color = '#4ade80';
+    await loadAll();
+  } catch (e) {
+    status.textContent = 'Fehler beim Import: ' + e.message;
+    status.style.color = '#f87171';
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -645,6 +695,7 @@ export function initModals() {
   document.getElementById('btn-manage-apps').addEventListener('click', openManageApplications);
   document.getElementById('btn-manage-clusters').addEventListener('click', openManageClusters);
   document.getElementById('zbx-btn').addEventListener('click', openZabbixScan);
+  document.getElementById('btn-db-transfer').addEventListener('click', openDbTransfer);
 
   // Modal action buttons
   document.getElementById('close-modal-add-server').addEventListener('click', () => closeModal('modal-add-server'));
@@ -661,4 +712,7 @@ export function initModals() {
   document.getElementById('zbx-scan-btn').addEventListener('click', runZabbixScan);
   document.getElementById('zbx-back-btn').addEventListener('click', zbxBack);
   document.getElementById('zbx-import-btn').addEventListener('click', zbxImport);
+  document.getElementById('close-modal-db-transfer').addEventListener('click', () => closeModal('modal-db-transfer'));
+  document.getElementById('db-export-btn').addEventListener('click', exportDb);
+  document.getElementById('db-import-btn').addEventListener('click', importDb);
 }

@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from .database import engine, Base, get_db
 from .models import Server, Service, Relation, ServerIP
 from .schemas import RelationCreate, RelationOut
-from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet, clusters, storages
+from .routers import servers, services, instances, environments, applications, zabbix_scan, export_excel, internet, clusters, storages, db_transfer
 from .events import bus
 from .auth import require_auth
 from typing import List
@@ -59,6 +59,7 @@ app.include_router(export_excel.router)
 app.include_router(internet.router)
 app.include_router(clusters.router)
 app.include_router(storages.router)
+app.include_router(db_transfer.router)
 
 
 @app.on_event("startup")

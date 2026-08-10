@@ -395,6 +395,16 @@ Schaltfläche **Excel** → `systemdocu.xlsx` wird heruntergeladen.
 
 Server- und Service-Zellen sind farbig markiert (entsprechend der Graph-Farben). Erste Zeile eingefroren, Spaltenbreiten vorgegeben.
 
+### DB Import/Export (JSON)
+
+Schaltfläche **DB Import/Export** → vollständiger, verlustfreier Export als
+`systemdocu-export.json`. Anders als der Excel-Export bleiben dabei IDs,
+Router, Cluster, Relationen und alle Felder erhalten — geeignet zum
+1:1-Umzug auf eine andere Instanz oder als Vollbackup.
+
+**Import ersetzt die gesamte Datenbank** (Bestätigungsabfrage in der UI) —
+alle Tabellen werden geleert und komplett aus der Datei neu befüllt.
+
 ---
 
 ## Backup & Restore
@@ -406,6 +416,9 @@ docker compose exec postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB > backup_$(d
 # Restore
 cat backup_20250101.sql | docker compose exec -T postgres psql -U $POSTGRES_USER $POSTGRES_DB
 ```
+
+Alternativ: **DB Import/Export**-Button in der UI (siehe oben) für ein
+JSON-basiertes Backup/Restore ohne Shell-Zugriff auf den Server.
 
 ---
 
@@ -498,9 +511,11 @@ Interaktive Swagger-Doku: `http://<server-ip>:9191/api/docs`
 | PATCH/DELETE | `/api/instance-relations/{id}` | Relation aktualisieren / löschen |
 | GET/POST | `/api/relations` | Server-Relationen |
 | GET/POST/PUT/DELETE | `/api/environments` | Umgebungen verwalten |
-| GET/POST/DELETE | `/api/applications` | Anwendungen verwalten |
+| GET/POST/PUT/DELETE | `/api/applications` | Anwendungen verwalten |
 | GET/POST/PUT/DELETE | `/api/internet-routers` | Internetanschlüsse verwalten |
 | GET | `/api/export/excel` | Excel-Export |
+| GET | `/api/db-export` | Vollständiger JSON-Export (verlustfrei) |
+| POST | `/api/db-import` | Vollständiger JSON-Import (ersetzt alle Daten) |
 | GET | `/api/events` | SSE-Stream für Echtzeit-Updates |
 | GET | `/api/zabbix/ping` | Zabbix-Verbindungsstatus |
 | GET | `/api/zabbix/hosts` | Zabbix-Hosts auflisten |
