@@ -230,7 +230,7 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 3. IP-Felder akzeptieren mehrere Adressen kommagetrennt (z. B. `198.51.100.10, 203.0.113.20`)
 4. **Als Gateway markieren**: Checkbox „Ist Gateway-Server" — macht den Server in allen Gateway-Dropdowns auswählbar
 
-**Anwendungen**: Im Bereich „Anwendungen" der Server-Sidebar lässt sich der **ganze Server** direkt einer Anwendung zuordnen — für Hosts, die komplett einer Anwendung gehören. Die Zuordnung vererbt sich automatisch an **alle** Services und Instanzen des Servers: sie gelten in Anwendungs-Filter und Excel-Export als zur Anwendung gehörig, auch ohne eigene Anwendungs-Zuordnung (in der Instanz-Sidebar als abgeblasste Chips erkennbar). Server ohne Instanzen erscheinen im Excel-Export als „— ganzer Server —".
+**Anwendungen**: Im Bereich „Anwendungen" der Server-Sidebar lässt sich der **ganze Server** direkt einer Anwendung zuordnen — für Hosts, die komplett einer Anwendung gehören. Die Checkbox „auch für Services/Instanzen übernehmen" (standardmäßig **deaktiviert**) entscheidet, ob sich die Zuordnung zusätzlich an alle Services und Instanzen des Servers vererbt: nur dann gelten sie in Anwendungs-Filter und Excel-Export als zur Anwendung gehörig, auch ohne eigene Anwendungs-Zuordnung (in der Instanz-Sidebar als abgeblasste Chips mit ↳-Symbol erkennbar; auf dem Server-Chip selbst ebenfalls ein ↳-Symbol). Server ohne Instanzen erscheinen im Excel-Export als „— ganzer Server —" — unabhängig von der Vererbungs-Checkbox.
 
 ### Services & Instanzen
 

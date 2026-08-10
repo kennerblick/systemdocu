@@ -224,6 +224,7 @@ class ServerOut(ServerBase):
     applications: List[ApplicationOut] = []
     storages: List[StorageOut] = []
     ips: List[IpOut] = []
+    inherited_application_ids: List[int] = []
 
     class Config:
         from_attributes = True

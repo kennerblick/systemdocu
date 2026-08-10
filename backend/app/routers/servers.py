@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, insert
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..database import get_db
 from ..events import bus
-from ..models import Server, Service, ServiceInstance, Environment, Application, Storage, ServerIP
+from ..models import Server, Service, ServiceInstance, Environment, Application, Storage, ServerIP, server_applications
 from ..schemas import ServerCreate, ServerUpdate, ServerOut, IpCreate, IpOut
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -32,6 +32,28 @@ _server_options = [
 ]
 
 
+async def _attach_inherited_app_ids(db: AsyncSession, servers: list) -> None:
+    """Sets a transient `.inherited_application_ids` attribute on each Server —
+    the subset of its `.applications` that were assigned with
+    inherit_to_instances=True, i.e. that should count as applying to every
+    service/instance on the server (in filters and the Excel export)."""
+    if not servers:
+        return
+    server_ids = [s.id for s in servers]
+    result = await db.execute(
+        select(server_applications.c.server_id, server_applications.c.application_id)
+        .where(
+            server_applications.c.server_id.in_(server_ids),
+            server_applications.c.inherit_to_instances.is_(True),
+        )
+    )
+    by_server: dict[int, list[int]] = {}
+    for server_id, app_id in result.all():
+        by_server.setdefault(server_id, []).append(app_id)
+    for s in servers:
+        s.inherited_application_ids = by_server.get(s.id, [])
+
+
 async def get_server_or_404(server_id: int, db: AsyncSession) -> Server:
     result = await db.execute(
         select(Server)
@@ -41,6 +63,7 @@ async def get_server_or_404(server_id: int, db: AsyncSession) -> Server:
     server = result.scalar_one_or_none()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
+    await _attach_inherited_app_ids(db, [server])
     return server
 
 
@@ -49,7 +72,9 @@ async def list_servers(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Server).options(*_server_options)
     )
-    return result.scalars().all()
+    servers = list(result.scalars().all())
+    await _attach_inherited_app_ids(db, servers)
+    return servers
 
 
 @router.get("/{server_id}", response_model=ServerOut)
@@ -130,14 +155,20 @@ async def remove_server_environment(server_id: int, env_id: int, db: AsyncSessio
 
 
 @router.post("/{server_id}/applications/{app_id}", response_model=ServerOut)
-async def add_server_application(server_id: int, app_id: int, db: AsyncSession = Depends(get_db)):
+async def add_server_application(
+    server_id: int, app_id: int, inherit_to_instances: bool = False, db: AsyncSession = Depends(get_db)
+):
     server = await get_server_or_404(server_id, db)
     app_result = await db.execute(select(Application).where(Application.id == app_id))
     app = app_result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     if app not in server.applications:
-        server.applications.append(app)
+        await db.execute(
+            insert(server_applications).values(
+                server_id=server_id, application_id=app_id, inherit_to_instances=inherit_to_instances
+            )
+        )
         await db.commit()
         await bus.broadcast("data_changed", {"entity": "server"})
     return await get_server_or_404(server_id, db)

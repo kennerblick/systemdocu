@@ -45,6 +45,11 @@ server_applications = Table(
     "server_applications", Base.metadata,
     Column("server_id", Integer, ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
     Column("application_id", Integer, ForeignKey("applications.id", ondelete="CASCADE"), primary_key=True),
+    # Whether this server-level application tag also counts as applying to
+    # every service/instance on the server (in filters and the Excel export).
+    # Defaults to False so assigning an app to a server never silently
+    # cascades onto everything under it unless explicitly opted into.
+    Column("inherit_to_instances", Boolean, nullable=False, server_default="false"),
 )
 
 router_environments = Table(

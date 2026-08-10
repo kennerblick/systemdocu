@@ -134,10 +134,11 @@ export function applyFilters(skipFit = false) {
 
   // ── 1. Matching instance IDs ──────────────────────────────────────────────
   // An Application assigned to a Server as a whole is inherited by every
-  // Instance on that server for filtering purposes.
+  // Instance on that server for filtering purposes — but only if that
+  // assignment opted into inherit_to_instances (see inherited_application_ids).
   const matchingInstIds = new Set();
   allServers.forEach(s => {
-    const srvHasApp = appId && (s.applications || []).some(a => a.id === appId);
+    const srvHasApp = appId && (s.inherited_application_ids || []).includes(appId);
     (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
       let ok = true;
       if (envId && !(inst.environments || []).some(e => e.id === envId)) ok = false;

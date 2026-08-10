@@ -9,7 +9,7 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from ..database import get_db
-from ..models import Server, Service, ServiceInstance, Storage
+from ..models import Server, Service, ServiceInstance, Storage, server_applications
 
 router = APIRouter(tags=["export"])
 
@@ -108,6 +108,20 @@ async def export_excel(db: AsyncSession = Depends(get_db)):
         )
     )
     servers = list(result.scalars().all())
+
+    inherit_by_server: dict[int, set[int]] = {}
+    if servers:
+        inherit_result = await db.execute(
+            select(server_applications.c.server_id, server_applications.c.application_id)
+            .where(
+                server_applications.c.server_id.in_([s.id for s in servers]),
+                server_applications.c.inherit_to_instances.is_(True),
+            )
+        )
+        for server_id, app_id in inherit_result.all():
+            inherit_by_server.setdefault(server_id, set()).add(app_id)
+    for s in servers:
+        s.inherited_application_ids = inherit_by_server.get(s.id, set())
 
     wb = openpyxl.Workbook()
     _build_sheet1(wb, servers)
@@ -235,21 +249,26 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
     # Build app → [(inst, svc, srv, envs)] map preserving app order. An
     # Application assigned to a Server as a whole is inherited by every
     # Instance on that server (in addition to whatever the instance itself
-    # carries). inst/svc are None only for the leftover case of a
-    # server-level Application on a server that has no instances at all —
-    # nothing else would represent that server under the application.
+    # carries) only if that assignment opted into inherit_to_instances —
+    # otherwise it's shown for the server's own "no instances" row (below)
+    # but doesn't bleed onto services/instances. inst/svc are None only for
+    # the leftover case of a server-level Application on a server that has
+    # no instances at all — nothing else would represent that server under
+    # the application.
     app_map: dict[int, dict] = {}
     no_app: list[tuple] = []
 
     for srv in servers:
         envs = ", ".join(e.name for e in srv.environments)
-        srv_apps = {a.id: a for a in (srv.applications or [])}
+        srv_apps_all = {a.id: a for a in (srv.applications or [])}
+        inherited_ids = getattr(srv, "inherited_application_ids", set())
+        srv_apps_inherit = {aid: a for aid, a in srv_apps_all.items() if aid in inherited_ids}
         has_instance = False
 
         for svc in (srv.services or []):
             for inst in (svc.instances or []):
                 has_instance = True
-                effective_apps = dict(srv_apps)
+                effective_apps = dict(srv_apps_inherit)
                 effective_apps.update({a.id: a for a in inst.applications})
                 if effective_apps:
                     for app in effective_apps.values():
@@ -260,7 +279,7 @@ def _build_sheet2(wb: openpyxl.Workbook, servers: list) -> None:
                     no_app.append((inst, svc, srv, envs))
 
         if not has_instance:
-            for app in srv_apps.values():
+            for app in srv_apps_all.values():
                 if app.id not in app_map:
                     app_map[app.id] = {"app": app, "rows": []}
                 app_map[app.id]["rows"].append((None, None, srv, envs))

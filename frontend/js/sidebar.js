@@ -69,10 +69,14 @@ export function openSidebar(serverId) {
 
   const appChips = document.getElementById('sb-apps');
   appChips.innerHTML = '';
+  const inheritedAppIds = new Set(server.inherited_application_ids || []);
   (server.applications || []).forEach(app => {
     const c = document.createElement('span');
     c.className = 'chip'; c.style.background = app.color;
-    c.innerHTML = escHtml(app.name) + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
+    const inheritBadge = inheritedAppIds.has(app.id)
+      ? ' <i class="fa-solid fa-arrow-turn-down" style="font-size:0.6rem" title="Gilt auch für Services/Instanzen"></i>'
+      : '';
+    c.innerHTML = escHtml(app.name) + inheritBadge + ' <i class="fa-solid fa-xmark" style="font-size:0.65rem"></i>';
     c.onclick = () => removeServerApp(app.id);
     appChips.appendChild(c);
   });
@@ -80,9 +84,37 @@ export function openSidebar(serverId) {
   appBtnWrap.innerHTML = '';
   if (allApplications.length) {
     const assignedAppIds = new Set((server.applications || []).map(a => a.id));
-    appBtnWrap.appendChild(makeInstDropdownBtn('Anwendung',
-      () => allApplications.filter(a => !assignedAppIds.has(a.id)).map(a => ({ id: a.id, label: a.name, color: a.color })),
-      id => assignServerApp(id), 'Alle Anwendungen bereits vergeben'));
+    const availableApps = allApplications.filter(a => !assignedAppIds.has(a.id));
+    if (availableApps.length) {
+      const sel = document.createElement('select');
+      sel.style.cssText = 'font-size:0.75rem;padding:2px 4px;max-width:140px';
+      availableApps.forEach(a => {
+        const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.appendChild(o);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'xs'; addBtn.textContent = '+ Anwendung';
+      const inheritChk = document.createElement('input');
+      inheritChk.type = 'checkbox';
+      inheritChk.id = 'sb-app-inherit-chk';
+      inheritChk.style.cssText = 'width:auto;margin:0';
+      addBtn.onclick = () => assignServerApp(parseInt(sel.value), inheritChk.checked);
+      const inheritLbl = document.createElement('label');
+      inheritLbl.style.cssText = 'display:flex;gap:4px;align-items:center;font-size:0.72rem;color:#9ca3af;cursor:pointer;width:100%';
+      inheritLbl.appendChild(inheritChk);
+      inheritLbl.appendChild(document.createTextNode('auch für Services/Instanzen übernehmen'));
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
+      row.appendChild(sel); row.appendChild(addBtn);
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px';
+      wrap.appendChild(row); wrap.appendChild(inheritLbl);
+      appBtnWrap.appendChild(wrap);
+    } else {
+      const span = document.createElement('span');
+      span.style.cssText = 'font-size:0.75rem;color:#6b7280';
+      span.textContent = 'Alle Anwendungen bereits vergeben';
+      appBtnWrap.appendChild(span);
+    }
   }
 
   const relSel = document.getElementById('rel-target');
@@ -371,9 +403,11 @@ export function renderServicesSection(server) {
         chipRow.appendChild(c);
       });
       // Applications inherited from the server (assigned to the whole
-      // server, not this instance) — shown muted, not removable here.
+      // server with "auch für Services/Instanzen übernehmen" checked) —
+      // shown muted, not removable here.
       const ownAppIds = new Set((inst.applications || []).map(a => a.id));
-      (server.applications || []).filter(a => !ownAppIds.has(a.id)).forEach(app => {
+      const inheritedAppIdSet = new Set(server.inherited_application_ids || []);
+      (server.applications || []).filter(a => !ownAppIds.has(a.id) && inheritedAppIdSet.has(a.id)).forEach(app => {
         const c = document.createElement('span');
         c.className = 'chip'; c.style.background = app.color; c.style.opacity = '0.55';
         c.title = 'Vom Server geerbt';
@@ -1008,9 +1042,10 @@ async function removeServerEnv(envId) {
 /**
  * Assigns an application directly to the current server (independent of its instances).
  */
-async function assignServerApp(appId) {
+async function assignServerApp(appId, inheritToInstances) {
   if (!appId) return;
-  await apiCall(() => api('POST', '/servers/' + currentServerId + '/applications/' + appId));
+  await apiCall(() => api('POST', '/servers/' + currentServerId + '/applications/' + appId +
+    '?inherit_to_instances=' + (inheritToInstances ? 'true' : 'false')));
   await loadAll();
 }
 
