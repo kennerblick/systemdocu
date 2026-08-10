@@ -38,6 +38,38 @@ function serverColor(server) {
 }
 
 /**
+ * Draws a small application-color badge at (x,y) with radius r — a solid
+ * circle for one application, or evenly-sized pie slices (one per
+ * app.color) for several, so multi-app membership reads at a glance.
+ */
+function drawAppBadge(ctx, x, y, r, apps) {
+  if (!apps.length) return;
+  ctx.save();
+  if (apps.length === 1) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = apps[0].color;
+    ctx.fill();
+  } else {
+    const slice = (Math.PI * 2) / apps.length;
+    apps.forEach((app, i) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.arc(x, y, r, i * slice, (i + 1) * slice);
+      ctx.closePath();
+      ctx.fillStyle = app.color;
+      ctx.fill();
+    });
+  }
+  ctx.strokeStyle = '#0a1628';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
  * Builds a vis-network node object for the given server.
  */
 export function buildNode(server) {
@@ -60,7 +92,7 @@ export function buildNode(server) {
 
 /** Builds instance nodes, cluster nodes, and all associated edges for zoomed-in view. */
 function buildInstanceNodesEdges() {
-  const instNodes = [], siEdges = [], irInstEdges = [], gwInstEdges = [];
+  const instNodes = [], siEdges = [], irInstEdges = [], gwInstEdges = [], switchInstEdges = [];
   const im = buildInstServerMap();
   allServers.forEach(s => {
     (s.services || []).forEach(svc => {
@@ -97,6 +129,13 @@ function buildInstanceNodesEdges() {
           arrows: '',
           length: isVM ? 85 : 140,
           title: escHtml(s.hostname) + ' → ' + escHtml(svc.type) + ': ' + escHtml(inst.name),
+        });
+        (inst.environments || []).forEach(env => {
+          switchInstEdges.push({
+            id: 'switch_mem_inst_' + inst.id + '_' + env.id, from: 'switch_' + env.id, to: 'inst_' + inst.id,
+            arrows: '', dashes: [2, 4], width: 1, length: 110,
+            color: { color: env.color, opacity: 0.3 },
+          });
         });
         if (inst.gateway_router_id) {
           gwInstEdges.push({
@@ -181,7 +220,7 @@ function buildInstanceNodesEdges() {
              tgtLabel + '<br>' + escHtml(r.type),
     });
   });
-  return { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges };
+  return { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges, switchInstEdges };
 }
 
 /** Builds the internet/router nodes and edges (shown when showInternet is true). */
@@ -314,6 +353,63 @@ function buildInternetGraph() {
 }
 
 /**
+ * Builds one "switch" node per Environment (colored by env.color), wired to
+ * its member servers and its configured default gateway (router or GW
+ * server). Instance-member edges are added separately in
+ * buildInstanceNodesEdges() since instance nodes only exist in that pass —
+ * this function only needs to know whether an instance member exists at all,
+ * to decide whether to render the switch node for an otherwise server-less
+ * environment.
+ */
+function buildEnvironmentSwitches() {
+  const swNodes = [], swEdges = [];
+  allEnvironments.forEach(env => {
+    const memberServers = allServers.filter(s => (s.environments || []).some(e => e.id === env.id));
+    const hasGateway = env.default_gateway_router_id || env.default_gateway_server_id;
+    const hasInstanceMember = allServers.some(s => (s.services || []).some(svc =>
+      (svc.instances || []).some(inst => (inst.environments || []).some(e => e.id === env.id))));
+    if (!memberServers.length && !hasInstanceMember && !hasGateway) return;
+
+    const nodeId = 'switch_' + env.id;
+    swNodes.push({
+      id: nodeId,
+      label: '🔌 ' + env.name,
+      shape: 'hexagon',
+      color: { background: env.color, border: env.color, highlight: { background: env.color, border: '#fff' } },
+      font: { color: '#e0e0e0', size: 11 },
+      title: escHtml(env.name) + (env.subnet ? '<br>' + escHtml(env.subnet) : ''),
+    });
+
+    memberServers.forEach(s => {
+      swEdges.push({
+        id: 'switch_mem_srv_' + s.id + '_' + env.id, from: nodeId, to: s.id,
+        arrows: '', dashes: [2, 4], width: 1, length: 110,
+        color: { color: env.color, opacity: 0.3 },
+      });
+    });
+
+    if (env.default_gateway_router_id) {
+      const r = allRouters.find(rt => rt.id === env.default_gateway_router_id);
+      swEdges.push({
+        id: 'switch_gw_' + env.id, from: nodeId, to: 'router_' + env.default_gateway_router_id,
+        arrows: 'to', width: 1.5, dashes: [4, 2], physics: false,
+        color: { color: env.color, opacity: 0.75 },
+        title: 'Gateway: ' + escHtml(r ? r.name : String(env.default_gateway_router_id)),
+      });
+    } else if (env.default_gateway_server_id) {
+      const gs = allServers.find(sv => sv.id === env.default_gateway_server_id);
+      swEdges.push({
+        id: 'switch_gw_' + env.id, from: nodeId, to: env.default_gateway_server_id,
+        arrows: 'to', width: 1.5, dashes: [4, 2], physics: false,
+        color: { color: env.color, opacity: 0.75 },
+        title: 'Gateway: ' + escHtml(gs ? gs.hostname : String(env.default_gateway_server_id)),
+      });
+    }
+  });
+  return { swNodes, swEdges };
+}
+
+/**
  * Computes fixed x/y positions for all nodes in hierarchical layout mode.
  */
 export function computeHierarchicalPositions(opts = {}) {
@@ -407,6 +503,10 @@ export function computeHierarchicalPositions(opts = {}) {
     if (cd.envId) envColCx.set(cd.envId, cd.cx);
     curX += cd.colW + COL_GAP;
   });
+
+  // Environment switches sit between their member column (y=0) and the
+  // router tier (y=-NODE_H) — reads top-to-bottom as gateway → switch → members.
+  envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -0.5 * NODE_H }; });
 
   function placeColumn(servers, cx) {
     let y = 0;
@@ -593,6 +693,10 @@ export function renderGraph(skipFit = false) {
   iNodes.forEach(n => nodeData.push(n));
   iEdges.forEach(e => edgeData.push(e));
 
+  const { swNodes, swEdges } = buildEnvironmentSwitches();
+  swNodes.forEach(n => nodeData.push(n));
+  swEdges.forEach(e => edgeData.push(e));
+
   allServers.forEach(s => {
     if (s.gateway_router_id && (layoutMode !== 'hierarchical' || showInternet)) {
       const eid = 'gw_srv_' + s.id;
@@ -618,12 +722,13 @@ export function renderGraph(skipFit = false) {
   });
 
   if (layoutMode === 'hierarchical') {
-    const { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges } = buildInstanceNodesEdges();
+    const { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges, switchInstEdges } = buildInstanceNodesEdges();
     instNodes.forEach(n => nodeData.push(n));
     clusterNodes.forEach(n => nodeData.push(n));
     siEdges.forEach(e => edgeData.push(e));
     clusterEdges.forEach(e => edgeData.push(e));
     irInstEdges.forEach(e => edgeData.push(e));
+    switchInstEdges.forEach(e => edgeData.push(e));
     gwInstEdges.filter(e => !String(e.from).startsWith('router_')).forEach(e => edgeData.push(e));
     const pos = computeHierarchicalPositions();
     nodeData.forEach(n => { if (pos[n.id]) { n.x = pos[n.id].x; n.y = pos[n.id].y; n.fixed = true; } });
@@ -677,7 +782,37 @@ export function renderGraph(skipFit = false) {
   renderLegend();
 
   net.on('beforeDrawing', ctx => {
+    // Application-color badges on server dots — drawn regardless of zoom /
+    // instance-visibility state, since server nodes exist in both.
+    allServers.forEach(server => {
+      if (hiddenByFilter.has(server.id)) return;
+      const apps = server.applications || [];
+      if (!apps.length) return;
+      let pos;
+      try { pos = net.getPosition(server.id); } catch (e) { return; }
+      drawAppBadge(ctx, pos.x + 9, pos.y + 9, 7, apps);
+    });
+
     if (!showingInstances) return;
+
+    // Application-color badges on instance boxes — effective apps = the
+    // instance's own applications plus whichever of its server's tags opted
+    // into inherit_to_instances (server.inherited_application_ids).
+    allServers.forEach(server => {
+      if (hiddenByFilter.has(server.id)) return;
+      const inheritedIds = new Set(server.inherited_application_ids || []);
+      const inheritedApps = (server.applications || []).filter(a => inheritedIds.has(a.id));
+      (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+        const ownIds = new Set((inst.applications || []).map(a => a.id));
+        const effective = [...(inst.applications || []), ...inheritedApps.filter(a => !ownIds.has(a.id))];
+        if (!effective.length) return;
+        const n = nodes.get('inst_' + inst.id);
+        if (!n || n.hidden) return;
+        let pos;
+        try { pos = net.getPosition('inst_' + inst.id); } catch (e) { return; }
+        drawAppBadge(ctx, pos.x, pos.y + 12, 3.5, effective);
+      }));
+    });
 
     const visibleServerPositions = [];
     allServers.forEach(s => {
@@ -863,19 +998,21 @@ export function updateInstanceVisibility(scale) {
   setShowingInstances(show);
 
   if (show) {
-    const { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges } = buildInstanceNodesEdges();
+    const { instNodes, clusterNodes, clusterEdges, siEdges, irInstEdges, gwInstEdges, switchInstEdges } = buildInstanceNodesEdges();
     nodes.remove(instNodes.map(n => n.id));
     nodes.remove(clusterNodes.map(n => n.id));
     edges.remove(siEdges.map(e => e.id));
     edges.remove(clusterEdges.map(e => e.id));
     edges.remove(irInstEdges.map(e => e.id));
     edges.remove(gwInstEdges.map(e => e.id));
+    edges.remove(switchInstEdges.map(e => e.id));
     nodes.add(instNodes);
     nodes.add(clusterNodes);
     edges.add(siEdges);
     edges.add(clusterEdges);
     edges.add(irInstEdges);
     edges.add(gwInstEdges);
+    edges.add(switchInstEdges);
     irSrvEdgeIds.forEach(id => { if (edges.get(id)) edges.update({ id, hidden: true }); });
   } else {
     const instNodeIds = [], siEdgeIds = [];
@@ -883,6 +1020,7 @@ export function updateInstanceVisibility(scale) {
       instNodeIds.push('inst_' + inst.id);
       siEdgeIds.push('si_' + inst.id);
       edges.remove('gw_inst_' + inst.id);
+      (inst.environments || []).forEach(env => edges.remove('switch_mem_inst_' + inst.id + '_' + env.id));
     })));
     nodes.remove(instNodeIds);
     allClusters.forEach(cl => {
@@ -934,12 +1072,23 @@ export function renderLegend() {
       }
     });
   });
-  if (!present.size) { el.style.display = 'none'; return; }
+  if (!present.size && !allEnvironments.length) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.innerHTML = '<div class="leg-title">Instanz-Typen</div>' +
-    Array.from(present.entries()).map(([type, { color, icon }]) =>
-      '<div class="leg-row">' +
-      '<span class="leg-dot" style="background:' + color + '"></span>' +
-      '<span>' + icon + ' ' + escHtml(type) + '</span></div>'
-    ).join('');
+  const svcSection = present.size
+    ? '<div class="leg-title">Instanz-Typen</div>' +
+      Array.from(present.entries()).map(([type, { color, icon }]) =>
+        '<div class="leg-row">' +
+        '<span class="leg-dot" style="background:' + color + '"></span>' +
+        '<span>' + icon + ' ' + escHtml(type) + '</span></div>'
+      ).join('')
+    : '';
+  const envSection = allEnvironments.length
+    ? '<div class="leg-title">Umgebungen</div>' +
+      allEnvironments.map(env =>
+        '<div class="leg-row">' +
+        '<span class="leg-dot" style="background:' + env.color + '"></span>' +
+        '<span>🔌 ' + escHtml(env.name) + '</span></div>'
+      ).join('')
+    : '';
+  el.innerHTML = svcSection + envSection;
 }

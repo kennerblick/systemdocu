@@ -99,6 +99,9 @@ export function applyFilters(skipFit = false) {
     allClusters.forEach(cl => {
       if (nodes.get('cluster_' + cl.id)) nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: false, physics: true });
     });
+    allEnvironments.forEach(env => {
+      if (nodes.get('switch_' + env.id)) nodeUpdates.push({ id: 'switch_' + env.id, hidden: false, physics: true });
+    });
     inetNodeIds.forEach(id => { if (nodes.get(id)) nodeUpdates.push({ id, hidden: !showInternet, physics: showInternet }); });
     edges.forEach(e => {
       const id = e.id;
@@ -263,6 +266,13 @@ export function applyFilters(skipFit = false) {
       nodeUpdates.push({ id: 'cluster_' + cl.id, hidden: clHidden, physics: !clHidden });
     }
   });
+  allEnvironments.forEach(env => {
+    const id = 'switch_' + env.id;
+    if (nodes.get(id)) {
+      const swHidden = !visibleEnvIds.has(env.id);
+      nodeUpdates.push({ id, hidden: swHidden, physics: !swHidden });
+    }
+  });
 
   // ── 7. Edge updates ───────────────────────────────────────────────────────
   // Gateway/internet-backbone edges are matched by prefix *before* the
@@ -274,6 +284,19 @@ export function applyFilters(skipFit = false) {
   edges.forEach(e => {
     const id = e.id;
     if (typeof id !== 'string') return;
+    if (id.startsWith('switch_mem_srv_')) {
+      const swEnvId = parseInt(String(e.from).replace('switch_', ''));
+      edgeUpdates.push({ id, hidden: !visibleEnvIds.has(swEnvId) || !visibleSrvIds.has(e.to) }); return;
+    }
+    if (id.startsWith('switch_mem_inst_')) {
+      const swEnvId = parseInt(String(e.from).replace('switch_', ''));
+      const instId = parseInt(String(e.to).replace('inst_', ''));
+      edgeUpdates.push({ id, hidden: !visibleEnvIds.has(swEnvId) || !matchingInstIds.has(instId) }); return;
+    }
+    if (id.startsWith('switch_gw_')) {
+      const swEnvId = parseInt(id.replace('switch_gw_', ''));
+      edgeUpdates.push({ id, hidden: !visibleEnvIds.has(swEnvId) }); return;
+    }
     if (id.startsWith('gw_srv_')) {
       const fromRouter = typeof e.from === 'string' && e.from.startsWith('router_');
       const rHidden = fromRouter && hiddenRouterIds.has(parseInt(e.from.replace('router_', '')));

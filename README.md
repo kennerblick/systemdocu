@@ -219,6 +219,13 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 | **Hierarchisch** | Umgebungen als vertikale Spalten, Server und Instanzen in Zeilen; Internet links |
 | **Physik** | Kräftebasiertes Layout, frei verschiebbar |
 
+Jede Umgebung erscheint zusätzlich als sechseckiger **Switch**-Knoten in ihrer
+Umgebungsfarbe, verbunden mit allen Servern/Instanzen der Umgebung sowie —
+falls konfiguriert — ihrem Standard-Gateway (Router oder GW-Server).
+Server-Punkte und Service/Instanz-Boxen zeigen zusätzlich einen kleinen
+farbigen Anwendungs-Punkt (halb so groß bei Instanzen); bei mehreren
+Anwendungen ist der Punkt in gleich große Farbsegmente aufgeteilt.
+
 ### Filter
 
 Über die Dropdowns **Umgebung** und **Anwendung** werden alle nicht passenden Server, Instanzen und Kanten ausgeblendet. Ein Server ist sichtbar, wenn er oder eine seiner Instanzen der gewählten Umgebung/Anwendung zugeordnet ist.
