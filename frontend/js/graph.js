@@ -441,6 +441,7 @@ function buildEnvironmentSwitches() {
       id: nodeId,
       label: '🔌 ' + env.name,
       shape: 'hexagon',
+      size: 14,
       color: { background: env.color, border: env.color, highlight: { background: env.color, border: '#fff' } },
       font: { color: '#e0e0e0', size: 11 },
       title: escHtml(env.name) + (env.subnet ? '<br>' + escHtml(env.subnet) : ''),
@@ -478,9 +479,17 @@ function buildEnvironmentSwitches() {
 
 /**
  * Computes fixed x/y positions for all nodes in hierarchical layout mode.
+ * Layout reads top-to-bottom per connection: extern/www servers → router →
+ * (optional server hosted directly on that router) → one column per
+ * environment the router serves → that environment's switch → its
+ * servers/instances. Different routers' groups get a wider gap between them
+ * than the columns within one group, so the per-connection grouping is
+ * visually obvious. Environments not served by any router form their own
+ * "no connection" group at the end.
  */
 export function computeHierarchicalPositions(opts = {}) {
-  const NODE_W = 150, NODE_H = 80, COL_GAP = 90, VM_GAP = 30, BELOW_GAP = 70;
+  const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
+        SWITCH_GAP = 60, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70;
   const pos = {};
 
   const _servers  = opts.srvFilter  ? allServers.filter(s => opts.srvFilter.has(s.id))   : allServers;
@@ -492,58 +501,10 @@ export function computeHierarchicalPositions(opts = {}) {
   const _colSrvs    = _servers.filter(s => !isExternServer(s));
 
   const sortByName = arr => [...arr].sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  const envName    = id => (allEnvironments.find(e => e.id === id) || {}).name || '';
   const isVmHost   = s => (s.services || []).some(svc =>
     VM_SVC_TYPES.has(svc.type) &&
     (svc.instances || []).some(inst => !_instF || _instF.has(inst.id)));
-
-  const envOrder = [];
-  const seenEnvs = new Set();
-  _routers.forEach(r => (r.environments || []).forEach(env => {
-    if (!seenEnvs.has(env.id)) { seenEnvs.add(env.id); envOrder.push(env.id); }
-  }));
-  allEnvironments.forEach(env => {
-    if (!seenEnvs.has(env.id) &&
-        _colSrvs.some(s => (s.environments || []).some(e => e.id === env.id))) {
-      seenEnvs.add(env.id); envOrder.push(env.id);
-    }
-  });
-
-  if (envOrder.length > 1) {
-    const envAdj = new Map(allEnvironments.map(e => [e.id, new Set()]));
-    const gwSrvEnvs = new Map();
-    _colSrvs.forEach(s => {
-      if (s.is_gateway && (s.environments || []).length)
-        gwSrvEnvs.set(s.id, s.environments.map(e => e.id));
-    });
-    _colSrvs.forEach(s => {
-      if (!s.gateway_server_id) return;
-      const srcEnvIds = (s.environments || []).map(e => e.id);
-      const gwEnvIds  = gwSrvEnvs.get(s.gateway_server_id) || [];
-      srcEnvIds.forEach(a => gwEnvIds.forEach(b => {
-        if (a !== b) { envAdj.get(a)?.add(b); envAdj.get(b)?.add(a); }
-      }));
-    });
-    const remaining = new Set(envOrder);
-    const ordered   = [envOrder[0]];
-    remaining.delete(envOrder[0]);
-    while (remaining.size) {
-      const last = ordered[ordered.length - 1];
-      const adj  = [...(envAdj.get(last) || [])].filter(id => remaining.has(id));
-      const next = adj.length ? adj[0] : [...remaining][0];
-      ordered.push(next);
-      remaining.delete(next);
-    }
-    envOrder.length = 0;
-    ordered.forEach(id => envOrder.push(id));
-  }
-
-  const envServerMap = new Map(envOrder.map(id => [id, []]));
-  const noEnvServers = [];
-  sortByName(_colSrvs).forEach(s => {
-    const envId = s.environments && s.environments.length ? s.environments[0].id : null;
-    if (envId && envServerMap.has(envId)) envServerMap.get(envId).push(s);
-    else noEnvServers.push(s);
-  });
 
   function maxVmCols(servers) {
     return servers.filter(isVmHost).reduce((m, host) => {
@@ -553,34 +514,101 @@ export function computeHierarchicalPositions(opts = {}) {
     }, 1);
   }
 
-  const colDefs = [];
-  envOrder.forEach(envId => {
-    const servers = envServerMap.get(envId) || [];
-    if (!servers.length) return;
-    colDefs.push({ envId, servers, colW: maxVmCols(servers) * NODE_W });
+  // ── Which environments have an actual member server in the current
+  // (possibly filtered) view — only those get a column at all.
+  const envServerMap = new Map();
+  const noEnvServers = [];
+  sortByName(_colSrvs).forEach(s => {
+    const envId = s.environments && s.environments.length ? s.environments[0].id : null;
+    if (envId) {
+      if (!envServerMap.has(envId)) envServerMap.set(envId, []);
+      envServerMap.get(envId).push(s);
+    } else {
+      noEnvServers.push(s);
+    }
   });
-  if (noEnvServers.length)
-    colDefs.push({ envId: null, servers: noEnvServers, colW: maxVmCols(noEnvServers) * NODE_W });
+  const relevantEnvIds = new Set(envServerMap.keys());
 
-  const totalW = colDefs.reduce((s, c, i) => s + c.colW + (i < colDefs.length - 1 ? COL_GAP : 0), 0);
+  // ── Group relevant environments by the router that serves them (first
+  // router listing it in router.environments "owns" it, matching the
+  // server-edit gateway dropdown's own membership convention).
+  const envToRouter = new Map();
+  _routers.forEach(r => (r.environments || []).forEach(env => {
+    if (!envToRouter.has(env.id)) envToRouter.set(env.id, r.id);
+  }));
+
+  const groups = []; // { router, envIds: [...], directServerId }
+  const groupByRouterId = new Map();
+  _routers.forEach(r => {
+    const envIds = (r.environments || [])
+      .map(e => e.id)
+      .filter(id => relevantEnvIds.has(id) && envToRouter.get(id) === r.id)
+      .sort((a, b) => envName(a).localeCompare(envName(b)));
+    // Only give the router's own server a dedicated column when it has no
+    // environment of its own — otherwise it's already placed (once) in its
+    // environment's column, and a second column would just duplicate it.
+    const hasDirectServer = r.server_id && _colSrvs.some(s =>
+      s.id === r.server_id && !(s.environments && s.environments.length));
+    if (!envIds.length && !hasDirectServer) return;
+    const g = { router: r, envIds, directServerId: hasDirectServer ? r.server_id : null };
+    groups.push(g);
+    groupByRouterId.set(r.id, g);
+  });
+  groups.sort((a, b) => a.router.name.localeCompare(b.router.name));
+
+  const groupedEnvIds = new Set();
+  groups.forEach(g => g.envIds.forEach(id => groupedEnvIds.add(id)));
+  const looseEnvIds = [...relevantEnvIds]
+    .filter(id => !groupedEnvIds.has(id))
+    .sort((a, b) => envName(a).localeCompare(envName(b)));
+
+  // A server already placed as its router's own direct-server column must
+  // not also appear in the generic "no environment" bucket below.
+  const directServerIds = new Set(groups.map(g => g.directServerId).filter(Boolean));
+  const looseNoEnvServers = noEnvServers.filter(s => !directServerIds.has(s.id));
+
+  // ── Flat column sequence, remembering which group (router id / 'loose' /
+  // 'none') each column belongs to, so COL_GAP applies within a group and
+  // the wider GROUP_GAP only between different groups.
+  const colDefs = [];
+  groups.forEach(g => {
+    if (g.directServerId) {
+      const srv = _colSrvs.find(s => s.id === g.directServerId);
+      if (srv) colDefs.push({ envId: null, servers: [srv], colW: NODE_W, groupKey: g.router.id });
+    }
+    g.envIds.forEach(envId => {
+      const servers = envServerMap.get(envId) || [];
+      colDefs.push({ envId, servers, colW: maxVmCols(servers) * NODE_W, groupKey: g.router.id });
+    });
+  });
+  looseEnvIds.forEach(envId => {
+    const servers = envServerMap.get(envId) || [];
+    colDefs.push({ envId, servers, colW: maxVmCols(servers) * NODE_W, groupKey: 'loose' });
+  });
+  if (looseNoEnvServers.length)
+    colDefs.push({ envId: null, servers: looseNoEnvServers, colW: maxVmCols(looseNoEnvServers) * NODE_W, groupKey: 'none' });
+
+  const gapAfter = i => (i >= colDefs.length - 1) ? 0
+    : (colDefs[i + 1].groupKey === colDefs[i].groupKey ? COL_GAP : GROUP_GAP);
+  const totalW = colDefs.reduce((sum, cd, i) => sum + cd.colW + gapAfter(i), 0);
   let curX = -totalW / 2;
   const envColCx = new Map();
-  colDefs.forEach(cd => {
+  colDefs.forEach((cd, i) => {
     cd.cx = curX + cd.colW / 2;
     if (cd.envId) envColCx.set(cd.envId, cd.cx);
-    curX += cd.colW + COL_GAP;
+    curX += cd.colW + gapAfter(i);
   });
 
   // Environment switches sit between their member column (y=0) and the
   // router tier (y=-NODE_H) — reads top-to-bottom as gateway → switch → members.
-  envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -0.5 * NODE_H }; });
+  envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -SWITCH_GAP }; });
 
   function placeColumn(servers, cx) {
     let y = 0;
     const plain   = sortByName(servers.filter(s => !isVmHost(s)));
     const vmHosts = sortByName(servers.filter(isVmHost));
     plain.forEach(s => { pos[s.id] = { x: cx, y }; y += NODE_H; });
-    if (plain.length && vmHosts.length) y += VM_GAP;
+    if (plain.length && vmHosts.length) y += INST_GAP;
     vmHosts.forEach(host => {
       pos[host.id] = { x: cx, y }; y += NODE_H;
       const vms = [];
@@ -593,9 +621,9 @@ export function computeHierarchicalPositions(opts = {}) {
       if (vms.length) {
         const vc = Math.ceil(Math.sqrt(vms.length));
         vms.forEach((vmId, vi) => {
-          pos[vmId] = { x: cx + (vi % vc - (vc - 1) / 2) * NODE_W, y: y + Math.floor(vi / vc) * NODE_H };
+          pos[vmId] = { x: cx + (vi % vc - (vc - 1) / 2) * NODE_W, y: y + Math.floor(vi / vc) * INST_H };
         });
-        y += Math.ceil(vms.length / vc) * NODE_H + VM_GAP;
+        y += Math.ceil(vms.length / vc) * INST_H + INST_GAP;
       }
     });
     return y;
@@ -605,16 +633,16 @@ export function computeHierarchicalPositions(opts = {}) {
   colDefs.forEach(cd => { maxColH = Math.max(maxColH, placeColumn(cd.servers, cd.cx)); });
 
   let y = maxColH + BELOW_GAP;
-  const placeGrid = (ids, startY) => {
+  const placeGrid = (ids, startY, rowH) => {
     if (!ids.length) return 0;
     const cols = Math.ceil(Math.sqrt(ids.length));
     ids.forEach((id, i) => {
-      pos[id] = { x: (i % cols - (cols - 1) / 2) * NODE_W, y: startY + Math.floor(i / cols) * NODE_H };
+      pos[id] = { x: (i % cols - (cols - 1) / 2) * NODE_W, y: startY + Math.floor(i / cols) * rowH };
     });
-    return Math.ceil(ids.length / cols) * NODE_H;
+    return Math.ceil(ids.length / cols) * rowH;
   };
   const clusterIds = _clusters.map(c => 'cluster_' + c.id);
-  if (clusterIds.length) { y += placeGrid(clusterIds, y) + BELOW_GAP; }
+  if (clusterIds.length) { y += placeGrid(clusterIds, y, NODE_H) + BELOW_GAP; }
   const instByColCx = new Map();
   const noColInsts = [];
   sortByName(_colSrvs).forEach(s => (s.services || []).forEach(svc => {
@@ -637,19 +665,31 @@ export function computeHierarchicalPositions(opts = {}) {
     const n = insts.length;
     const cols = Math.ceil(Math.sqrt(n));
     insts.forEach((id, i) => {
-      pos[id] = { x: cx + (i % cols - (cols - 1) / 2) * NODE_W, y: y + Math.floor(i / cols) * NODE_H };
+      pos[id] = { x: cx + (i % cols - (cols - 1) / 2) * NODE_W, y: y + Math.floor(i / cols) * INST_H };
     });
   });
-  if (noColInsts.length) placeGrid(noColInsts, y);
+  if (noColInsts.length) placeGrid(noColInsts, y, INST_H);
 
+  // ── Routers: centered over their own group's column span (not an
+  // average across possibly-distant environments), so a router always sits
+  // exactly above its own children. Routers with no relevant group in the
+  // current (possibly filtered) view fall back to a plain row.
   if (_routers.length || _externSrvs.length) {
     if (_routers.length) {
       const rootRouters   = _routers.filter(r => !r.upstream_router_id);
       const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
-      _routers.forEach((r, idx) => {
-        const xs = (r.environments || []).map(e => envColCx.get(e.id)).filter(x => x !== undefined);
-        const rx = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length
-                             : (idx - (_routers.length - 1) / 2) * NODE_W;
+      const looseRouters  = _routers.filter(r => !groupByRouterId.has(r.id));
+      let looseIdx = 0;
+      _routers.forEach(r => {
+        const g = groupByRouterId.get(r.id);
+        let rx;
+        if (g) {
+          const cols = colDefs.filter(cd => cd.groupKey === r.id);
+          rx = (cols[0].cx + cols[cols.length - 1].cx) / 2;
+        } else {
+          rx = (looseIdx - (looseRouters.length - 1) / 2) * NODE_W;
+          looseIdx += 1;
+        }
         pos['router_' + r.id] = { x: rx, y: -NODE_H };
       });
       providerNames.forEach((p, i) => {
@@ -658,10 +698,33 @@ export function computeHierarchicalPositions(opts = {}) {
     }
     pos['internet_cloud'] = { x: 0, y: -3 * NODE_H };
   }
+
+  // ── www/extern servers: placed directly above their own gateway router
+  // when determinable, remaining ones in a global fallback row up top.
   if (_externSrvs.length) {
-    const n = _externSrvs.length;
-    [..._externSrvs].sort((a, b) => a.hostname.localeCompare(b.hostname))
-      .forEach((s, i) => { pos[s.id] = { x: (i - (n - 1) / 2) * NODE_W, y: -4 * NODE_H }; });
+    const byRouter = new Map();
+    const fallback = [];
+    _externSrvs.forEach(s => {
+      if (s.gateway_router_id && pos['router_' + s.gateway_router_id]) {
+        if (!byRouter.has(s.gateway_router_id)) byRouter.set(s.gateway_router_id, []);
+        byRouter.get(s.gateway_router_id).push(s);
+      } else {
+        fallback.push(s);
+      }
+    });
+    byRouter.forEach((srvs, routerId) => {
+      const rPos = pos['router_' + routerId];
+      const n = srvs.length;
+      sortByName(srvs).forEach((s, i) => {
+        pos[s.id] = { x: rPos.x + (i - (n - 1) / 2) * NODE_W, y: rPos.y - NODE_H };
+      });
+    });
+    if (fallback.length) {
+      const n = fallback.length;
+      sortByName(fallback).forEach((s, i) => {
+        pos[s.id] = { x: (i - (n - 1) / 2) * NODE_W, y: -4 * NODE_H };
+      });
+    }
   }
 
   return pos;
@@ -834,8 +897,15 @@ export function renderGraph(skipFit = false) {
       }
     : {
         physics: {
-          barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: 0.09 },
-          stabilization: { iterations: 150 },
+          barnesHut: {
+            gravitationalConstant: -12000,
+            centralGravity: 0.15,
+            springLength: 220,
+            springConstant: 0.03,
+            damping: 0.15,
+            avoidOverlap: 0.6,
+          },
+          stabilization: { iterations: 400, fit: true },
         },
         interaction: { hover: true, tooltipDelay: 200, maxZoomLevel: 5 },
         edges: { smooth: { enabled: false } },

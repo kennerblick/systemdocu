@@ -28,7 +28,7 @@ export const allRouters = [];
 export const allClusters = [];
 
 // Layout state
-export let layoutMode = 'physics';
+export let layoutMode = 'hierarchical';
 /** Update the current layout mode string. */
 export function setLayoutMode(m) { layoutMode = m; }
 
@@ -71,9 +71,8 @@ export function setInetNodeIds(ids) { inetNodeIds.length = 0; ids.forEach(id => 
 /** Replace inetEdgeIds contents. */
 export function setInetEdgeIds(ids) { inetEdgeIds.length = 0; ids.forEach(id => inetEdgeIds.push(id)); }
 
-export let showInternet = false;
-/** Set the showInternet flag. */
-export function setShowInternet(v) { showInternet = v; }
+// Internet/router topology is always shown (no user toggle).
+export const showInternet = true;
 
 export let hiddenByFilter = new Set();
 /** Replace the hiddenByFilter Set. */

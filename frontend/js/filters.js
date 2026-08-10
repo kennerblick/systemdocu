@@ -1,6 +1,6 @@
 /*
- * filters.js — environment/application filter logic and internet-toggle handler.
- * Exports: applyFilters, updateFilters, toggleInternet, initFilters.
+ * filters.js — environment/application filter logic.
+ * Exports: applyFilters, updateFilters, initFilters.
  */
 'use strict';
 
@@ -10,7 +10,7 @@ import {
   network, nodes, edges,
   layoutMode,
   inetNodeIds, inetEdgeIds,
-  showInternet, setShowInternet,
+  showInternet,
   showingInstances,
   hiddenByFilter, setHiddenByFilter,
   isExternServer,
@@ -385,23 +385,11 @@ export function applyFilters(skipFit = false) {
 }
 
 /**
- * Handles the Internet-toggle checkbox — shows/hides internet nodes and extern servers.
- * Delegates to applyFilters() so the toggle only controls visibility for the
- * unfiltered view; while a filter is active, filter relevance decides and
- * the toggle has no effect on already-relevant gateways/internet nodes.
- */
-export function toggleInternet() {
-  setShowInternet(document.getElementById('show-internet').checked);
-  applyFilters(true);
-}
-
-/**
  * Registers filter dropdown change listeners.
  */
 export function initFilters() {
   ['env-filter', 'app-filter'].forEach(id => {
     document.getElementById(id).addEventListener('change', () => applyFilters());
   });
-  document.getElementById('show-internet').addEventListener('change', toggleInternet);
   document.getElementById('filter-reset-btn').addEventListener('click', resetFilters);
 }

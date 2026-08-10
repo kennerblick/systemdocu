@@ -199,7 +199,7 @@ Relationen
 | VM-Instanzen | Werden visuell im farbigen Bereich ihres Hyper-V-Hosts dargestellt |
 | Klick auf Cluster-Raute | Öffnet Cluster-Sidebar |
 
-**Linke Seite**: Internetanschlüsse/Router (erscheinen nur wenn Toggle „🌐 Internet" aktiv).
+**Linke Seite/oben**: Internetanschlüsse/Router (immer sichtbar).
 
 **Sidebar-Breite**: Die Sidebar lässt sich durch Ziehen des Trennbalkens zwischen Graph und Sidebar auf eine beliebige Breite (280–700 px) anpassen.
 
@@ -216,7 +216,7 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 
 | Schaltfläche | Beschreibung |
 |---|---|
-| **Hierarchisch** | Umgebungen als vertikale Spalten, Server und Instanzen in Zeilen; Internet links |
+| **Hierarchisch** (Standard) | Nach Internetanschluss gruppiert: www-Server über ihrem Router, darunter der Router, darunter — getrennt durch größeren Abstand — je eine Spalte pro zugehöriger Umgebung (auch wenn mehrere Umgebungen an einem Anschluss hängen) |
 | **Physik** | Kräftebasiertes Layout, frei verschiebbar |
 
 Jede Umgebung erscheint zusätzlich als sechseckiger **Switch**-Knoten in ihrer
@@ -287,7 +287,7 @@ Schaltfläche **Umgebungen**:
 
 ### Internetanschlüsse & Gateway-Verlauf
 
-Schaltfläche **Anschlüsse** (sichtbar wenn Toggle **🌐 Internet** aktiv oder unabhängig davon):
+Schaltfläche **Anschlüsse**:
 
 | Feld | Beschreibung |
 |---|---|
@@ -304,7 +304,7 @@ Schaltfläche **Anschlüsse** (sichtbar wenn Toggle **🌐 Internet** aktiv oder
 1. Eintrag „FW-Provider" anlegen — kein verknüpfter Server, Upstream leer → erscheint links fixiert
 2. Server1 → Bearbeiten → „Ist Gateway-Server" aktivieren
 3. Umgebungen (`198.51.100.0/24`, `203.0.113.0/24`, …) → Default-Gateway-Gerät: `GW-Server1` wählen
-4. Mit Toggle **🌐 Internet** einblenden → Graph zeigt:
+4. Graph zeigt (immer sichtbar):
    `🌐 Internet → 🔒 FW-Provider → server1 → alle Server in diesen Netzen`
 
 ### Server-Relationen
