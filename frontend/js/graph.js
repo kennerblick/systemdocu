@@ -38,6 +38,18 @@ function serverColor(server) {
 }
 
 /**
+ * Returns the native fill color for a server/instance node based on its
+ * assigned application(s): white with no application, the application's own
+ * color with exactly one, or white again (with a centered multi-color pie
+ * drawn on top in beforeDrawing, see drawAppBadge) with several — a single
+ * flat vis `color` can't represent more than one color on its own.
+ */
+function appNodeColor(apps) {
+  if (apps.length === 1) return apps[0].color;
+  return '#ffffff';
+}
+
+/**
  * Draws a small application-color badge at (x,y) with radius r — a solid
  * circle for one application, or evenly-sized pie slices (one per
  * app.color) for several, so multi-app membership reads at a glance.
@@ -73,13 +85,15 @@ function drawAppBadge(ctx, x, y, r, apps) {
  * Builds a vis-network node object for the given server.
  */
 export function buildNode(server) {
-  const col = serverColor(server);
+  const col = appNodeColor(server.applications || []);
+  const border = col === '#ffffff' ? '#9ca3af' : col;
+  const highlightBorder = col === '#ffffff' ? '#4b5563' : '#ffffff';
   return {
     id: server.id,
     label: displayName(server),
     shape: 'dot',
     size: 18,
-    color: { background: col, border: col, highlight: { background: col, border: '#fff' } },
+    color: { background: col, border, highlight: { background: col, border: highlightBorder } },
     font: { color: '#e0e0e0', size: 13 },
     title: '[' + escHtml(server.os_type) + '] ' + escHtml(server.hostname) +
            (server.common_name ? ' (' + escHtml(server.common_name) + ')' : '') +
@@ -101,6 +115,14 @@ function buildInstanceNodesEdges() {
         const gwR = inst.gateway_router_id ? allRouters.find(r => r.id === inst.gateway_router_id) : null;
         const gwS = inst.gateway_server_id ? allServers.find(sv => sv.id === inst.gateway_server_id) : null;
         const gwI = inst.gateway_instance_id ? im[inst.gateway_instance_id] : null;
+        const ownAppIds = new Set((inst.applications || []).map(a => a.id));
+        const inheritedIds = new Set(s.inherited_application_ids || []);
+        const effectiveApps = [
+          ...(inst.applications || []),
+          ...(s.applications || []).filter(a => inheritedIds.has(a.id) && !ownAppIds.has(a.id)),
+        ];
+        const nodeCol = appNodeColor(effectiveApps);
+        const nodeBorder = nodeCol === '#ffffff' ? '#9ca3af' : nodeCol;
         instNodes.push({
           id: 'inst_' + inst.id,
           label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
@@ -115,8 +137,8 @@ function buildInstanceNodesEdges() {
                  ((inst.own_services || []).length
                    ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type] || '⚙') + ' ' + escHtml(s.type) + (s.port ? ':' + s.port : '')).join('  ') : ''),
           shape: 'box',
-          color: { background: col + 'bb', border: col, highlight: { background: col, border: '#fff' } },
-          font: { color: '#f0f0f0', size: 11 },
+          color: { background: nodeCol, border: nodeBorder, highlight: { background: nodeCol, border: '#ffffff' } },
+          font: { color: nodeCol === '#ffffff' ? '#1f2937' : '#f0f0f0', size: 11 },
           margin: { top: 5, bottom: 5, left: 7, right: 7 },
           borderWidth: 1,
         });
@@ -137,7 +159,16 @@ function buildInstanceNodesEdges() {
             color: { color: env.color, opacity: 0.3 },
           });
         });
-        if (inst.gateway_router_id) {
+        // Same redundancy check as the server-level gw_srv_ edges: skip when
+        // the instance's gateway just matches one of its environments'
+        // default gateway, since switch_mem_inst_ + switch_gw_ already draw
+        // that path via the switch.
+        const instMatchesEnvRouter = inst.gateway_router_id &&
+          (inst.environments || []).some(e => e.default_gateway_router_id === inst.gateway_router_id);
+        const instMatchesEnvServer = inst.gateway_server_id &&
+          (inst.environments || []).some(e => e.default_gateway_server_id === inst.gateway_server_id);
+
+        if (inst.gateway_router_id && !instMatchesEnvRouter) {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
@@ -146,7 +177,7 @@ function buildInstanceNodesEdges() {
             title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
           });
-        } else if (inst.gateway_server_id) {
+        } else if (inst.gateway_server_id && !instMatchesEnvServer) {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: inst.gateway_server_id, to: 'inst_' + inst.id,
@@ -698,7 +729,17 @@ export function renderGraph(skipFit = false) {
   swEdges.forEach(e => edgeData.push(e));
 
   allServers.forEach(s => {
-    if (s.gateway_router_id && (layoutMode !== 'hierarchical' || showInternet)) {
+    // Skip the direct gateway edge when it just matches one of the server's
+    // environments' own default gateway — that path is already drawn via
+    // switch_mem_srv_ + switch_gw_ (server → switch → gateway). Only a
+    // deliberate per-server override (differing from the env default) still
+    // gets its own direct arrow.
+    const matchesEnvDefaultRouter = s.gateway_router_id &&
+      (s.environments || []).some(e => e.default_gateway_router_id === s.gateway_router_id);
+    const matchesEnvDefaultServer = s.gateway_server_id &&
+      (s.environments || []).some(e => e.default_gateway_server_id === s.gateway_server_id);
+
+    if (s.gateway_router_id && !matchesEnvDefaultRouter && (layoutMode !== 'hierarchical' || showInternet)) {
       const eid = 'gw_srv_' + s.id;
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
@@ -709,7 +750,7 @@ export function renderGraph(skipFit = false) {
         hidden: !showInternet,
       });
       inetEdgeIds.push(eid);
-    } else if (s.gateway_server_id) {
+    } else if (s.gateway_server_id && !matchesEnvDefaultServer) {
       const eid = 'gw_srv_' + s.id;
       const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
       edgeData.push({
@@ -782,20 +823,22 @@ export function renderGraph(skipFit = false) {
   renderLegend();
 
   net.on('beforeDrawing', ctx => {
-    // Application-color badges on server dots — drawn regardless of zoom /
-    // instance-visibility state, since server nodes exist in both.
+    // Multi-application servers get a native white fill (a flat vis `color`
+    // can't show more than one color), so draw the real pie-slice breakdown
+    // centered on top — drawn regardless of zoom/instance-visibility state,
+    // since server nodes exist in both.
     allServers.forEach(server => {
       if (hiddenByFilter.has(server.id)) return;
       const apps = server.applications || [];
-      if (!apps.length) return;
+      if (apps.length < 2) return;
       let pos;
       try { pos = net.getPosition(server.id); } catch (e) { return; }
-      drawAppBadge(ctx, pos.x + 9, pos.y + 9, 7, apps);
+      drawAppBadge(ctx, pos.x, pos.y, 16, apps);
     });
 
     if (!showingInstances) return;
 
-    // Application-color badges on instance boxes — effective apps = the
+    // Same for multi-application instance boxes — effective apps = the
     // instance's own applications plus whichever of its server's tags opted
     // into inherit_to_instances (server.inherited_application_ids).
     allServers.forEach(server => {
@@ -805,12 +848,12 @@ export function renderGraph(skipFit = false) {
       (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
         const ownIds = new Set((inst.applications || []).map(a => a.id));
         const effective = [...(inst.applications || []), ...inheritedApps.filter(a => !ownIds.has(a.id))];
-        if (!effective.length) return;
+        if (effective.length < 2) return;
         const n = nodes.get('inst_' + inst.id);
         if (!n || n.hidden) return;
         let pos;
         try { pos = net.getPosition('inst_' + inst.id); } catch (e) { return; }
-        drawAppBadge(ctx, pos.x, pos.y + 12, 3.5, effective);
+        drawAppBadge(ctx, pos.x, pos.y, 8, effective);
       }));
     });
 

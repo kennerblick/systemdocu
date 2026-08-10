@@ -221,10 +221,13 @@ Das Suchfeld in der Toolbar (Lupe) durchsucht alle **Servernamen**, **Instanznam
 
 Jede Umgebung erscheint zusätzlich als sechseckiger **Switch**-Knoten in ihrer
 Umgebungsfarbe, verbunden mit allen Servern/Instanzen der Umgebung sowie —
-falls konfiguriert — ihrem Standard-Gateway (Router oder GW-Server).
-Server-Punkte und Service/Instanz-Boxen zeigen zusätzlich einen kleinen
-farbigen Anwendungs-Punkt (halb so groß bei Instanzen); bei mehreren
-Anwendungen ist der Punkt in gleich große Farbsegmente aufgeteilt.
+falls konfiguriert — ihrem Standard-Gateway (Router oder GW-Server). Server-
+und Instanz-Gateway-Verbindungen laufen dabei über den passenden Switch statt
+als eigene Linie direkt zum Gateway — nur ein individuell abweichendes
+Gateway (nicht das Umgebungs-Standard-Gateway) bekommt weiterhin eine eigene
+Linie. Server-Punkte und Service/Instanz-Boxen sind in der Farbe ihrer
+Anwendung(en) gefüllt (halb so groß bei Instanzen); ohne Anwendung sind sie
+weiß, bei mehreren Anwendungen in gleich große Farbsegmente aufgeteilt.
 
 ### Filter
 
