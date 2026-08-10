@@ -94,7 +94,11 @@ function _ensureFlowAnimation() {
   _flowAnimStarted = true;
   setInterval(() => {
     _flowPhase += 1;
-    if (network) network.redraw();
+    // An out-of-band redraw() call while barnesHut stabilization is still
+    // actively iterating corrupts the in-progress simulation — free (non-
+    // fixed) nodes end up with permanently null/NaN positions. Physics-off
+    // (hierarchical) or already-stabilized networks redraw safely.
+    if (network && (!network.physics.physicsEnabled || network.physics.stabilized)) network.redraw();
   }, 60);
 }
 
@@ -207,7 +211,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
             color: { color: '#f97316', opacity: 0.65 },
             title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
@@ -216,7 +220,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: inst.gateway_server_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + escHtml((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
@@ -224,7 +228,7 @@ function buildInstanceNodesEdges() {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
+            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
             color: { color: '#22d3ee', opacity: 0.65 },
             title: 'Gateway: ' + escHtml(gwI ? gwI.name : String(inst.gateway_instance_id)),
           });
@@ -336,7 +340,7 @@ function buildInternetGraph() {
     newInetNodeIds.push(nodeId);
     const eid = 'inet_prov_' + nodeId;
     iEdges.push({ id: eid, from: 'internet_cloud', to: nodeId, arrows: 'to', width: 2,
-      physics: false, color: { color: '#3b82f6' }, hidden });
+      color: { color: '#3b82f6' }, hidden });
     newInetEdgeIds.push(eid);
   });
 
@@ -374,7 +378,6 @@ function buildInternetGraph() {
       iEdges.push({
         id: linkId, from: fromNode, to: r.server_id,
         arrows: 'to', width: 1.5, dashes: [4, 2],
-        physics: false,
         color: { color: '#6b7280' },
         title: 'Gateway-Server',
         hidden,
@@ -460,7 +463,7 @@ function buildEnvironmentSwitches() {
       const r = allRouters.find(rt => rt.id === env.default_gateway_router_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: 'router_' + env.default_gateway_router_id,
-        arrows: 'to', width: 0.75, dashes: [4, 2], physics: false,
+        arrows: 'to', width: 0.75, dashes: [4, 2],
         color: { color: env.color, opacity: 0.75 },
         title: 'Gateway: ' + escHtml(r ? r.name : String(env.default_gateway_router_id)),
       });
@@ -468,7 +471,7 @@ function buildEnvironmentSwitches() {
       const gs = allServers.find(sv => sv.id === env.default_gateway_server_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: env.default_gateway_server_id,
-        arrows: 'to', width: 0.75, dashes: [4, 2], physics: false,
+        arrows: 'to', width: 0.75, dashes: [4, 2],
         color: { color: env.color, opacity: 0.75 },
         title: 'Gateway: ' + escHtml(gs ? gs.hostname : String(env.default_gateway_server_id)),
       });
@@ -489,8 +492,14 @@ function buildEnvironmentSwitches() {
  */
 export function computeHierarchicalPositions(opts = {}) {
   const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
-        SWITCH_GAP = 60, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
-        APP_GROUP_GAP = 50;
+        SWITCH_GAP = 55, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
+        APP_GROUP_GAP = 50,
+        // Vertical clearance between the tiers above the server columns:
+        // switch → router → www-server → provider → internet cloud. Each is
+        // its own gap (rather than a fixed multiple of NODE_H) so hexagon
+        // switches, router dots and www-server dots — which aren't NODE_H
+        // tall — don't end up close enough to visually overlap.
+        ROUTER_GAP = 75, WWW_GAP = 70, PROVIDER_GAP = 70, CLOUD_GAP = 70;
   const pos = {};
 
   const _servers  = opts.srvFilter  ? allServers.filter(s => opts.srvFilter.has(s.id))   : allServers;
@@ -740,6 +749,11 @@ export function computeHierarchicalPositions(opts = {}) {
   // average across possibly-distant environments), so a router always sits
   // exactly above its own children. Routers with no relevant group in the
   // current (possibly filtered) view fall back to a plain row.
+  const routerY = -(SWITCH_GAP + ROUTER_GAP);
+  const wwwY = routerY - WWW_GAP;
+  const providerY = wwwY - PROVIDER_GAP;
+  const cloudY = providerY - CLOUD_GAP;
+
   if (_routers.length || _externSrvs.length) {
     if (_routers.length) {
       const rootRouters   = _routers.filter(r => !r.upstream_router_id);
@@ -756,17 +770,19 @@ export function computeHierarchicalPositions(opts = {}) {
           rx = (looseIdx - (looseRouters.length - 1) / 2) * NODE_W;
           looseIdx += 1;
         }
-        pos['router_' + r.id] = { x: rx, y: -NODE_H };
+        pos['router_' + r.id] = { x: rx, y: routerY };
       });
       providerNames.forEach((p, i) => {
-        pos['provider_' + p] = { x: (i - (providerNames.length - 1) / 2) * NODE_W, y: -2 * NODE_H };
+        pos['provider_' + p] = { x: (i - (providerNames.length - 1) / 2) * NODE_W, y: providerY };
       });
     }
-    pos['internet_cloud'] = { x: 0, y: -3 * NODE_H };
+    pos['internet_cloud'] = { x: 0, y: cloudY };
   }
 
   // ── www/extern servers: placed directly above their own gateway router
-  // when determinable, remaining ones in a global fallback row up top.
+  // when determinable, remaining ones in a global fallback row up top — both
+  // share the same www tier (between the router and provider tiers) so they
+  // don't collide with either.
   if (_externSrvs.length) {
     const byRouter = new Map();
     const fallback = [];
@@ -782,13 +798,13 @@ export function computeHierarchicalPositions(opts = {}) {
       const rPos = pos['router_' + routerId];
       const n = srvs.length;
       sortByName(srvs).forEach((s, i) => {
-        pos[s.id] = { x: rPos.x + (i - (n - 1) / 2) * NODE_W, y: rPos.y - NODE_H };
+        pos[s.id] = { x: rPos.x + (i - (n - 1) / 2) * NODE_W, y: wwwY };
       });
     });
     if (fallback.length) {
       const n = fallback.length;
       sortByName(fallback).forEach((s, i) => {
-        pos[s.id] = { x: (i - (n - 1) / 2) * NODE_W, y: -4 * NODE_H };
+        pos[s.id] = { x: (i - (n - 1) / 2) * NODE_W, y: wwwY };
       });
     }
   }
@@ -837,10 +853,17 @@ export function renderGraph(skipFit = false) {
   const edgeData = [];
 
   const isHierG = layoutMode === 'hierarchical';
+  let externIdx = 0;
   allServers.forEach((s, i) => {
     if (!isExternServer(s)) return;
     if (!showInternet) { nodeData[i].hidden = true; nodeData[i].physics = false; }
-    if (!isHierG) { nodeData[i].x = -1700; nodeData[i].y = 0; }
+    // Spread multiple extern servers out instead of stacking them on one
+    // identical coordinate — barnesHut repulsion divides by the distance
+    // between two nodes, and several free (non-fixed) nodes spawning at the
+    // exact same point produces a division-by-zero whose NaN cascades
+    // through the shared quadtree and corrupts the *entire* simulation,
+    // including completely unrelated nodes.
+    if (!isHierG) { nodeData[i].x = -1700 + (externIdx % 5) * 90; nodeData[i].y = Math.floor(externIdx / 5) * 90; externIdx++; }
   });
 
   allRelations.forEach(r => {
@@ -909,7 +932,7 @@ export function renderGraph(skipFit = false) {
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
         id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
-        arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
+        arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
         color: { color: '#f97316', opacity: 0.65 },
         title: 'Gateway: ' + escHtml(gwR ? gwR.name : String(s.gateway_router_id)),
         hidden: !showInternet,
@@ -920,7 +943,7 @@ export function renderGraph(skipFit = false) {
       const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
       edgeData.push({
         id: eid, from: s.gateway_server_id, to: s.id,
-        arrows: 'to', width: 0.75, dashes: [4, 4], physics: false, smooth: { enabled: false },
+        arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
         color: { color: '#22d3ee', opacity: 0.65 },
         title: 'Gateway: ' + escHtml(gwS ? gwS.hostname : String(s.gateway_server_id)),
       });
@@ -1178,14 +1201,19 @@ function _edgeSignature(e) {
  * Applies a minimal diff to the live vis DataSets, preserving physics positions.
  */
 export function patchGraph(newNodeData, newEdgeData) {
-  const oldNodeIds = new Set(nodes.getIds().map(String));
-  const oldEdgeIds = new Set(edges.getIds().map(String));
+  const oldNodeIdsRaw = nodes.getIds();
+  const oldEdgeIdsRaw = edges.getIds();
+  const oldNodeIds = new Set(oldNodeIdsRaw.map(String));
+  const oldEdgeIds = new Set(oldEdgeIdsRaw.map(String));
 
   const newNodeMap = new Map(newNodeData.map(n => [String(n.id), n]));
   const newEdgeMap = new Map(newEdgeData.map(e => [String(e.id), e]));
 
-  const removeNodes = [...oldNodeIds].filter(id => !newNodeMap.has(id));
-  const removeEdges = [...oldEdgeIds].filter(id => !newEdgeMap.has(id));
+  // DataSet.remove() requires ids in their original (stored) type — a
+  // stringified numeric server id silently fails to match, so removal must
+  // use the untouched raw ids, not the stringified sets used for the diff.
+  const removeNodes = oldNodeIdsRaw.filter(id => !newNodeMap.has(String(id)));
+  const removeEdges = oldEdgeIdsRaw.filter(id => !newEdgeMap.has(String(id)));
   if (removeNodes.length) nodes.remove(removeNodes);
   if (removeEdges.length) edges.remove(removeEdges);
 
