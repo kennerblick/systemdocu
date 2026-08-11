@@ -1341,10 +1341,13 @@ export function renderGraph(skipFit = false) {
     // environments' own default gateway — that path is already drawn via
     // switch_mem_srv_ + switch_gw_ (server → switch → gateway). Only a
     // deliberate per-server override (differing from the env default) still
-    // gets its own direct arrow.
-    const matchesEnvDefaultRouter = s.gateway_router_id &&
+    // gets its own direct arrow. Exception: a server flagged is_gateway acts
+    // as a network's own gateway/router, so its uplink is the important
+    // fact, not a redundant duplicate of the shared, arrowless member edge —
+    // it always keeps its direct arrow.
+    const matchesEnvDefaultRouter = !s.is_gateway && s.gateway_router_id &&
       (s.environments || []).some(e => e.default_gateway_router_id === s.gateway_router_id);
-    const matchesEnvDefaultServer = s.gateway_server_id &&
+    const matchesEnvDefaultServer = !s.is_gateway && s.gateway_server_id &&
       (s.environments || []).some(e => e.default_gateway_server_id === s.gateway_server_id);
 
     if (s.gateway_router_id && !matchesEnvDefaultRouter && (layoutMode !== 'hierarchical' || showInternet)) {
