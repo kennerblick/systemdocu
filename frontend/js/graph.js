@@ -38,6 +38,18 @@ function serverColor(server) {
 }
 
 /**
+ * A server's "primary" application (alphabetically first of any it has) —
+ * used both to decide which application-switch a server hangs off of
+ * (buildEnvironmentSwitches) and to group servers side by side within an
+ * environment column (computeHierarchicalPositions), so both stay in sync.
+ */
+function firstApp(server) {
+  const apps = server.applications || [];
+  if (!apps.length) return null;
+  return [...apps].sort((a, b) => a.name.localeCompare(b.name))[0];
+}
+
+/**
  * Returns the native fill color for a server/instance node based on its
  * assigned application(s): white with no application, the application's own
  * color with exactly one, or white again (with a centered multi-color pie
@@ -210,26 +222,26 @@ function buildInstanceNodesEdges() {
         if (inst.gateway_router_id && !instMatchesEnvRouter) {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
-            from: 'router_' + inst.gateway_router_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#f97316', opacity: 0.65 },
+            from: 'inst_' + inst.id, to: 'router_' + inst.gateway_router_id,
+            arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
+            color: { color: '#f97316', opacity: 0.45 },
             title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
           });
         } else if (inst.gateway_server_id && !instMatchesEnvServer) {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
-            from: inst.gateway_server_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#22d3ee', opacity: 0.65 },
+            from: 'inst_' + inst.id, to: inst.gateway_server_id,
+            arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
+            color: { color: '#22d3ee', opacity: 0.45 },
             title: 'Gateway: ' + escHtml((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
         } else if (inst.gateway_instance_id) {
           gwInstEdges.push({
             id: 'gw_inst_' + inst.id,
-            from: 'inst_' + inst.gateway_instance_id, to: 'inst_' + inst.id,
-            arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#22d3ee', opacity: 0.65 },
+            from: 'inst_' + inst.id, to: 'inst_' + inst.gateway_instance_id,
+            arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
+            color: { color: '#22d3ee', opacity: 0.45 },
             title: 'Gateway: ' + escHtml(gwI ? gwI.name : String(inst.gateway_instance_id)),
           });
         }
@@ -454,7 +466,47 @@ function buildEnvironmentSwitches() {
       title: escHtml(env.name) + (env.subnet ? '<br>' + escHtml(env.subnet) : ''),
     });
 
+    // A member server with an assigned application connects to a small
+    // application-switch first, which then links up to the environment
+    // switch — a bare member (no application) connects to the environment
+    // switch directly, same as before.
+    const byApp = new Map(); // appId -> { app, servers: [] }
+    const bareMembers = [];
     memberServers.forEach(s => {
+      const app = firstApp(s);
+      if (!app) { bareMembers.push(s); return; }
+      if (!byApp.has(app.id)) byApp.set(app.id, { app, servers: [] });
+      byApp.get(app.id).servers.push(s);
+    });
+
+    byApp.forEach(({ app, servers }) => {
+      const appNodeId = 'appswitch_' + env.id + '_' + app.id;
+      swNodes.push({
+        id: appNodeId,
+        label: '🔗 ' + app.name,
+        shape: 'hexagon',
+        size: 8,
+        color: { background: app.color, border: app.color, highlight: { background: app.color, border: '#fff' } },
+        font: { color: '#e0e0e0', size: 9 },
+        title: escHtml(app.name),
+      });
+      servers.forEach(s => {
+        swEdges.push({
+          id: 'appswitch_mem_srv_' + s.id, from: appNodeId, to: s.id,
+          arrows: '', dashes: [2, 4], width: 1.5, length: 60,
+          color: { color: app.color, opacity: 0.35 },
+          title: 'Quelle: 🔗 ' + escHtml(app.name) + '<br>Ziel: ' + escHtml(s.hostname),
+        });
+      });
+      swEdges.push({
+        id: 'appswitch_link_' + env.id + '_' + app.id, from: appNodeId, to: nodeId,
+        arrows: 'to', width: 1, dashes: [3, 3],
+        color: { color: env.color, opacity: 0.5 },
+        title: 'Quelle: 🔗 ' + escHtml(app.name) + '<br>Ziel: 🔌 ' + escHtml(env.name),
+      });
+    });
+
+    bareMembers.forEach(s => {
       swEdges.push({
         id: 'switch_mem_srv_' + s.id + '_' + env.id, from: nodeId, to: s.id,
         arrows: '', dashes: [2, 4], width: 2, length: 110,
@@ -467,16 +519,16 @@ function buildEnvironmentSwitches() {
       const r = allRouters.find(rt => rt.id === env.default_gateway_router_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: 'router_' + env.default_gateway_router_id,
-        arrows: 'to', width: 0.75, dashes: [4, 2],
-        color: { color: env.color, opacity: 0.75 },
+        arrows: 'to', width: 0.6, dashes: [4, 2],
+        color: { color: env.color, opacity: 0.5 },
         title: 'Gateway: ' + escHtml(r ? r.name : String(env.default_gateway_router_id)),
       });
     } else if (env.default_gateway_server_id) {
       const gs = allServers.find(sv => sv.id === env.default_gateway_server_id);
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: env.default_gateway_server_id,
-        arrows: 'to', width: 0.75, dashes: [4, 2],
-        color: { color: env.color, opacity: 0.75 },
+        arrows: 'to', width: 0.6, dashes: [4, 2],
+        color: { color: env.color, opacity: 0.5 },
         title: 'Gateway: ' + escHtml(gs ? gs.hostname : String(env.default_gateway_server_id)),
       });
     }
@@ -496,8 +548,8 @@ function buildEnvironmentSwitches() {
  */
 export function computeHierarchicalPositions(opts = {}) {
   const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
-        SWITCH_GAP = 55, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
-        APP_GROUP_GAP = 50,
+        SWITCH_GAP = 85, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
+        APP_GROUP_GAP = 50, APP_SWITCH_GAP = 45,
         // Vertical clearance between the tiers above the server columns:
         // switch → router → www-server → provider → internet cloud. Each is
         // its own gap (rather than a fixed multiple of NODE_H) so hexagon
@@ -541,25 +593,17 @@ export function computeHierarchicalPositions(opts = {}) {
   // application so the applications inside one environment render as
   // distinct side-by-side blocks instead of one mixed grid — servers with no
   // application form their own trailing "no application" group.
-  function appGroupKey(s) {
-    const apps = s.applications || [];
-    if (!apps.length) return '__none__';
-    return String([...apps].sort((a, b) => a.name.localeCompare(b.name))[0].id);
-  }
   function groupByApplication(servers) {
-    const groups = new Map(); // key -> { label, servers: [] }
+    const groups = new Map(); // appId ('__none__' for bare) -> { app, servers: [] }
     sortByName(servers).forEach(s => {
-      const key = appGroupKey(s);
-      if (!groups.has(key)) {
-        const apps = s.applications || [];
-        const label = apps.length ? [...apps].sort((a, b) => a.name.localeCompare(b.name))[0].name : '';
-        groups.set(key, { label, servers: [] });
-      }
+      const app = firstApp(s);
+      const key = app ? String(app.id) : '__none__';
+      if (!groups.has(key)) groups.set(key, { app, servers: [] });
       groups.get(key).servers.push(s);
     });
     const none = groups.get('__none__');
     groups.delete('__none__');
-    const list = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+    const list = [...groups.values()].sort((a, b) => a.app.name.localeCompare(b.app.name));
     if (none) list.push(none);
     return list;
   }
@@ -587,13 +631,16 @@ export function computeHierarchicalPositions(opts = {}) {
   // ends up drawn.
   function measureAppGroups(servers) {
     const groups = groupByApplication(servers)
-      .map(g => ({ units: g.servers.map(serverUnit) }))
+      .map(g => ({ app: g.app, units: g.servers.map(serverUnit) }))
       .map(g => ({ ...g, pack: gridPack(g.units) }));
     const width = groups.reduce((sum, g, i) => sum + g.pack.width + (i > 0 ? APP_GROUP_GAP : 0), 0);
     const height = groups.reduce((max, g) => Math.max(max, g.pack.height), 0);
     return { groups, width, height };
   }
-  function writeAppGroups(measured, gx0, y0) {
+  // envId is null for columns with no environment (a router's own direct
+  // server, or the generic "no environment" bucket) — those never get
+  // application-switches since there'd be no environment switch to link up to.
+  function writeAppGroups(measured, gx0, y0, envId) {
     let gx = gx0, maxHeight = 0;
     measured.groups.forEach(g => {
       const gcx = gx + g.pack.width / 2;
@@ -613,6 +660,7 @@ export function computeHierarchicalPositions(opts = {}) {
         });
         y += rowHeights[row] + INST_GAP;
       }
+      if (g.app && envId != null) pos['appswitch_' + envId + '_' + g.app.id] = { x: gcx, y: y0 - APP_SWITCH_GAP };
       maxHeight = Math.max(maxHeight, y - y0 - INST_GAP);
       gx += g.pack.width + APP_GROUP_GAP;
     });
@@ -822,7 +870,7 @@ export function computeHierarchicalPositions(opts = {}) {
   // own router tier — reads top-to-bottom as gateway → switch → members.
   envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: envColCy.get(envId) - SWITCH_GAP }; });
 
-  function placeColumn(servers, cx, cy) {
+  function placeColumn(servers, cx, cy, envId) {
     if (!servers.length) return 0;
     const m = measureColumn(servers);
     let y = cy;
@@ -854,13 +902,13 @@ export function computeHierarchicalPositions(opts = {}) {
     let bottomHeight = 0;
 
     if (m.regular.groups.length) {
-      bottomHeight = Math.max(bottomHeight, writeAppGroups(m.regular, gx, y));
+      bottomHeight = Math.max(bottomHeight, writeAppGroups(m.regular, gx, y, envId));
       gx += m.regular.width + (m.nestedBlocks.length ? APP_GROUP_GAP : 0);
     }
     m.nestedBlocks.forEach(nb => {
       const nbCx = gx + nb.width / 2;
       pos['switch_' + nb.env.id] = { x: nbCx, y: y - SWITCH_GAP };
-      bottomHeight = Math.max(bottomHeight, writeAppGroups(nb.measured, gx, y));
+      bottomHeight = Math.max(bottomHeight, writeAppGroups(nb.measured, gx, y, nb.env.id));
       gx += nb.width + APP_GROUP_GAP;
     });
 
@@ -869,7 +917,7 @@ export function computeHierarchicalPositions(opts = {}) {
 
   let maxColH = 0;
   rowInfo.forEach(ri => {
-    ri.cols.forEach(c => { maxColH = Math.max(maxColH, c.cy + placeColumn(c.servers, c.cx, c.cy)); });
+    ri.cols.forEach(c => { maxColH = Math.max(maxColH, c.cy + placeColumn(c.servers, c.cx, c.cy, c.envId)); });
   });
 
   let y = maxColH + BELOW_GAP;
@@ -1099,9 +1147,9 @@ export function renderGraph(skipFit = false) {
       const eid = 'gw_srv_' + s.id;
       const gwR = allRouters.find(r => r.id === s.gateway_router_id);
       edgeData.push({
-        id: eid, from: 'router_' + s.gateway_router_id, to: s.id,
-        arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
-        color: { color: '#f97316', opacity: 0.65 },
+        id: eid, from: s.id, to: 'router_' + s.gateway_router_id,
+        arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
+        color: { color: '#f97316', opacity: 0.45 },
         title: 'Gateway: ' + escHtml(gwR ? gwR.name : String(s.gateway_router_id)),
         hidden: !showInternet,
       });
@@ -1110,9 +1158,9 @@ export function renderGraph(skipFit = false) {
       const eid = 'gw_srv_' + s.id;
       const gwS = allServers.find(sv => sv.id === s.gateway_server_id);
       edgeData.push({
-        id: eid, from: s.gateway_server_id, to: s.id,
-        arrows: 'to', width: 0.75, dashes: [4, 4], smooth: { enabled: false },
-        color: { color: '#22d3ee', opacity: 0.65 },
+        id: eid, from: s.id, to: s.gateway_server_id,
+        arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
+        color: { color: '#22d3ee', opacity: 0.45 },
         title: 'Gateway: ' + escHtml(gwS ? gwS.hostname : String(s.gateway_server_id)),
       });
     }
@@ -1294,16 +1342,12 @@ export function renderGraph(skipFit = false) {
     edges.forEach(e => {
       const id = e.id;
       if (typeof id !== 'string') return;
-      // switch_gw_ points switch → gateway (gateway = e.to), but gw_srv_/
-      // gw_inst_ point gateway → dependent (gateway = e.from) — the flow
-      // must always drift toward whichever endpoint is the actual gateway.
-      let sourceId, gatewayId;
-      if (id.startsWith('switch_gw_')) { sourceId = e.from; gatewayId = e.to; }
-      else if (id.startsWith('gw_srv_') || id.startsWith('gw_inst_')) { sourceId = e.to; gatewayId = e.from; }
-      else return;
+      // All gateway edges point source → gateway (gateway = e.to), matching
+      // their arrowhead — the flow drifts the same direction.
+      if (!id.startsWith('switch_gw_') && !id.startsWith('gw_srv_') && !id.startsWith('gw_inst_')) return;
       if (e.hidden) return;
       let p1, p2;
-      try { p1 = net.getPosition(sourceId); p2 = net.getPosition(gatewayId); } catch (err) { return; }
+      try { p1 = net.getPosition(e.from); p2 = net.getPosition(e.to); } catch (err) { return; }
       const col = (e.color && e.color.color) || '#f97316';
       drawFlowOverlay(ctx, p1.x, p1.y, p2.x, p2.y, col);
     });

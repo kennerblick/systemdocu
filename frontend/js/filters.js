@@ -102,6 +102,9 @@ export function applyFilters(skipFit = false) {
     allEnvironments.forEach(env => {
       if (nodes.get('switch_' + env.id)) nodeUpdates.push({ id: 'switch_' + env.id, hidden: false, physics: true });
     });
+    nodes.forEach(n => {
+      if (typeof n.id === 'string' && n.id.startsWith('appswitch_')) nodeUpdates.push({ id: n.id, hidden: false, physics: true });
+    });
     inetNodeIds.forEach(id => { if (nodes.get(id)) nodeUpdates.push({ id, hidden: !showInternet, physics: showInternet }); });
     edges.forEach(e => {
       const id = e.id;
@@ -109,7 +112,7 @@ export function applyFilters(skipFit = false) {
       if (inetEdgeIds.includes(id)) { edgeUpdates.push({ id, hidden: !showInternet }); return; }
       if (id.startsWith('inet_extern_')) { edgeUpdates.push({ id, hidden: !showInternet }); return; }
       if (id.startsWith('gw_srv_') || id.startsWith('gw_inst_')) {
-        const needsInternet = typeof e.from === 'string' && e.from.startsWith('router_');
+        const needsInternet = typeof e.to === 'string' && e.to.startsWith('router_');
         edgeUpdates.push({ id, hidden: needsInternet && !showInternet });
       } else if (id.startsWith('ir_srv_')) {
         edgeUpdates.push({ id, hidden: showingInstances });
@@ -291,6 +294,24 @@ export function applyFilters(skipFit = false) {
       nodeUpdates.push({ id, hidden: swHidden, physics: !swHidden });
     }
   });
+  // Application-switches: visible when their environment is switch-visible
+  // *and* at least one of their actual members (via the appswitch_mem_srv_
+  // edges built for them) is currently visible.
+  const appswitchMembers = new Map(); // appswitchId -> Set(serverId)
+  edges.forEach(e => {
+    if (typeof e.id === 'string' && e.id.startsWith('appswitch_mem_srv_')) {
+      if (!appswitchMembers.has(e.from)) appswitchMembers.set(e.from, new Set());
+      appswitchMembers.get(e.from).add(e.to);
+    }
+  });
+  nodes.forEach(n => {
+    if (typeof n.id !== 'string' || !n.id.startsWith('appswitch_')) return;
+    const aEnvId = parseInt(n.id.split('_')[1]);
+    const memberIds = appswitchMembers.get(n.id) || new Set();
+    const hasVisibleMember = [...memberIds].some(sid => visibleSrvIds.has(sid));
+    const aHidden = !switchVisibleEnvIds.has(aEnvId) || !hasVisibleMember;
+    nodeUpdates.push({ id: n.id, hidden: aHidden, physics: !aHidden });
+  });
 
   // ── 7. Edge updates ───────────────────────────────────────────────────────
   // Gateway/internet-backbone edges are matched by prefix *before* the
@@ -315,10 +336,20 @@ export function applyFilters(skipFit = false) {
       const swEnvId = parseInt(id.replace('switch_gw_', ''));
       edgeUpdates.push({ id, hidden: !switchVisibleEnvIds.has(swEnvId) }); return;
     }
+    if (id.startsWith('appswitch_mem_srv_')) {
+      const aEnvId = parseInt(String(e.from).split('_')[1]);
+      edgeUpdates.push({ id, hidden: !switchVisibleEnvIds.has(aEnvId) || !visibleSrvIds.has(e.to) }); return;
+    }
+    if (id.startsWith('appswitch_link_')) {
+      const aEnvId = parseInt(id.replace('appswitch_link_', '').split('_')[0]);
+      const memberIds = appswitchMembers.get(e.from) || new Set();
+      const hasVisibleMember = [...memberIds].some(sid => visibleSrvIds.has(sid));
+      edgeUpdates.push({ id, hidden: !switchVisibleEnvIds.has(aEnvId) || !hasVisibleMember }); return;
+    }
     if (id.startsWith('gw_srv_')) {
-      const fromRouter = typeof e.from === 'string' && e.from.startsWith('router_');
-      const rHidden = fromRouter && hiddenRouterIds.has(parseInt(e.from.replace('router_', '')));
-      edgeUpdates.push({ id, hidden: !visibleSrvIds.has(e.to) || rHidden }); return;
+      const toRouter = typeof e.to === 'string' && e.to.startsWith('router_');
+      const rHidden = toRouter && hiddenRouterIds.has(parseInt(e.to.replace('router_', '')));
+      edgeUpdates.push({ id, hidden: !visibleSrvIds.has(e.from) || rHidden }); return;
     }
     if (id.startsWith('gw_inst_')) {
       const instId = parseInt(id.replace('gw_inst_', ''));
