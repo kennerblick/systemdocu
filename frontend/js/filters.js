@@ -220,8 +220,21 @@ export function applyFilters(skipFit = false) {
   // member, or is the one directly selected in the filter.
   const switchVisibleEnvIds = new Set();
   allEnvironments.forEach(env => {
-    const hasVisibleServerMember = allServers.some(s =>
-      visibleSrvIds.has(s.id) && (s.environments || []).some(e => e.id === env.id));
+    const hasVisibleServerMember = allServers.some(s => {
+      if (!visibleSrvIds.has(s.id)) return false;
+      if (!(s.environments || []).some(e => e.id === env.id)) return false;
+      // An application filter should only surface the environment(s) where
+      // a matching server actually "lives" (its primary membership) or the
+      // one explicitly picked in the environment dropdown — not every other
+      // network a multi-homed server (e.g. a gateway with an interface in
+      // several subnets) also happens to touch, which reads as clutter of
+      // unrelated environments rather than "where is this application".
+      if (appId && env.id !== envId) {
+        const primaryEnvId = s.environments && s.environments[0] && s.environments[0].id;
+        if (primaryEnvId !== env.id) return false;
+      }
+      return true;
+    });
     const hasVisibleInstMember = allServers.some(s => (s.services || []).some(svc =>
       (svc.instances || []).some(inst =>
         matchingInstIds.has(inst.id) && (inst.environments || []).some(e => e.id === env.id))));
