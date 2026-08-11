@@ -15,7 +15,6 @@ import {
   irSrvEdgeIds, setIrSrvEdgeIds,
   inetNodeIds, inetEdgeIds, setInetNodeIds, setInetEdgeIds,
   showInternet,
-  hiddenByFilter,
   showingInstances, setShowingInstances,
   INST_ZOOM_THRESHOLD,
   OS_COLORS, SVC_COLORS,
@@ -23,6 +22,7 @@ import {
   INST_ICONS,
   isExternServer,
   currentServerId, currentClusterId,
+  detailLevel,
 } from './state.js';
 
 import { buildInstServerMap, displayName, escHtml } from './utils.js';
@@ -579,11 +579,15 @@ export function computeHierarchicalPositions(opts = {}) {
   // far away, which made it unclear which instance belonged to which server.
   function serverUnit(s) {
     const instIds = [];
-    (s.services || []).forEach(svc => {
-      [...(svc.instances || [])].filter(inst => !_instF || _instF.has(inst.id))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .forEach(inst => instIds.push('inst_' + inst.id));
-    });
+    // Below 'full' detail, instances are hidden entirely — no point
+    // reserving space for a grid nothing will draw.
+    if (detailLevel === 'full') {
+      (s.services || []).forEach(svc => {
+        [...(svc.instances || [])].filter(inst => !_instF || _instF.has(inst.id))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(inst => instIds.push('inst_' + inst.id));
+      });
+    }
     // Single column, stacked straight down — narrower than a square grid
     // (doesn't widen the server's own column at all) at the cost of height,
     // which matters far less since the canvas scrolls/zooms freely.
@@ -712,6 +716,31 @@ export function computeHierarchicalPositions(opts = {}) {
   // and below it the regular (non-gateway) members' app-grouped grid side by
   // side with each nested environment's own switch + members.
   function measureColumn(servers) {
+    // Below 'servers' detail, no server (or below it, no instance) content
+    // is drawn at all — the column collapses to just whatever compact
+    // content this level does show, instead of reserving full server-grid
+    // space for things that are hidden anyway.
+    if (detailLevel === 'connections') {
+      return { mode: 'connections', width: NODE_W * 0.5, height: 0 };
+    }
+    if (detailLevel === 'apps') {
+      const appIds = [];
+      const seen = new Set();
+      sortByName(servers).forEach(s => {
+        const a = firstApp(s);
+        if (a && !seen.has(a.id)) { seen.add(a.id); appIds.push(a.id); }
+      });
+      const n = appIds.length;
+      const gridCols = n ? Math.max(1, Math.ceil(Math.sqrt(n))) : 0;
+      const cellW = NODE_W * 0.55, cellH = NODE_H * 0.55;
+      const rows = n ? Math.ceil(n / gridCols) : 0;
+      return {
+        mode: 'apps', appIds, gridCols, cellW, cellH,
+        width: Math.max(NODE_W * 0.5, gridCols * cellW),
+        height: rows * cellH,
+      };
+    }
+
     const gatewayServerIds = new Set(servers.filter(s => nestedEnvsByGatewayServer.has(s.id)).map(s => s.id));
     const gatewayServers = sortByName(servers.filter(s => gatewayServerIds.has(s.id)));
     const regularServers = servers.filter(s => !gatewayServerIds.has(s.id));
@@ -733,13 +762,13 @@ export function computeHierarchicalPositions(opts = {}) {
     const width = Math.max(gwPack.width, bottomWidth, NODE_W);
     const bottomHeight = Math.max(regular.height, ...nestedBlocks.map(b => b.measured.height), 0);
     const height = (gatewayServers.length ? gwPack.height + SWITCH_GAP : 0) + bottomHeight;
-    return { gatewayServers, gwPack, regular, nestedBlocks, width, height };
+    return { mode: 'servers', gatewayServers, gwPack, regular, nestedBlocks, width, height };
   }
 
   // How many NODE_W-wide slots a column needs.
   function colWidthUnits(servers) {
     if (!servers.length) return 1;
-    return Math.max(1, measureColumn(servers).width / NODE_W);
+    return Math.max(0.5, measureColumn(servers).width / NODE_W);
   }
 
   // ── Group relevant environments by the router that serves them (first
@@ -880,6 +909,19 @@ export function computeHierarchicalPositions(opts = {}) {
   function placeColumn(servers, cx, cy, envId) {
     if (!servers.length) return 0;
     const m = measureColumn(servers);
+
+    if (m.mode === 'connections') return 0; // nothing below the switch itself
+
+    if (m.mode === 'apps') {
+      m.appIds.forEach((appId, i) => {
+        pos['appswitch_' + envId + '_' + appId] = {
+          x: cx + (i % m.gridCols - (m.gridCols - 1) / 2) * m.cellW,
+          y: cy + Math.floor(i / m.gridCols) * m.cellH,
+        };
+      });
+      return m.height;
+    }
+
     let y = cy;
 
     // Top row: servers that are themselves the gateway of a nested
@@ -936,7 +978,9 @@ export function computeHierarchicalPositions(opts = {}) {
     });
     return Math.ceil(ids.length / cols) * rowH;
   };
-  const clusterIds = _clusters.map(c => 'cluster_' + c.id);
+  // Clusters group instances — an instance-level concept, so they only
+  // appear (and take up layout space) at the full detail level.
+  const clusterIds = detailLevel === 'full' ? _clusters.map(c => 'cluster_' + c.id) : [];
   if (clusterIds.length) { y += placeGrid(clusterIds, y, NODE_H) + BELOW_GAP; }
 
   // ── Switches for environments with no server-member column (only
@@ -971,18 +1015,20 @@ export function computeHierarchicalPositions(opts = {}) {
   // Switches considers every membership), but only its primary environment's
   // column actually places it. Same fallback treatment as orphaned switches.
   const orphanAppSwitchIds = [];
-  allEnvironments.forEach(env => {
-    if (env.name.toLowerCase() === 'www') return;
-    const memberServers = _servers.filter(s => (s.environments || []).some(e => e.id === env.id));
-    const seenAppIds = new Set();
-    memberServers.forEach(s => {
-      const app = firstApp(s);
-      if (!app || seenAppIds.has(app.id)) return;
-      seenAppIds.add(app.id);
-      const key = 'appswitch_' + env.id + '_' + app.id;
-      if (!pos[key]) orphanAppSwitchIds.push(key);
+  if (detailLevel !== 'connections') {
+    allEnvironments.forEach(env => {
+      if (env.name.toLowerCase() === 'www') return;
+      const memberServers = _servers.filter(s => (s.environments || []).some(e => e.id === env.id));
+      const seenAppIds = new Set();
+      memberServers.forEach(s => {
+        const app = firstApp(s);
+        if (!app || seenAppIds.has(app.id)) return;
+        seenAppIds.add(app.id);
+        const key = 'appswitch_' + env.id + '_' + app.id;
+        if (!pos[key]) orphanAppSwitchIds.push(key);
+      });
     });
-  });
+  }
   if (orphanAppSwitchIds.length) {
     y += BELOW_GAP;
     y += placeGrid(orphanAppSwitchIds, y, NODE_H * 0.5);
@@ -1287,12 +1333,18 @@ export function renderGraph(skipFit = false) {
   renderLegend();
 
   net.on('beforeDrawing', ctx => {
+    // The live DataSet's hidden flag is the single source of truth for "is
+    // this actually drawn right now" — it reflects both the env/app filter
+    // (hiddenByFilter) and the detail-level pass (applyDetailLevel), which
+    // hides servers/instances without touching hiddenByFilter at all.
+    const isNodeHidden = id => { const n = nodes.get(id); return !n || n.hidden; };
+
     // Multi-application servers get a native white fill (a flat vis `color`
     // can't show more than one color), so draw the real pie-slice breakdown
     // centered on top — drawn regardless of zoom/instance-visibility state,
     // since server nodes exist in both.
     allServers.forEach(server => {
-      if (hiddenByFilter.has(server.id)) return;
+      if (isNodeHidden(server.id)) return;
       const apps = server.applications || [];
       if (apps.length < 2) return;
       let pos;
@@ -1306,15 +1358,14 @@ export function renderGraph(skipFit = false) {
     // instance's own applications plus whichever of its server's tags opted
     // into inherit_to_instances (server.inherited_application_ids).
     allServers.forEach(server => {
-      if (hiddenByFilter.has(server.id)) return;
+      if (isNodeHidden(server.id)) return;
       const inheritedIds = new Set(server.inherited_application_ids || []);
       const inheritedApps = (server.applications || []).filter(a => inheritedIds.has(a.id));
       (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
         const ownIds = new Set((inst.applications || []).map(a => a.id));
         const effective = [...(inst.applications || []), ...inheritedApps.filter(a => !ownIds.has(a.id))];
         if (effective.length < 2) return;
-        const n = nodes.get('inst_' + inst.id);
-        if (!n || n.hidden) return;
+        if (isNodeHidden('inst_' + inst.id)) return;
         let pos;
         try { pos = net.getPosition('inst_' + inst.id); } catch (e) { return; }
         drawAppBadge(ctx, pos.x, pos.y, 8, effective);
@@ -1323,17 +1374,19 @@ export function renderGraph(skipFit = false) {
 
     const visibleServerPositions = [];
     allServers.forEach(s => {
-      if (hiddenByFilter.has(s.id)) return;
+      if (isNodeHidden(s.id)) return;
       try { visibleServerPositions.push({ id: s.id, pos: net.getPosition(s.id) }); } catch (e) {}
     });
 
     allServers.forEach(server => {
-      if (hiddenByFilter.has(server.id)) return;
+      if (isNodeHidden(server.id)) return;
       // Every service instance, not just VM guests — any server hosting
       // something (postgresql, samba, docker, ...) gets a thin frame around
       // itself and its instances, same as a VM host around its VMs.
       const instIds = [];
-      (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => instIds.push('inst_' + inst.id)));
+      (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+        if (!isNodeHidden('inst_' + inst.id)) instIds.push('inst_' + inst.id);
+      }));
       if (!instIds.length) return;
 
       let serverPos;
