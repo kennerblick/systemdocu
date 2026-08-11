@@ -721,7 +721,30 @@ export function computeHierarchicalPositions(opts = {}) {
     // content this level does show, instead of reserving full server-grid
     // space for things that are hidden anyway.
     if (detailLevel === 'connections') {
-      return { mode: 'connections', width: NODE_W * 0.5, height: 0 };
+      // A nested environment (gated by a server that's a member of this
+      // one) still needs to show *somewhere* even with no server content —
+      // its switch is packed into a compact grid right under this
+      // environment's own switch, same idea as the "apps" level's
+      // application-switch grid, so it stays visually anchored to its real
+      // parent instead of falling into the generic orphan-switch fallback.
+      const nestedEnvIdsHere = [];
+      const seenNestedIds = new Set();
+      servers.forEach(s => {
+        (nestedEnvsByGatewayServer.get(s.id) || []).forEach(nestedEnv => {
+          if (seenNestedIds.has(nestedEnv.id)) return;
+          seenNestedIds.add(nestedEnv.id);
+          nestedEnvIdsHere.push(nestedEnv.id);
+        });
+      });
+      const n = nestedEnvIdsHere.length;
+      const gridCols = n ? Math.max(1, Math.ceil(Math.sqrt(n))) : 0;
+      const cellW = NODE_W * 0.5, cellH = NODE_H * 0.5;
+      const rows = n ? Math.ceil(n / gridCols) : 0;
+      return {
+        mode: 'connections', nestedEnvIds: nestedEnvIdsHere, gridCols, cellW, cellH,
+        width: Math.max(NODE_W * 0.5, gridCols * cellW),
+        height: rows * cellH,
+      };
     }
     if (detailLevel === 'apps') {
       const appIds = [];
@@ -910,7 +933,15 @@ export function computeHierarchicalPositions(opts = {}) {
     if (!servers.length) return 0;
     const m = measureColumn(servers);
 
-    if (m.mode === 'connections') return 0; // nothing below the switch itself
+    if (m.mode === 'connections') {
+      m.nestedEnvIds.forEach((nestedEnvId, i) => {
+        pos['switch_' + nestedEnvId] = {
+          x: cx + (i % m.gridCols - (m.gridCols - 1) / 2) * m.cellW,
+          y: cy + Math.floor(i / m.gridCols) * m.cellH,
+        };
+      });
+      return m.height;
+    }
 
     if (m.mode === 'apps') {
       m.appIds.forEach((appId, i) => {
