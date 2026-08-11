@@ -433,6 +433,10 @@ function buildInternetGraph() {
 function buildEnvironmentSwitches() {
   const swNodes = [], swEdges = [];
   allEnvironments.forEach(env => {
+    // "www" isn't a real physical network segment — its members are extern
+    // servers sitting directly in front of their router (see isExternServer)
+    // — so it gets no switch symbol, unlike every other environment.
+    if (env.name.toLowerCase() === 'www') return;
     const memberServers = allServers.filter(s => (s.environments || []).some(e => e.id === env.id));
     const hasGateway = env.default_gateway_router_id || env.default_gateway_server_id;
     const hasInstanceMember = allServers.some(s => (s.services || []).some(svc =>
@@ -732,6 +736,7 @@ export function computeHierarchicalPositions(opts = {}) {
   // from their actual members/gateway. Group them in their own small row.
   const positionedEnvIds = new Set(envColCx.keys());
   const fallbackSwitchEnvs = allEnvironments
+    .filter(env => env.name.toLowerCase() !== 'www')
     .filter(env => !positionedEnvIds.has(env.id))
     .filter(env => {
       const hasInstMember = _servers.some(s => (s.services || []).some(svc =>
