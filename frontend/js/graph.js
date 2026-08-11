@@ -581,16 +581,42 @@ export function computeHierarchicalPositions(opts = {}) {
     return { gridCols, colWidthPx, rowHeights, width: gridCols * colWidthPx, height };
   }
 
-  // How many NODE_W-wide slots a column needs: the application sub-groups'
-  // packed widths side by side, plus a small gap between them.
-  function colWidthUnits(servers) {
-    if (!servers.length) return 1;
-    const groups = groupByApplication(servers);
-    const totalWidthPx = groups.reduce((sum, g, i) => {
-      const w = gridPack(g.servers.map(serverUnit)).width;
-      return sum + w + (i > 0 ? APP_GROUP_GAP : 0);
-    }, 0);
-    return Math.max(1, totalWidthPx / NODE_W);
+  // Groups a server list by application (measurement only, no positions
+  // written) — shared by measureColumn's width reservation pass and the
+  // actual placement pass below it, so reserved space always matches what
+  // ends up drawn.
+  function measureAppGroups(servers) {
+    const groups = groupByApplication(servers)
+      .map(g => ({ units: g.servers.map(serverUnit) }))
+      .map(g => ({ ...g, pack: gridPack(g.units) }));
+    const width = groups.reduce((sum, g, i) => sum + g.pack.width + (i > 0 ? APP_GROUP_GAP : 0), 0);
+    const height = groups.reduce((max, g) => Math.max(max, g.pack.height), 0);
+    return { groups, width, height };
+  }
+  function writeAppGroups(measured, gx0, y0) {
+    let gx = gx0, maxHeight = 0;
+    measured.groups.forEach(g => {
+      const gcx = gx + g.pack.width / 2;
+      const { gridCols, colWidthPx, rowHeights } = g.pack;
+      let y = y0;
+      for (let row = 0; row * gridCols < g.units.length; row++) {
+        const rowUnits = g.units.slice(row * gridCols, row * gridCols + gridCols);
+        rowUnits.forEach((u, colIdx) => {
+          const ux = gcx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
+          pos[u.server.id] = { x: ux, y };
+          u.instIds.forEach((instId, vi) => {
+            pos[instId] = {
+              x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
+              y: y + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
+            };
+          });
+        });
+        y += rowHeights[row] + INST_GAP;
+      }
+      maxHeight = Math.max(maxHeight, y - y0 - INST_GAP);
+      gx += g.pack.width + APP_GROUP_GAP;
+    });
+    return maxHeight;
   }
 
   // ── Which environments have an actual member server in the current
@@ -608,6 +634,59 @@ export function computeHierarchicalPositions(opts = {}) {
   });
   const relevantEnvIds = new Set(envServerMap.keys());
 
+  // ── Environments whose gateway is a specific SERVER (not a router) that
+  // is itself a member of another, "parent" environment render *nested*
+  // inside that parent's column — beside its regular members, below the
+  // specific gateway server that hosts them — instead of getting their own
+  // top-level column next to unrelated networks.
+  const nestedEnvsByGatewayServer = new Map(); // serverId -> [env, ...]
+  allEnvironments.forEach(env => {
+    if (!env.default_gateway_server_id) return;
+    const ownerEntry = [...envServerMap.entries()]
+      .find(([envId, srvs]) => envId !== env.id && srvs.some(s => s.id === env.default_gateway_server_id));
+    if (!ownerEntry) return;
+    const gwId = env.default_gateway_server_id;
+    if (!nestedEnvsByGatewayServer.has(gwId)) nestedEnvsByGatewayServer.set(gwId, []);
+    nestedEnvsByGatewayServer.get(gwId).push(env);
+  });
+  const nestedEnvIds = new Set([...nestedEnvsByGatewayServer.values()].flat().map(e => e.id));
+  const topLevelEnvIds = new Set([...relevantEnvIds].filter(id => !nestedEnvIds.has(id)));
+
+  // Measures (without writing positions) everything a column needs: a top
+  // row for servers that are themselves the gateway of a nested environment,
+  // and below it the regular (non-gateway) members' app-grouped grid side by
+  // side with each nested environment's own switch + members.
+  function measureColumn(servers) {
+    const gatewayServerIds = new Set(servers.filter(s => nestedEnvsByGatewayServer.has(s.id)).map(s => s.id));
+    const gatewayServers = sortByName(servers.filter(s => gatewayServerIds.has(s.id)));
+    const regularServers = servers.filter(s => !gatewayServerIds.has(s.id));
+
+    const gwPack = gridPack(gatewayServers.map(serverUnit));
+    const regular = measureAppGroups(regularServers);
+
+    const nestedBlocks = [];
+    gatewayServers.forEach(gwSrv => {
+      (nestedEnvsByGatewayServer.get(gwSrv.id) || []).forEach(nestedEnv => {
+        const nestedMembers = envServerMap.get(nestedEnv.id) || [];
+        if (!nestedMembers.length) return;
+        const measured = measureAppGroups(nestedMembers);
+        nestedBlocks.push({ env: nestedEnv, measured, width: Math.max(measured.width, NODE_W) });
+      });
+    });
+
+    const bottomWidth = regular.width + nestedBlocks.reduce((s, b) => s + b.width + APP_GROUP_GAP, 0);
+    const width = Math.max(gwPack.width, bottomWidth, NODE_W);
+    const bottomHeight = Math.max(regular.height, ...nestedBlocks.map(b => b.measured.height), 0);
+    const height = (gatewayServers.length ? gwPack.height + SWITCH_GAP : 0) + bottomHeight;
+    return { gatewayServers, gwPack, regular, nestedBlocks, width, height };
+  }
+
+  // How many NODE_W-wide slots a column needs.
+  function colWidthUnits(servers) {
+    if (!servers.length) return 1;
+    return Math.max(1, measureColumn(servers).width / NODE_W);
+  }
+
   // ── Group relevant environments by the router that serves them (first
   // router listing it in router.environments "owns" it, matching the
   // server-edit gateway dropdown's own membership convention).
@@ -621,7 +700,7 @@ export function computeHierarchicalPositions(opts = {}) {
   _routers.forEach(r => {
     const envIds = (r.environments || [])
       .map(e => e.id)
-      .filter(id => relevantEnvIds.has(id) && envToRouter.get(id) === r.id)
+      .filter(id => topLevelEnvIds.has(id) && envToRouter.get(id) === r.id)
       .sort((a, b) => envName(a).localeCompare(envName(b)));
     // Only give the router's own server a dedicated column when it has no
     // environment of its own — otherwise it's already placed (once) in its
@@ -637,7 +716,7 @@ export function computeHierarchicalPositions(opts = {}) {
 
   const groupedEnvIds = new Set();
   groups.forEach(g => g.envIds.forEach(id => groupedEnvIds.add(id)));
-  const looseEnvIds = [...relevantEnvIds]
+  const looseEnvIds = [...topLevelEnvIds]
     .filter(id => !groupedEnvIds.has(id))
     .sort((a, b) => envName(a).localeCompare(envName(b)));
 
@@ -646,76 +725,152 @@ export function computeHierarchicalPositions(opts = {}) {
   const directServerIds = new Set(groups.map(g => g.directServerId).filter(Boolean));
   const looseNoEnvServers = noEnvServers.filter(s => !directServerIds.has(s.id));
 
-  // ── Flat column sequence, remembering which group (router id / 'loose' /
-  // 'none') each column belongs to, so COL_GAP applies within a group and
-  // the wider GROUP_GAP only between different groups.
-  const colDefs = [];
+  // ── Blocks: one per router-group, one per "loose" (router-less)
+  // environment, and one for servers with no environment at all — each is a
+  // horizontally-cohesive unit (its router, if any, centers above it) that
+  // never gets split across rows when wrapping below.
+  const blocks = [];
   groups.forEach(g => {
+    const cols = [];
     if (g.directServerId) {
       const srv = _colSrvs.find(s => s.id === g.directServerId);
-      if (srv) colDefs.push({ envId: null, servers: [srv], colW: NODE_W, groupKey: g.router.id });
+      if (srv) cols.push({ envId: null, servers: [srv], colW: NODE_W });
     }
     g.envIds.forEach(envId => {
       const servers = envServerMap.get(envId) || [];
-      colDefs.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W, groupKey: g.router.id });
+      cols.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W });
     });
+    if (cols.length) blocks.push({ groupKey: g.router.id, router: g.router, cols });
   });
   looseEnvIds.forEach(envId => {
     const servers = envServerMap.get(envId) || [];
-    colDefs.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W, groupKey: 'loose' });
+    blocks.push({ groupKey: 'loose-' + envId, router: null, cols: [{ envId, servers, colW: colWidthUnits(servers) * NODE_W }] });
   });
-  if (looseNoEnvServers.length)
-    colDefs.push({ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W, groupKey: 'none' });
-
-  const gapAfter = i => (i >= colDefs.length - 1) ? 0
-    : (colDefs[i + 1].groupKey === colDefs[i].groupKey ? COL_GAP : GROUP_GAP);
-  const totalW = colDefs.reduce((sum, cd, i) => sum + cd.colW + gapAfter(i), 0);
-  let curX = -totalW / 2;
-  const envColCx = new Map();
-  colDefs.forEach((cd, i) => {
-    cd.cx = curX + cd.colW / 2;
-    if (cd.envId) envColCx.set(cd.envId, cd.cx);
-    curX += cd.colW + gapAfter(i);
+  if (looseNoEnvServers.length) {
+    blocks.push({ groupKey: 'none', router: null, cols: [{ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W }] });
+  }
+  blocks.forEach(b => {
+    b.width = b.cols.reduce((s, c, i) => s + c.colW + (i > 0 ? COL_GAP : 0), 0);
+    b.height = b.cols.reduce((m, c) => Math.max(m, measureColumn(c.servers).height), 0);
   });
 
-  // Environment switches sit between their member column (y=0) and the
-  // router tier (y=-NODE_H) — reads top-to-bottom as gateway → switch → members.
-  envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: -SWITCH_GAP }; });
-
-  function placeColumn(servers, cx) {
-    const groups = groupByApplication(servers)
-      .map(g => ({ units: g.servers.map(serverUnit) }))
-      .map(g => ({ ...g, pack: gridPack(g.units) }));
-    if (!groups.length) return 0;
-    const totalWidthPx = groups.reduce((sum, g, i) => sum + g.pack.width + (i > 0 ? APP_GROUP_GAP : 0), 0);
-    let gx = cx - totalWidthPx / 2;
-    let maxHeight = 0;
-    groups.forEach(g => {
-      const gcx = gx + g.pack.width / 2;
-      const { gridCols, colWidthPx, rowHeights } = g.pack;
-      let y = 0;
-      for (let row = 0; row * gridCols < g.units.length; row++) {
-        const rowUnits = g.units.slice(row * gridCols, row * gridCols + gridCols);
-        rowUnits.forEach((u, colIdx) => {
-          const ux = gcx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
-          pos[u.server.id] = { x: ux, y };
-          u.instIds.forEach((instId, vi) => {
-            pos[instId] = {
-              x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
-              y: y + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
-            };
-          });
-        });
-        y += rowHeights[row] + INST_GAP;
-      }
-      maxHeight = Math.max(maxHeight, y - INST_GAP);
-      gx += g.pack.width + APP_GROUP_GAP;
+  // ── Shelf-pack blocks onto rows so the server-column area approaches a
+  // 4:3 (width:height) aspect ratio instead of one very wide single row —
+  // a block never splits across rows (its router stays centered above it),
+  // and each row gets its own switch/router tier directly above its
+  // columns; only the shared provider/cloud/www tiers stay anchored above
+  // the very first row.
+  // Block sizes vary too much (a router with one small environment next to
+  // one with five large ones) for a closed-form row count to land anywhere
+  // near 4:3, so every candidate row count is actually packed and measured;
+  // the one whose real resulting width:height is closest to 4:3 wins.
+  const ROW_TIER_H = SWITCH_GAP + ROUTER_GAP + NODE_H;
+  const totalBlockW = blocks.reduce((s, b) => s + b.width, 0) + GROUP_GAP * Math.max(0, blocks.length - 1);
+  function packAtWidth(targetW) {
+    const packedRows = [];
+    let curRow = [], curRowW = 0;
+    blocks.forEach(b => {
+      if (curRow.length && curRowW + GROUP_GAP + b.width > targetW) { packedRows.push(curRow); curRow = []; curRowW = 0; }
+      curRow.push(b);
+      curRowW += (curRow.length > 1 ? GROUP_GAP : 0) + b.width;
     });
-    return maxHeight;
+    if (curRow.length) packedRows.push(curRow);
+    const width = packedRows.reduce((m, row) =>
+      Math.max(m, row.reduce((s, b, i) => s + b.width + (i > 0 ? GROUP_GAP : 0), 0)), NODE_W);
+    const height = packedRows.reduce((s, row) => s + Math.max(...row.map(b => b.height), NODE_H) + GROUP_GAP + ROW_TIER_H, 0);
+    return { packedRows, width, height };
+  }
+  let rows = [blocks];
+  if (blocks.length > 1) {
+    let best = null;
+    for (let r = 1; r <= blocks.length; r++) {
+      const candidate = packAtWidth(Math.max(NODE_W * 3, totalBlockW / r));
+      const score = Math.abs(Math.log((candidate.width / candidate.height) / (4 / 3)));
+      if (!best || score < best.score) best = { ...candidate, score };
+    }
+    rows = best.packedRows;
+  }
+
+  const envColCx = new Map();
+  const envColCy = new Map();
+  const rowInfo = []; // { routerY, y0, height, cols }
+  let rowY = 0;
+  rows.forEach((row, rowIdx) => {
+    const rowCols = [];
+    row.forEach(b => b.cols.forEach(c => rowCols.push({ ...c, blockKey: b.groupKey })));
+    const gapAfter = i => (i >= rowCols.length - 1) ? 0
+      : (rowCols[i + 1].blockKey === rowCols[i].blockKey ? COL_GAP : GROUP_GAP);
+    const rowWidth = rowCols.reduce((s, c, i) => s + c.colW + gapAfter(i), 0);
+    let curX = -rowWidth / 2;
+    rowCols.forEach((c, i) => {
+      c.cx = curX + c.colW / 2;
+      c.cy = rowY;
+      if (c.envId) { envColCx.set(c.envId, c.cx); envColCy.set(c.envId, c.cy); }
+      curX += c.colW + gapAfter(i);
+    });
+    row.forEach(b => {
+      const myCols = rowCols.filter(c => c.blockKey === b.groupKey);
+      b.cx = (myCols[0].cx + myCols[myCols.length - 1].cx) / 2;
+      b.rowIndex = rowIdx;
+    });
+    const rowHeight = Math.max(...row.map(b => b.height), NODE_H);
+    rowInfo.push({ routerY: rowY - (SWITCH_GAP + ROUTER_GAP), y0: rowY, height: rowHeight, cols: rowCols });
+    rowY += rowHeight + GROUP_GAP + ROW_TIER_H;
+  });
+
+  // Environment switches sit between their member column and their row's
+  // own router tier — reads top-to-bottom as gateway → switch → members.
+  envColCx.forEach((cx, envId) => { pos['switch_' + envId] = { x: cx, y: envColCy.get(envId) - SWITCH_GAP }; });
+
+  function placeColumn(servers, cx, cy) {
+    if (!servers.length) return 0;
+    const m = measureColumn(servers);
+    let y = cy;
+
+    // Top row: servers that are themselves the gateway of a nested
+    // environment — reads top-to-bottom as switch → gateway-server(s) →
+    // (regular members | nested environment's own switch+members).
+    if (m.gatewayServers.length) {
+      const { gridCols, colWidthPx, rowHeights } = m.gwPack;
+      m.gatewayServers.forEach((s, i) => {
+        const row = Math.floor(i / gridCols);
+        const colIdx = i % gridCols;
+        const u = serverUnit(s);
+        const ux = cx + (colIdx - (gridCols - 1) / 2) * colWidthPx;
+        const uy = cy + rowHeights.slice(0, row).reduce((a, b) => a + b + INST_GAP, 0);
+        pos[s.id] = { x: ux, y: uy };
+        u.instIds.forEach((instId, vi) => {
+          pos[instId] = {
+            x: ux + (vi % u.cols - (u.cols - 1) / 2) * NODE_W,
+            y: uy + NODE_H + INST_GAP + Math.floor(vi / u.cols) * INST_H,
+          };
+        });
+      });
+      y = cy + m.gwPack.height + SWITCH_GAP;
+    }
+
+    const bottomWidth = m.regular.width + m.nestedBlocks.reduce((s, b) => s + b.width + APP_GROUP_GAP, 0);
+    let gx = cx - bottomWidth / 2;
+    let bottomHeight = 0;
+
+    if (m.regular.groups.length) {
+      bottomHeight = Math.max(bottomHeight, writeAppGroups(m.regular, gx, y));
+      gx += m.regular.width + (m.nestedBlocks.length ? APP_GROUP_GAP : 0);
+    }
+    m.nestedBlocks.forEach(nb => {
+      const nbCx = gx + nb.width / 2;
+      pos['switch_' + nb.env.id] = { x: nbCx, y: y - SWITCH_GAP };
+      bottomHeight = Math.max(bottomHeight, writeAppGroups(nb.measured, gx, y));
+      gx += nb.width + APP_GROUP_GAP;
+    });
+
+    return (y - cy) + bottomHeight;
   }
 
   let maxColH = 0;
-  colDefs.forEach(cd => { maxColH = Math.max(maxColH, placeColumn(cd.servers, cd.cx)); });
+  rowInfo.forEach(ri => {
+    ri.cols.forEach(c => { maxColH = Math.max(maxColH, c.cy + placeColumn(c.servers, c.cx, c.cy)); });
+  });
 
   let y = maxColH + BELOW_GAP;
   const placeGrid = (ids, startY, rowH) => {
@@ -734,7 +889,10 @@ export function computeHierarchicalPositions(opts = {}) {
   // in the current view) still need a position — without this they'd stay
   // wherever vis last put them (usually near the origin), disconnected
   // from their actual members/gateway. Group them in their own small row.
-  const positionedEnvIds = new Set(envColCx.keys());
+  const positionedEnvIds = new Set([
+    ...envColCx.keys(),
+    ...allEnvironments.filter(e => pos['switch_' + e.id]).map(e => e.id),
+  ]);
   const fallbackSwitchEnvs = allEnvironments
     .filter(env => env.name.toLowerCase() !== 'www')
     .filter(env => !positionedEnvIds.has(env.id))
@@ -752,12 +910,16 @@ export function computeHierarchicalPositions(opts = {}) {
 
   // ── Routers: centered over their own group's column span (not an
   // average across possibly-distant environments), so a router always sits
-  // exactly above its own children. Routers with no relevant group in the
-  // current (possibly filtered) view fall back to a plain row.
-  const routerY = -(SWITCH_GAP + ROUTER_GAP);
-  const wwwY = routerY - WWW_GAP;
-  const providerY = wwwY - PROVIDER_GAP;
+  // exactly above its own children, using *its own row's* router tier —
+  // rows below the first are wider apart vertically since they carry their
+  // own switch/router tier too. Routers with no relevant group in the
+  // current (possibly filtered) view fall back to a plain row under row 0.
+  // Top-to-bottom: www servers (outermost, internet-facing) → internet cloud
+  // → providers → routers (=Anschlüsse/Gateways) → switches → column servers.
+  const globalRouterY = rowInfo.length ? rowInfo[0].routerY : -(SWITCH_GAP + ROUTER_GAP);
+  const providerY = globalRouterY - PROVIDER_GAP;
   const cloudY = providerY - CLOUD_GAP;
+  const wwwY = cloudY - WWW_GAP;
 
   if (_routers.length || _externSrvs.length) {
     if (_routers.length) {
@@ -766,16 +928,17 @@ export function computeHierarchicalPositions(opts = {}) {
       const looseRouters  = _routers.filter(r => !groupByRouterId.has(r.id));
       let looseIdx = 0;
       _routers.forEach(r => {
-        const g = groupByRouterId.get(r.id);
-        let rx;
-        if (g) {
-          const cols = colDefs.filter(cd => cd.groupKey === r.id);
-          rx = (cols[0].cx + cols[cols.length - 1].cx) / 2;
+        const block = blocks.find(b => b.groupKey === r.id);
+        let rx, ry;
+        if (block) {
+          rx = block.cx;
+          ry = rowInfo[block.rowIndex].routerY;
         } else {
           rx = (looseIdx - (looseRouters.length - 1) / 2) * NODE_W;
+          ry = globalRouterY;
           looseIdx += 1;
         }
-        pos['router_' + r.id] = { x: rx, y: routerY };
+        pos['router_' + r.id] = { x: rx, y: ry };
       });
       providerNames.forEach((p, i) => {
         pos['provider_' + p] = { x: (i - (providerNames.length - 1) / 2) * NODE_W, y: providerY };
@@ -1066,18 +1229,18 @@ export function renderGraph(skipFit = false) {
 
     allServers.forEach(server => {
       if (hiddenByFilter.has(server.id)) return;
-      const vmInstIds = [];
-      (server.services || []).forEach(svc => {
-        if (VM_SVC_TYPES.has(svc.type))
-          (svc.instances || []).forEach(inst => vmInstIds.push('inst_' + inst.id));
-      });
-      if (!vmInstIds.length) return;
+      // Every service instance, not just VM guests — any server hosting
+      // something (postgresql, samba, docker, ...) gets a thin frame around
+      // itself and its instances, same as a VM host around its VMs.
+      const instIds = [];
+      (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => instIds.push('inst_' + inst.id)));
+      if (!instIds.length) return;
 
       let serverPos;
       try { serverPos = net.getPosition(server.id); } catch (e) { return; }
 
       const instPositions = [];
-      vmInstIds.forEach(id => {
+      instIds.forEach(id => {
         try { instPositions.push(net.getPosition(id)); } catch (e) {}
       });
       if (!instPositions.length) return;
