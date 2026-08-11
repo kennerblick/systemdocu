@@ -551,7 +551,7 @@ function buildEnvironmentSwitches() {
  * "no connection" group at the end.
  */
 export function computeHierarchicalPositions(opts = {}) {
-  const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
+  const NODE_W = 150, NODE_H = 80, GROUP_GAP = 160,
         SWITCH_GAP = 85, INST_H = 38, INST_GAP = 18, BELOW_GAP = 70,
         APP_GROUP_GAP = 50, APP_SWITCH_GAP = 45,
         // Vertical clearance between the tiers above the server columns:
@@ -832,11 +832,13 @@ export function computeHierarchicalPositions(opts = {}) {
   const directServerIds = new Set(groups.map(g => g.directServerId).filter(Boolean));
   const looseNoEnvServers = noEnvServers.filter(s => !directServerIds.has(s.id));
 
-  // ── Blocks: one per router-group, one per "loose" (router-less)
-  // environment, and one for servers with no environment at all — each is a
-  // horizontally-cohesive unit (its router, if any, centers above it) that
-  // never gets split across rows when wrapping below.
-  const blocks = [];
+  // ── Blocks: one per router-group — its environments stack vertically in
+  // a single column directly under the router (reads top-to-bottom as
+  // Anschluss → Umgebung(en)) — plus one per "loose" (router-less)
+  // environment and one for servers with no environment at all, which have
+  // no Anschluss to hang below and so get placed in their own area to the
+  // right of the routers instead.
+  const routerBlocks = [];
   groups.forEach(g => {
     const cols = [];
     if (g.directServerId) {
@@ -847,36 +849,49 @@ export function computeHierarchicalPositions(opts = {}) {
       const servers = envServerMap.get(envId) || [];
       cols.push({ envId, servers, colW: colWidthUnits(servers) * NODE_W });
     });
-    if (cols.length) blocks.push({ groupKey: g.router.id, router: g.router, cols });
+    if (cols.length) routerBlocks.push({ groupKey: g.router.id, router: g.router, cols });
   });
+  const looseBlocks = [];
   looseEnvIds.forEach(envId => {
     const servers = envServerMap.get(envId) || [];
-    blocks.push({ groupKey: 'loose-' + envId, router: null, cols: [{ envId, servers, colW: colWidthUnits(servers) * NODE_W }] });
+    looseBlocks.push({ groupKey: 'loose-' + envId, router: null, cols: [{ envId, servers, colW: colWidthUnits(servers) * NODE_W }] });
   });
   if (looseNoEnvServers.length) {
-    blocks.push({ groupKey: 'none', router: null, cols: [{ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W }] });
+    looseBlocks.push({ groupKey: 'none', router: null, cols: [{ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W }] });
   }
-  blocks.forEach(b => {
-    b.width = b.cols.reduce((s, c, i) => s + c.colW + (i > 0 ? COL_GAP : 0), 0);
-    b.height = b.cols.reduce((m, c) => Math.max(m, measureColumn(c.servers).height), 0);
-  });
 
-  // ── Shelf-pack blocks onto rows so the server-column area approaches a
-  // 4:3 (width:height) aspect ratio instead of one very wide single row —
-  // a block never splits across rows (its router stays centered above it),
-  // and each row gets its own switch/router tier directly above its
-  // columns; only the shared provider/cloud/www tiers stay anchored above
-  // the very first row.
+  // Gap between environments stacked under the same router — large enough
+  // for each one's own switch tier to fit between the previous
+  // environment's content and the next one's.
+  const STACK_GAP = SWITCH_GAP + BELOW_GAP;
+  function measureBlock(b) {
+    b.width = Math.max(NODE_W, ...b.cols.map(c => c.colW));
+    let h = 0;
+    b.cols.forEach((c, i) => {
+      c.contentHeight = measureColumn(c.servers).height;
+      h += c.contentHeight + (i > 0 ? STACK_GAP : 0);
+    });
+    b.height = h;
+  }
+  routerBlocks.forEach(measureBlock);
+  looseBlocks.forEach(measureBlock);
+
+  // ── Shelf-pack the router blocks onto rows so the connected area
+  // approaches a 4:3 (width:height) aspect ratio instead of one very wide
+  // single row — a block never splits across rows (its router stays
+  // centered above it), and each row gets its own switch/router tier
+  // directly above its columns; only the shared provider/cloud/www tiers
+  // stay anchored above the very first row.
   // Block sizes vary too much (a router with one small environment next to
   // one with five large ones) for a closed-form row count to land anywhere
   // near 4:3, so every candidate row count is actually packed and measured;
   // the one whose real resulting width:height is closest to 4:3 wins.
   const ROW_TIER_H = SWITCH_GAP + ROUTER_GAP + NODE_H;
-  const totalBlockW = blocks.reduce((s, b) => s + b.width, 0) + GROUP_GAP * Math.max(0, blocks.length - 1);
+  const totalBlockW = routerBlocks.reduce((s, b) => s + b.width, 0) + GROUP_GAP * Math.max(0, routerBlocks.length - 1);
   function packAtWidth(targetW) {
     const packedRows = [];
     let curRow = [], curRowW = 0;
-    blocks.forEach(b => {
+    routerBlocks.forEach(b => {
       if (curRow.length && curRowW + GROUP_GAP + b.width > targetW) { packedRows.push(curRow); curRow = []; curRowW = 0; }
       curRow.push(b);
       curRowW += (curRow.length > 1 ? GROUP_GAP : 0) + b.width;
@@ -887,43 +902,69 @@ export function computeHierarchicalPositions(opts = {}) {
     const height = packedRows.reduce((s, row) => s + Math.max(...row.map(b => b.height), NODE_H) + GROUP_GAP + ROW_TIER_H, 0);
     return { packedRows, width, height };
   }
-  let rows = [blocks];
-  if (blocks.length > 1) {
+  let rows;
+  if (routerBlocks.length > 1) {
     let best = null;
-    for (let r = 1; r <= blocks.length; r++) {
+    for (let r = 1; r <= routerBlocks.length; r++) {
       const candidate = packAtWidth(Math.max(NODE_W * 3, totalBlockW / r));
       const score = Math.abs(Math.log((candidate.width / candidate.height) / (4 / 3)));
       if (!best || score < best.score) best = { ...candidate, score };
     }
     rows = best.packedRows;
+  } else {
+    rows = routerBlocks.length ? [routerBlocks] : [];
   }
 
   const envColCx = new Map();
   const envColCy = new Map();
   const rowInfo = []; // { routerY, y0, height, cols }
   let rowY = 0;
+  let mainAreaHalfWidth = 0;
   rows.forEach((row, rowIdx) => {
-    const rowCols = [];
-    row.forEach(b => b.cols.forEach(c => rowCols.push({ ...c, blockKey: b.groupKey })));
-    const gapAfter = i => (i >= rowCols.length - 1) ? 0
-      : (rowCols[i + 1].blockKey === rowCols[i].blockKey ? COL_GAP : GROUP_GAP);
-    const rowWidth = rowCols.reduce((s, c, i) => s + c.colW + gapAfter(i), 0);
+    const rowWidth = row.reduce((s, b, i) => s + b.width + (i > 0 ? GROUP_GAP : 0), 0);
+    mainAreaHalfWidth = Math.max(mainAreaHalfWidth, rowWidth / 2);
     let curX = -rowWidth / 2;
-    rowCols.forEach((c, i) => {
-      c.cx = curX + c.colW / 2;
-      c.cy = rowY;
-      if (c.envId) { envColCx.set(c.envId, c.cx); envColCy.set(c.envId, c.cy); }
-      curX += c.colW + gapAfter(i);
-    });
+    const rowCols = [];
     row.forEach(b => {
-      const myCols = rowCols.filter(c => c.blockKey === b.groupKey);
-      b.cx = (myCols[0].cx + myCols[myCols.length - 1].cx) / 2;
+      const bcx = curX + b.width / 2;
+      b.cx = bcx;
       b.rowIndex = rowIdx;
+      let cy = rowY;
+      b.cols.forEach(c => {
+        c.cx = bcx;
+        c.cy = cy;
+        if (c.envId) { envColCx.set(c.envId, c.cx); envColCy.set(c.envId, c.cy); }
+        rowCols.push(c);
+        cy += c.contentHeight + STACK_GAP;
+      });
+      curX += b.width + GROUP_GAP;
     });
     const rowHeight = Math.max(...row.map(b => b.height), NODE_H);
     rowInfo.push({ routerY: rowY - (SWITCH_GAP + ROUTER_GAP), y0: rowY, height: rowHeight, cols: rowCols });
     rowY += rowHeight + GROUP_GAP + ROW_TIER_H;
   });
+
+  // ── Loose environments (no router) and the "no environment" bucket sit
+  // in their own area to the right of the connected routers, each stacked
+  // in its own vertical run — there's no Anschluss for them to hang below,
+  // so mixing them into the row-wrapping above would misleadingly suggest
+  // they're part of one of those connections.
+  const looseCols = [];
+  if (looseBlocks.length) {
+    const looseX0 = mainAreaHalfWidth + GROUP_GAP * 1.5;
+    let cy = 0;
+    looseBlocks.forEach(b => {
+      const bcx = looseX0 + b.width / 2;
+      b.cols.forEach(c => {
+        c.cx = bcx;
+        c.cy = cy;
+        if (c.envId) { envColCx.set(c.envId, c.cx); envColCy.set(c.envId, c.cy); }
+        looseCols.push(c);
+        cy += c.contentHeight + STACK_GAP;
+      });
+      cy += BELOW_GAP;
+    });
+  }
 
   // Environment switches sit between their member column and their row's
   // own router tier — reads top-to-bottom as gateway → switch → members.
@@ -999,6 +1040,7 @@ export function computeHierarchicalPositions(opts = {}) {
   rowInfo.forEach(ri => {
     ri.cols.forEach(c => { maxColH = Math.max(maxColH, c.cy + placeColumn(c.servers, c.cx, c.cy, c.envId)); });
   });
+  looseCols.forEach(c => { maxColH = Math.max(maxColH, c.cy + placeColumn(c.servers, c.cx, c.cy, c.envId)); });
 
   let y = maxColH + BELOW_GAP;
   const placeGrid = (ids, startY, rowH) => {
@@ -1085,7 +1127,7 @@ export function computeHierarchicalPositions(opts = {}) {
       const looseRouters  = _routers.filter(r => !groupByRouterId.has(r.id));
       let looseIdx = 0;
       _routers.forEach(r => {
-        const block = blocks.find(b => b.groupKey === r.id);
+        const block = routerBlocks.find(b => b.groupKey === r.id);
         let rx, ry;
         if (block) {
           rx = block.cx;
