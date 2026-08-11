@@ -492,7 +492,11 @@ function buildEnvironmentSwitches() {
       });
       servers.forEach(s => {
         swEdges.push({
-          id: 'appswitch_mem_srv_' + s.id, from: appNodeId, to: s.id,
+          // A server that's a member of several environments (e.g. a
+          // gateway machine with an interface in each subnet it routes for)
+          // needs one such edge per environment — the id must include env.id
+          // too, or the second+ membership collides with the first.
+          id: 'appswitch_mem_srv_' + s.id + '_' + env.id, from: appNodeId, to: s.id,
           arrows: '', dashes: [2, 4], width: 1.5, length: 60,
           color: { color: app.color, opacity: 0.35 },
           title: 'Quelle: 🔗 ' + escHtml(app.name) + '<br>Ziel: ' + escHtml(s.hostname),
@@ -988,6 +992,26 @@ export function computeHierarchicalPositions(opts = {}) {
         }
         pos['router_' + r.id] = { x: rx, y: ry };
       });
+
+      // Nudge apart any routers that ended up within one NODE_W of each
+      // other at the same tier — narrow single-environment blocks packed
+      // tightly side by side, or a loose router's fallback slot coinciding
+      // with a grouped router's own block center, can otherwise collide.
+      const byRouterY = new Map();
+      _routers.forEach(r => {
+        const key = Math.round(pos['router_' + r.id].y);
+        if (!byRouterY.has(key)) byRouterY.set(key, []);
+        byRouterY.get(key).push(r);
+      });
+      byRouterY.forEach(rs => {
+        rs.sort((a, b) => pos['router_' + a.id].x - pos['router_' + b.id].x);
+        for (let i = 1; i < rs.length; i++) {
+          const prevX = pos['router_' + rs[i - 1].id].x;
+          const p = pos['router_' + rs[i].id];
+          if (p.x - prevX < NODE_W) p.x = prevX + NODE_W;
+        }
+      });
+
       providerNames.forEach((p, i) => {
         pos['provider_' + p] = { x: (i - (providerNames.length - 1) / 2) * NODE_W, y: providerY };
       });
