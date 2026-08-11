@@ -333,7 +333,8 @@ function buildInternetGraph() {
   newInetNodeIds.push('internet_cloud');
 
   const rootRouters = allRouters.filter(r => !r.upstream_router_id);
-  const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
+  const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))]
+    .sort((a, b) => a.localeCompare(b));
   const nProv = providerNames.length;
   const knownProviders = new Set(providerNames);
   providerNames.forEach((prov, i) => {
@@ -802,6 +803,25 @@ export function computeHierarchicalPositions(opts = {}) {
     if (!envToRouter.has(env.id)) envToRouter.set(env.id, r.id);
   }));
 
+  // ── Provider order: alphabetical, so "leftmost provider" is well-defined
+  // and router-groups below sort into matching left-to-right clusters —
+  // reads top-to-bottom/left-to-right as Internet → Provider → its routers.
+  const providerOrder = new Map();
+  [...new Set(allRouters.filter(r => r.provider).map(r => r.provider))]
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((p, i) => providerOrder.set(p, i));
+
+  // A router with no provider of its own (chained behind another router via
+  // upstream_router_id) inherits its nearest ancestor's provider, so it
+  // still groups under the right one instead of sorting as "no provider".
+  function effectiveProvider(router) {
+    let r = router, guard = 0;
+    while (r && !r.provider && r.upstream_router_id && guard++ < 10) {
+      r = allRouters.find(rt => rt.id === r.upstream_router_id);
+    }
+    return r ? r.provider : null;
+  }
+
   const groups = []; // { router, envIds: [...], directServerId }
   const groupByRouterId = new Map();
   _routers.forEach(r => {
@@ -815,11 +835,15 @@ export function computeHierarchicalPositions(opts = {}) {
     const hasDirectServer = r.server_id && _colSrvs.some(s =>
       s.id === r.server_id && !(s.environments && s.environments.length));
     if (!envIds.length && !hasDirectServer) return;
-    const g = { router: r, envIds, directServerId: hasDirectServer ? r.server_id : null };
+    const prov = effectiveProvider(r);
+    const g = {
+      router: r, envIds, directServerId: hasDirectServer ? r.server_id : null,
+      providerIdx: providerOrder.has(prov) ? providerOrder.get(prov) : Infinity,
+    };
     groups.push(g);
     groupByRouterId.set(r.id, g);
   });
-  groups.sort((a, b) => a.router.name.localeCompare(b.router.name));
+  groups.sort((a, b) => a.providerIdx - b.providerIdx || a.router.name.localeCompare(b.router.name));
 
   const groupedEnvIds = new Set();
   groups.forEach(g => g.envIds.forEach(id => groupedEnvIds.add(id)));
@@ -1131,7 +1155,8 @@ export function computeHierarchicalPositions(opts = {}) {
   if (_routers.length || _externSrvs.length) {
     if (_routers.length) {
       const rootRouters   = _routers.filter(r => !r.upstream_router_id);
-      const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))];
+      const providerNames = [...new Set(rootRouters.filter(r => r.provider).map(r => r.provider))]
+        .sort((a, b) => a.localeCompare(b));
       const looseRouters  = _routers.filter(r => !groupByRouterId.has(r.id));
       let looseIdx = 0;
       _routers.forEach(r => {
