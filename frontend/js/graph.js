@@ -551,7 +551,7 @@ function buildEnvironmentSwitches() {
  * "no connection" group at the end.
  */
 export function computeHierarchicalPositions(opts = {}) {
-  const NODE_W = 150, NODE_H = 80, GROUP_GAP = 160,
+  const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
         SWITCH_GAP = 85, INST_H = 38, INST_GAP = 18, BELOW_GAP = 70,
         APP_GROUP_GAP = 50, APP_SWITCH_GAP = 45,
         // Vertical clearance between the tiers above the server columns:
@@ -860,11 +860,21 @@ export function computeHierarchicalPositions(opts = {}) {
     looseBlocks.push({ groupKey: 'none', router: null, cols: [{ envId: null, servers: looseNoEnvServers, colW: colWidthUnits(looseNoEnvServers) * NODE_W }] });
   }
 
-  // Gap between environments stacked under the same router — large enough
-  // for each one's own switch tier to fit between the previous
-  // environment's content and the next one's.
+  // A router's own environments sit side by side directly beneath it (like
+  // sibling columns), so the router — centered over their combined span —
+  // always reads as sitting right above all of them at once.
+  function measureRouterBlock(b) {
+    b.cols.forEach(c => { c.contentHeight = measureColumn(c.servers).height; });
+    b.width = b.cols.reduce((s, c, i) => s + c.colW + (i > 0 ? COL_GAP : 0), 0);
+    b.height = Math.max(NODE_H, ...b.cols.map(c => c.contentHeight));
+  }
+  routerBlocks.forEach(measureRouterBlock);
+
+  // Loose (router-less) environments have nothing to sit beside, so they're
+  // stacked one under another instead — STACK_GAP leaves room for each
+  // one's own switch tier between it and the next environment's content.
   const STACK_GAP = SWITCH_GAP + BELOW_GAP;
-  function measureBlock(b) {
+  function measureLooseBlock(b) {
     b.width = Math.max(NODE_W, ...b.cols.map(c => c.colW));
     let h = 0;
     b.cols.forEach((c, i) => {
@@ -873,8 +883,7 @@ export function computeHierarchicalPositions(opts = {}) {
     });
     b.height = h;
   }
-  routerBlocks.forEach(measureBlock);
-  looseBlocks.forEach(measureBlock);
+  looseBlocks.forEach(measureLooseBlock);
 
   // ── Shelf-pack the router blocks onto rows so the connected area
   // approaches a 4:3 (width:height) aspect ratio instead of one very wide
@@ -926,17 +935,16 @@ export function computeHierarchicalPositions(opts = {}) {
     let curX = -rowWidth / 2;
     const rowCols = [];
     row.forEach(b => {
-      const bcx = curX + b.width / 2;
-      b.cx = bcx;
-      b.rowIndex = rowIdx;
-      let cy = rowY;
+      let colX = curX;
       b.cols.forEach(c => {
-        c.cx = bcx;
-        c.cy = cy;
+        c.cx = colX + c.colW / 2;
+        c.cy = rowY;
         if (c.envId) { envColCx.set(c.envId, c.cx); envColCy.set(c.envId, c.cy); }
         rowCols.push(c);
-        cy += c.contentHeight + STACK_GAP;
+        colX += c.colW + COL_GAP;
       });
+      b.cx = (b.cols[0].cx + b.cols[b.cols.length - 1].cx) / 2;
+      b.rowIndex = rowIdx;
       curX += b.width + GROUP_GAP;
     });
     const rowHeight = Math.max(...row.map(b => b.height), NODE_H);
