@@ -679,8 +679,13 @@ export function computeHierarchicalPositions(opts = {}) {
     return maxHeight;
   }
 
-  // ── Which environments have an actual member server in the current
-  // (possibly filtered) view — only those get a column at all.
+  // ── Which environments get a column at all: any environment with an
+  // actual member server in the current (possibly filtered) view, plus any
+  // environment a router directly claims (router.environments) even with
+  // zero members right now — otherwise its router-group would end up with
+  // no columns and get dropped entirely (see routerBlocks below), which
+  // shifts every router after it left and misaligns them with their own
+  // environments.
   const envServerMap = new Map();
   const noEnvServers = [];
   sortByName(_colSrvs).forEach(s => {
@@ -692,6 +697,9 @@ export function computeHierarchicalPositions(opts = {}) {
       noEnvServers.push(s);
     }
   });
+  _routers.forEach(r => (r.environments || []).forEach(env => {
+    if (!envServerMap.has(env.id)) envServerMap.set(env.id, []);
+  }));
   const relevantEnvIds = new Set(envServerMap.keys());
 
   // ── Environments whose gateway is a specific SERVER (not a router) that
