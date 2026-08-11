@@ -36,6 +36,13 @@ export let currentRenderedLayout = null;
 /** Update the currentRenderedLayout string. */
 export function setCurrentRenderedLayout(m) { currentRenderedLayout = m; }
 
+// How much of the graph to show, from a bare topology overview down to the
+// full detail — 'connections' < 'apps' < 'servers' < 'full'.
+export const DETAIL_LEVELS = ['connections', 'apps', 'servers', 'full'];
+export let detailLevel = 'full';
+/** Update the current detail level string. */
+export function setDetailLevel(l) { detailLevel = l; }
+
 export let irSrvEdgeIds = [];
 /** Replace the irSrvEdgeIds array contents. */
 export function setIrSrvEdgeIds(ids) { irSrvEdgeIds.length = 0; ids.forEach(id => irSrvEdgeIds.push(id)); }

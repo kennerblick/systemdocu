@@ -19,6 +19,13 @@
     <select id="env-filter"><option value="">Alle</option></select>
     <label>Anwendung:</label>
     <select id="app-filter"><option value="">Alle</option></select>
+    <label>Detailgrad:</label>
+    <select id="detail-level-select">
+      <option value="connections">Anschlüsse &amp; Umgebungen</option>
+      <option value="apps">+ Anwendungen</option>
+      <option value="servers">+ Server</option>
+      <option value="full" selected>Vollständig</option>
+    </select>
     <span id="filter-status" style="display:none"></span>
     <button id="filter-reset-btn" class="xs" style="display:none" title="Filter zurücksetzen"><i class="fa-solid fa-xmark"></i></button>
   </div>

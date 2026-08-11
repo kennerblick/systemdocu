@@ -14,6 +14,7 @@ import {
   showingInstances,
   hiddenByFilter, setHiddenByFilter,
   isExternServer,
+  DETAIL_LEVELS, detailLevel, setDetailLevel,
 } from './state.js';
 
 import { computeHierarchicalPositions, fitVisible } from './graph.js';
@@ -76,6 +77,44 @@ export function resetFilters() {
 }
 
 /**
+ * Additionally hides nodes/edges beyond what the current detail level
+ * shows — layered on top of whatever the env/app filter above just
+ * computed, never un-hiding something the filter itself hid. Levels
+ * progress from a bare topology overview (connections + environment
+ * switches) up through applications and servers to the full current view.
+ */
+function applyDetailLevel() {
+  if (!nodes || !edges) return;
+  const levelIdx = DETAIL_LEVELS.indexOf(detailLevel);
+  if (levelIdx === DETAIL_LEVELS.length - 1) return; // 'full' — nothing extra to hide
+
+  // Which level a node first appears at.
+  const nodeLevel = id => {
+    if (typeof id === 'string') {
+      if (id.startsWith('inst_') || id.startsWith('cluster_')) return 3;
+      if (id.startsWith('appswitch_')) return 1;
+      if (id.startsWith('switch_')) return 0;
+      if (id.startsWith('router_') || id.startsWith('provider_') || id === 'internet_cloud') return 0;
+      return 3;
+    }
+    // Bare numeric id = a server; www/extern servers belong to the
+    // "Anschlüsse" tier itself, regular servers only from level 2 on.
+    const srv = allServers.find(s => s.id === id);
+    return srv && isExternServer(srv) ? 0 : 2;
+  };
+
+  const nodeUpdates = [], edgeUpdates = [];
+  nodes.forEach(n => {
+    if (!n.hidden && nodeLevel(n.id) > levelIdx) nodeUpdates.push({ id: n.id, hidden: true, physics: false });
+  });
+  edges.forEach(e => {
+    if (!e.hidden && Math.max(nodeLevel(e.from), nodeLevel(e.to)) > levelIdx) edgeUpdates.push({ id: e.id, hidden: true });
+  });
+  if (nodeUpdates.length) nodes.update(nodeUpdates);
+  if (edgeUpdates.length) edges.update(edgeUpdates);
+}
+
+/**
  * Applies the current env/app filter selection to show/hide nodes and edges.
  */
 export function applyFilters(skipFit = false) {
@@ -130,6 +169,7 @@ export function applyFilters(skipFit = false) {
         if (bn) { bn.x = x; bn.y = y; }
       });
     }
+    applyDetailLevel();
     if (!skipFit) {
       fitVisible();
       if (layoutMode !== 'hierarchical') network.stabilize(150);
@@ -421,6 +461,7 @@ export function applyFilters(skipFit = false) {
       if (bn) { bn.x = x; bn.y = y; }
     });
   }
+  applyDetailLevel();
   if (!skipFit) {
     fitVisible();
     if (layoutMode !== 'hierarchical') network.stabilize(150);
@@ -436,4 +477,8 @@ export function initFilters() {
     document.getElementById(id).addEventListener('change', () => applyFilters());
   });
   document.getElementById('filter-reset-btn').addEventListener('click', resetFilters);
+  document.getElementById('detail-level-select').addEventListener('change', e => {
+    setDetailLevel(e.target.value);
+    applyFilters();
+  });
 }
