@@ -909,44 +909,11 @@ export function computeHierarchicalPositions(opts = {}) {
   }
   looseBlocks.forEach(measureLooseBlock);
 
-  // ── Shelf-pack the router blocks onto rows so the connected area
-  // approaches a 4:3 (width:height) aspect ratio instead of one very wide
-  // single row — a block never splits across rows (its router stays
-  // centered above it), and each row gets its own switch/router tier
-  // directly above its columns; only the shared provider/cloud/www tiers
-  // stay anchored above the very first row.
-  // Block sizes vary too much (a router with one small environment next to
-  // one with five large ones) for a closed-form row count to land anywhere
-  // near 4:3, so every candidate row count is actually packed and measured;
-  // the one whose real resulting width:height is closest to 4:3 wins.
+  // All Anschlüsse (router blocks) sit on a single row, side by side, in
+  // their provider-grouped left-to-right order — so every router reads at
+  // the same height instead of wrapping onto a second tier.
   const ROW_TIER_H = SWITCH_GAP + ROUTER_GAP + NODE_H;
-  const totalBlockW = routerBlocks.reduce((s, b) => s + b.width, 0) + GROUP_GAP * Math.max(0, routerBlocks.length - 1);
-  function packAtWidth(targetW) {
-    const packedRows = [];
-    let curRow = [], curRowW = 0;
-    routerBlocks.forEach(b => {
-      if (curRow.length && curRowW + GROUP_GAP + b.width > targetW) { packedRows.push(curRow); curRow = []; curRowW = 0; }
-      curRow.push(b);
-      curRowW += (curRow.length > 1 ? GROUP_GAP : 0) + b.width;
-    });
-    if (curRow.length) packedRows.push(curRow);
-    const width = packedRows.reduce((m, row) =>
-      Math.max(m, row.reduce((s, b, i) => s + b.width + (i > 0 ? GROUP_GAP : 0), 0)), NODE_W);
-    const height = packedRows.reduce((s, row) => s + Math.max(...row.map(b => b.height), NODE_H) + GROUP_GAP + ROW_TIER_H, 0);
-    return { packedRows, width, height };
-  }
-  let rows;
-  if (routerBlocks.length > 1) {
-    let best = null;
-    for (let r = 1; r <= routerBlocks.length; r++) {
-      const candidate = packAtWidth(Math.max(NODE_W * 3, totalBlockW / r));
-      const score = Math.abs(Math.log((candidate.width / candidate.height) / (4 / 3)));
-      if (!best || score < best.score) best = { ...candidate, score };
-    }
-    rows = best.packedRows;
-  } else {
-    rows = routerBlocks.length ? [routerBlocks] : [];
-  }
+  const rows = routerBlocks.length ? [routerBlocks] : [];
 
   const envColCx = new Map();
   const envColCy = new Map();
