@@ -552,7 +552,7 @@ function buildEnvironmentSwitches() {
  */
 export function computeHierarchicalPositions(opts = {}) {
   const NODE_W = 150, NODE_H = 80, COL_GAP = 70, GROUP_GAP = 160,
-        SWITCH_GAP = 85, INST_H = 56, INST_GAP = 18, BELOW_GAP = 70,
+        SWITCH_GAP = 85, INST_H = 38, INST_GAP = 18, BELOW_GAP = 70,
         APP_GROUP_GAP = 50, APP_SWITCH_GAP = 45,
         // Vertical clearance between the tiers above the server columns:
         // switch → router → www-server → provider → internet cloud. Each is
@@ -584,8 +584,11 @@ export function computeHierarchicalPositions(opts = {}) {
         .sort((a, b) => a.name.localeCompare(b.name))
         .forEach(inst => instIds.push('inst_' + inst.id));
     });
-    const cols = instIds.length ? Math.ceil(Math.sqrt(instIds.length)) : 0;
-    const rows = instIds.length ? Math.ceil(instIds.length / cols) : 0;
+    // Single column, stacked straight down — narrower than a square grid
+    // (doesn't widen the server's own column at all) at the cost of height,
+    // which matters far less since the canvas scrolls/zooms freely.
+    const cols = instIds.length ? 1 : 0;
+    const rows = instIds.length;
     return {
       server: s, instIds, cols,
       widthUnits: Math.max(1, cols),
@@ -958,6 +961,31 @@ export function computeHierarchicalPositions(opts = {}) {
   if (fallbackSwitchEnvs.length) {
     y += BELOW_GAP;
     y += placeGrid(fallbackSwitchEnvs.map(env => 'switch_' + env.id), y, NODE_H * 0.6);
+  }
+
+  // ── Application-switches for a server whose membership in this
+  // environment is *secondary* (its column placement above follows only
+  // its primary, first-listed environment) never get positioned by the
+  // per-column pass — e.g. a gateway machine plugged into several networks
+  // has an application-switch edge drawn in each of them (buildEnvironment
+  // Switches considers every membership), but only its primary environment's
+  // column actually places it. Same fallback treatment as orphaned switches.
+  const orphanAppSwitchIds = [];
+  allEnvironments.forEach(env => {
+    if (env.name.toLowerCase() === 'www') return;
+    const memberServers = _servers.filter(s => (s.environments || []).some(e => e.id === env.id));
+    const seenAppIds = new Set();
+    memberServers.forEach(s => {
+      const app = firstApp(s);
+      if (!app || seenAppIds.has(app.id)) return;
+      seenAppIds.add(app.id);
+      const key = 'appswitch_' + env.id + '_' + app.id;
+      if (!pos[key]) orphanAppSwitchIds.push(key);
+    });
+  });
+  if (orphanAppSwitchIds.length) {
+    y += BELOW_GAP;
+    y += placeGrid(orphanAppSwitchIds, y, NODE_H * 0.5);
   }
 
   // ── Routers: centered over their own group's column span (not an
