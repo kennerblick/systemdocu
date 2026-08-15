@@ -32,6 +32,13 @@ export let layoutMode = 'hierarchical';
 /** Update the current layout mode string. */
 export function setLayoutMode(m) { layoutMode = m; }
 
+// Rendering engine — 'vis' (vis-network, default) or 'cytoscape'. See
+// cy-shim.js for the Cytoscape backend that mimics the vis-network API this
+// codebase uses, so graph.js/filters.js/search.js work with either.
+export let renderEngine = 'vis';
+/** Update the current rendering engine string. */
+export function setRenderEngine(e) { renderEngine = e; }
+
 export let currentRenderedLayout = null;
 /** Update the currentRenderedLayout string. */
 export function setCurrentRenderedLayout(m) { currentRenderedLayout = m; }

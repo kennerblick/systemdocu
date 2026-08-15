@@ -23,6 +23,7 @@ import {
   isExternServer,
   currentServerId, currentClusterId,
   detailLevel,
+  renderEngine, setRenderEngine,
 } from './state.js';
 
 import { buildInstServerMap, displayName, escHtml } from './utils.js';
@@ -30,6 +31,7 @@ import { applyFilters } from './filters.js';
 import { stopBlink } from './search.js';
 import { openSidebar, closeSidebar } from './sidebar.js';
 import { openClusterSidebar } from './cluster.js';
+import * as cyShim from './cy-shim.js';
 
 /** Returns the primary display colour for a server node. */
 function serverColor(server) {
@@ -1241,6 +1243,23 @@ export function toggleLayout() {
 }
 
 /**
+ * Toggles between the vis-network and Cytoscape rendering engines (see
+ * cy-shim.js), destroying and rebuilding the graph exactly like toggleLayout().
+ */
+export function toggleEngine() {
+  setRenderEngine(renderEngine === 'vis' ? 'cytoscape' : 'vis');
+  const btn = document.getElementById('engine-toggle-btn');
+  btn.innerHTML = renderEngine === 'cytoscape'
+    ? '<i class="fa-solid fa-diagram-project"></i> Cytoscape'
+    : '<i class="fa-solid fa-diagram-project"></i> vis-network';
+  if (network) { network.destroy(); setNetwork(null); setShowingInstances(false); }
+  renderGraph();
+  applyFilters();
+  if (currentServerId) openSidebar(currentServerId);
+  else if (currentClusterId) openClusterSidebar(currentClusterId);
+}
+
+/**
  * Builds and renders (or patches) the vis-network graph with current data.
  */
 export function renderGraph(skipFit = false) {
@@ -1373,7 +1392,7 @@ export function renderGraph(skipFit = false) {
   }
   setCurrentRenderedLayout(layoutMode);
 
-  const { DataSet, Network } = vis;
+  const { DataSet, Network } = renderEngine === 'cytoscape' ? cyShim : vis;
   setNodes(new DataSet(nodeData));
   setEdges(new DataSet(edgeData));
   const netOpts = layoutMode === 'hierarchical'

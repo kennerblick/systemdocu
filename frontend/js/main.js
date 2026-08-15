@@ -6,7 +6,7 @@
 'use strict';
 
 import { loadAll, initSSE } from './api.js';
-import { toggleLayout } from './graph.js';
+import { toggleLayout, toggleEngine } from './graph.js';
 import { initFilters } from './filters.js';
 import { initSidebar } from './sidebar.js';
 import { initCluster } from './cluster.js';
@@ -33,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Layout toggle button
   document.getElementById('layout-toggle-btn').addEventListener('click', toggleLayout);
+
+  // Render-engine toggle button (vis-network / Cytoscape, see cy-shim.js)
+  document.getElementById('engine-toggle-btn').addEventListener('click', toggleEngine);
 
   // Excel export button
   document.getElementById('btn-export-excel').addEventListener('click', exportExcel);
