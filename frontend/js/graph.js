@@ -1416,45 +1416,15 @@ export function renderGraph(skipFit = false) {
   graphEl.appendChild(leg);
   renderLegend();
 
+  // The live DataSet's hidden flag is the single source of truth for "is
+  // this actually drawn right now" — it reflects both the env/app filter
+  // (hiddenByFilter) and the detail-level pass (applyDetailLevel), which
+  // hides servers/instances without touching hiddenByFilter at all. Shared
+  // by both drawing hooks below.
+  const isNodeHidden = id => { const n = nodes.get(id); return !n || n.hidden; };
+
   net.on('beforeDrawing', ctx => {
-    // The live DataSet's hidden flag is the single source of truth for "is
-    // this actually drawn right now" — it reflects both the env/app filter
-    // (hiddenByFilter) and the detail-level pass (applyDetailLevel), which
-    // hides servers/instances without touching hiddenByFilter at all.
-    const isNodeHidden = id => { const n = nodes.get(id); return !n || n.hidden; };
-
-    // Multi-application servers get a native white fill (a flat vis `color`
-    // can't show more than one color), so draw the real pie-slice breakdown
-    // centered on top — drawn regardless of zoom/instance-visibility state,
-    // since server nodes exist in both.
-    allServers.forEach(server => {
-      if (isNodeHidden(server.id)) return;
-      const apps = server.applications || [];
-      if (apps.length < 2) return;
-      let pos;
-      try { pos = net.getPosition(server.id); } catch (e) { return; }
-      drawAppBadge(ctx, pos.x, pos.y, 16, apps);
-    });
-
     if (!showingInstances) return;
-
-    // Same for multi-application instance boxes — effective apps = the
-    // instance's own applications plus whichever of its server's tags opted
-    // into inherit_to_instances (server.inherited_application_ids).
-    allServers.forEach(server => {
-      if (isNodeHidden(server.id)) return;
-      const inheritedIds = new Set(server.inherited_application_ids || []);
-      const inheritedApps = (server.applications || []).filter(a => inheritedIds.has(a.id));
-      (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
-        const ownIds = new Set((inst.applications || []).map(a => a.id));
-        const effective = [...(inst.applications || []), ...inheritedApps.filter(a => !ownIds.has(a.id))];
-        if (effective.length < 2) return;
-        if (isNodeHidden('inst_' + inst.id)) return;
-        let pos;
-        try { pos = net.getPosition('inst_' + inst.id); } catch (e) { return; }
-        drawAppBadge(ctx, pos.x, pos.y, 8, effective);
-      }));
-    });
 
     const visibleServerPositions = [];
     allServers.forEach(s => {
@@ -1528,6 +1498,42 @@ export function renderGraph(skipFit = false) {
   });
 
   net.on('afterDrawing', ctx => {
+    // Multi-application servers get a native white fill (a flat vis `color`
+    // can't show more than one color), so draw the real pie-slice breakdown
+    // centered on top — drawn regardless of zoom/instance-visibility state,
+    // since server nodes exist in both. Must run in afterDrawing, not
+    // beforeDrawing: vis paints the actual node shape in between the two
+    // hooks, so a badge drawn beforeDrawing gets immediately painted over
+    // and never shows (the bug that made multi-app servers look plain white).
+    allServers.forEach(server => {
+      if (isNodeHidden(server.id)) return;
+      const apps = server.applications || [];
+      if (apps.length < 2) return;
+      let pos;
+      try { pos = net.getPosition(server.id); } catch (e) { return; }
+      drawAppBadge(ctx, pos.x, pos.y, 16, apps);
+    });
+
+    if (showingInstances) {
+      // Same for multi-application instance boxes — effective apps = the
+      // instance's own applications plus whichever of its server's tags opted
+      // into inherit_to_instances (server.inherited_application_ids).
+      allServers.forEach(server => {
+        if (isNodeHidden(server.id)) return;
+        const inheritedIds = new Set(server.inherited_application_ids || []);
+        const inheritedApps = (server.applications || []).filter(a => inheritedIds.has(a.id));
+        (server.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+          const ownIds = new Set((inst.applications || []).map(a => a.id));
+          const effective = [...(inst.applications || []), ...inheritedApps.filter(a => !ownIds.has(a.id))];
+          if (effective.length < 2) return;
+          if (isNodeHidden('inst_' + inst.id)) return;
+          let pos;
+          try { pos = net.getPosition('inst_' + inst.id); } catch (e) { return; }
+          drawAppBadge(ctx, pos.x, pos.y, 8, effective);
+        }));
+      });
+    }
+
     edges.forEach(e => {
       const id = e.id;
       if (typeof id !== 'string') return;
