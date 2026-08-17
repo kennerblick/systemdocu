@@ -16,6 +16,34 @@ const SHAPE_MAP = {
   hexagon: 'hexagon', diamond: 'diamond',
 };
 
+/** Cytoscape element ids are always strings; this codebase relies on real
+ * numbers for plain server/router/etc. node ids (e.g. sidebar.js's
+ * `allServers.find(s => s.id === serverId)` uses strict `===`) — vis-network
+ * preserves whatever type an id was created with, so restore that here for
+ * anything purely numeric. Synthetic ids ('inst_5', 'switch_2', ...) contain
+ * non-digit characters and pass through unchanged. */
+function origId(id) {
+  return /^-?\d+$/.test(id) ? Number(id) : id;
+}
+
+/** fCoSE (registered once) is a materially better force-directed layout than
+ * Cytoscape's bundled base `cose` for this graph's mix of node sizes/shapes
+ * and disconnected components (router groups, isolated environments) — cose
+ * neither avoids overlap between differently-sized nodes nor packs
+ * disconnected parts sensibly, fcose does both. Requires layout-base.js and
+ * cose-base.js loaded before it (see index.html). */
+let _fcoseRegistered = false;
+function ensureFcose() {
+  if (_fcoseRegistered) return;
+  if (window.cytoscapeFcose) window.cytoscape.use(window.cytoscapeFcose);
+  _fcoseRegistered = true;
+}
+
+const FCOSE_LAYOUT_BASE = {
+  name: 'fcose', animate: false, nodeRepulsion: 6500, idealEdgeLength: 110,
+  edgeElasticity: 0.35, gravity: 0.3, numIter: 2500, tile: true, packComponents: true,
+};
+
 /** Cytoscape rejects 8-digit #RRGGBBAA hex (unlike vis/CSS4) — split into a plain
  * hex plus an alpha fraction it accepts as a separate opacity style instead. */
 function splitHexAlpha(hex) {
@@ -175,6 +203,7 @@ export class Network {
 
     this._physicsMode = !!(options.physics && options.physics.enabled !== false);
     this.physics = { physicsEnabled: true, stabilized: true }; // overlay redraw is always safe here
+    if (this._physicsMode) ensureFcose();
 
     this._cy = window.cytoscape({
       container,
@@ -187,8 +216,7 @@ export class Network {
         { selector: 'edge', style: { 'overlay-opacity': 0 } },
       ],
       layout: this._physicsMode
-        ? { name: 'cose', animate: false, randomize: true, fit: true,
-            nodeRepulsion: 9000, idealEdgeLength: 130, gravity: 45, numIter: 800 }
+        ? { ...FCOSE_LAYOUT_BASE, randomize: true, fit: true }
         : { name: 'preset', fit: false },
       minZoom: 0.04, maxZoom: 5, wheelSensitivity: 0.25,
     });
@@ -215,7 +243,7 @@ export class Network {
     this._cy.on('tap', evt => {
       if (evt.target === this._cy) this._fire(this._clickCb, { nodes: [] });
     });
-    this._cy.on('tap', 'node', evt => this._fire(this._clickCb, { nodes: [evt.target.id()] }));
+    this._cy.on('tap', 'node', evt => this._fire(this._clickCb, { nodes: [origId(evt.target.id())] }));
     this._cy.on('mouseover', 'edge', evt => this._fire(this._hoverEdgeCb, { edge: evt.target.id() }));
     this._cy.on('mouseout', 'edge', () => this._fire(this._blurEdgeCb));
     this._cy.on('zoom', () => this._fire(this._zoomCb));
@@ -299,10 +327,10 @@ export class Network {
     return { x: p.x, y: p.y };
   }
 
-  stabilize(/* iterations hint, unused: cose runs to its own completion */) {
+  stabilize(/* iterations hint, unused: fcose runs to its own completion */) {
     if (!this._physicsMode) return;
     const layout = this._cy.elements(':visible').layout({
-      name: 'cose', randomize: false, fit: false, animate: false, numIter: 400,
+      ...FCOSE_LAYOUT_BASE, randomize: false, fit: false,
     });
     layout.one('layoutstop', () => this._emitStabilized());
     layout.run();
