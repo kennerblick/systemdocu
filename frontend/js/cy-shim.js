@@ -39,8 +39,16 @@ function ensureFcose() {
   _fcoseRegistered = true;
 }
 
+// vis-network gives short/long-haul edges (e.g. instance -> host vs. a
+// generic relation) their own rest length via a per-edge `length`; fcose's
+// idealEdgeLength accepts the same kind of per-edge callback (falling back
+// to a generic default for edges that don't set one) — without this every
+// edge gets pulled to the same length and hosts/instances/switches all
+// collapse into one indistinct clump instead of grouping by host.
 const FCOSE_LAYOUT_BASE = {
-  name: 'fcose', animate: false, nodeRepulsion: 6500, idealEdgeLength: 110,
+  name: 'fcose', animate: false,
+  nodeRepulsion: 6500,
+  idealEdgeLength: edge => edge.data('idealLen') || 120,
   edgeElasticity: 0.35, gravity: 0.3, numIter: 2500, tile: true, packComponents: true,
 };
 
@@ -96,6 +104,7 @@ function applyVisStyle(ele, rec, isEdge) {
       opacity: col.opacity,
       'curve-style': 'bezier',
     });
+    ele.data('idealLen', rec.length || null);
   } else {
     const col = colorOf(rec.color);
     const size = (rec.size || 16) * 2;
@@ -146,7 +155,13 @@ export class DataSet {
     const arr = Array.isArray(recs) ? recs : [recs];
     let addedUnpositioned = false;
     arr.forEach(r => { if (this._upsert(r, isUpdate)) addedUnpositioned = true; });
-    if (addedUnpositioned && this._cy) this._cy._onUnpositionedNodesAdded && this._cy._onUnpositionedNodesAdded();
+    // Deferred: callers like updateInstanceVisibility() add instance nodes
+    // and their host-linking edges in separate, back-to-back add() calls —
+    // stabilizing immediately after just the nodes would run fcose before
+    // the edges that pull each instance toward its own host even exist,
+    // scattering them randomly instead. _scheduleAutoStabilize waits a
+    // microtask so the whole synchronous batch of add() calls lands first.
+    if (addedUnpositioned && this._cy) this._cy._scheduleAutoStabilize && this._cy._scheduleAutoStabilize();
   }
 
   /** Returns true if a brand-new, unpositioned node was just added (physics settling hint). */
@@ -196,9 +211,20 @@ export class Network {
     nodes.forEach(rec => elements.push({
       group: 'nodes', data: { id: String(rec.id) },
       position: rec.x != null ? { x: rec.x, y: rec.y } : { x: Math.random() * 300, y: Math.random() * 300 },
+      // Baked in up front, not applied via .lock() after construction:
+      // the layout below (physics mode: fcose with randomize:true) runs as
+      // part of this very cytoscape() call, before any later applyVisStyle()
+      // call could lock a node — too late to stop it being scattered too.
+      locked: !!rec.fixed,
     }));
     edges.forEach(rec => elements.push({
-      group: 'edges', data: { id: String(rec.id), source: String(rec.from), target: String(rec.to) },
+      group: 'edges', data: {
+        id: String(rec.id), source: String(rec.from), target: String(rec.to),
+        // Same reasoning as `locked` above: fcose's idealEdgeLength callback
+        // (see FCOSE_LAYOUT_BASE) reads this per-edge, so it has to be present
+        // before the initial layout runs, not set afterwards by applyVisStyle.
+        idealLen: rec.length || null,
+      },
     }));
 
     this._physicsMode = !!(options.physics && options.physics.enabled !== false);
@@ -218,7 +244,7 @@ export class Network {
       layout: this._physicsMode
         ? { ...FCOSE_LAYOUT_BASE, randomize: true, fit: true }
         : { name: 'preset', fit: false },
-      minZoom: 0.04, maxZoom: 5, wheelSensitivity: 0.25,
+      minZoom: 0.04, maxZoom: 5, wheelSensitivity: 1.5,
     });
 
     nodes._bind(this._cy, 'node');
@@ -238,6 +264,21 @@ export class Network {
     container.appendChild(this._overlay);
     this._overlayCtx = this._overlay.getContext('2d');
     this._resizeOverlay();
+
+    // Cytoscape reads the container's size once at construction and never
+    // again on its own (unlike a plain <canvas>, it does not observe the DOM)
+    // — anything that changes #graph's box afterwards (window resize, but
+    // also just opening/closing the sidebar, which resizes #graph via flex)
+    // would leave hit-testing and this overlay working off stale dimensions
+    // otherwise, e.g. mismatched clicks and overlays.
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => {
+        this._cy.resize();
+        this._resizeOverlay();
+        this._redrawOverlay();
+      });
+      this._resizeObserver.observe(container);
+    }
 
     this._cy.on('render pan zoom position drag', () => this._redrawOverlay());
     this._cy.on('tap', evt => {
@@ -264,7 +305,15 @@ export class Network {
       if (tt) tt.style.display = 'none';
     });
 
-    this._cy._onUnpositionedNodesAdded = () => { if (this._physicsMode) this.stabilize(200); };
+    this._autoStabilizeScheduled = false;
+    this._cy._scheduleAutoStabilize = () => {
+      if (!this._physicsMode || this._autoStabilizeScheduled) return;
+      this._autoStabilizeScheduled = true;
+      Promise.resolve().then(() => {
+        this._autoStabilizeScheduled = false;
+        this.stabilize(200);
+      });
+    };
 
     if (this._physicsMode) {
       this._cy.one('layoutstop', () => this._emitStabilized());
@@ -339,6 +388,7 @@ export class Network {
   redraw() { this._redrawOverlay(); }
 
   destroy() {
+    if (this._resizeObserver) this._resizeObserver.disconnect();
     if (this._overlay && this._overlay.parentNode) this._overlay.parentNode.removeChild(this._overlay);
     this._cy.destroy();
   }
