@@ -62,6 +62,17 @@ function appNodeColor(apps) {
 }
 
 /**
+ * Builds a vis edge `color` object. vis-network only auto-derives hover/
+ * highlight variants when `color` is given as a bare string — the `{color,
+ * opacity}` object form used everywhere here otherwise silently falls back
+ * to vis's generic grey (#848484) for both, so every edge below goes
+ * through this instead of a raw object literal.
+ */
+function edgeColor(color, opacity = 1) {
+  return { color, highlight: color, hover: color, opacity };
+}
+
+/**
  * Draws a small application-color badge at (x,y) with radius r — a solid
  * circle for one application, or evenly-sized pie slices (one per
  * app.color) for several, so multi-app membership reads at a glance.
@@ -195,7 +206,7 @@ function buildInstanceNodesEdges() {
         const isVM = VM_SVC_TYPES.has(svc.type);
         siEdges.push({
           id: 'si_' + inst.id, from: s.id, to: 'inst_' + inst.id,
-          color: { color: col, opacity: isVM ? 0.15 : 0.45 },
+          color: edgeColor(col, isVM ? 0.15 : 0.45),
           width: isVM ? 0.5 : 1,
           dashes: isVM ? false : [3, 6],
           arrows: '',
@@ -206,7 +217,7 @@ function buildInstanceNodesEdges() {
           switchInstEdges.push({
             id: 'switch_mem_inst_' + inst.id + '_' + env.id, from: 'switch_' + env.id, to: 'inst_' + inst.id,
             arrows: '', dashes: [2, 4], width: 2, length: 110,
-            color: { color: env.color, opacity: 0.3 },
+            color: edgeColor(env.color, 0.3),
             title: 'Quelle: 🔌 ' + escHtml(env.name) + '<br>Ziel: ' + escHtml(s.hostname) + ' / ' + escHtml(inst.name),
           });
         });
@@ -224,7 +235,7 @@ function buildInstanceNodesEdges() {
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.id, to: 'router_' + inst.gateway_router_id,
             arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#f97316', opacity: 0.45 },
+            color: edgeColor('#f97316', 0.45),
             title: 'Gateway: ' + escHtml((allRouters.find(r => r.id === inst.gateway_router_id) || {}).name || '?'),
             hidden: !showInternet,
           });
@@ -233,7 +244,7 @@ function buildInstanceNodesEdges() {
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.id, to: inst.gateway_server_id,
             arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#22d3ee', opacity: 0.45 },
+            color: edgeColor('#22d3ee', 0.45),
             title: 'Gateway: ' + escHtml((allServers.find(sv => sv.id === inst.gateway_server_id) || {}).hostname || '?'),
           });
         } else if (inst.gateway_instance_id) {
@@ -241,7 +252,7 @@ function buildInstanceNodesEdges() {
             id: 'gw_inst_' + inst.id,
             from: 'inst_' + inst.id, to: 'inst_' + inst.gateway_instance_id,
             arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
-            color: { color: '#22d3ee', opacity: 0.45 },
+            color: edgeColor('#22d3ee', 0.45),
             title: 'Gateway: ' + escHtml(gwI ? gwI.name : String(inst.gateway_instance_id)),
           });
         }
@@ -270,7 +281,7 @@ function buildInstanceNodesEdges() {
         id: 'cl_member_' + cl.id + '_' + m.id,
         from: 'cluster_' + cl.id, to: 'inst_' + m.id,
         arrows: '', width: 1, dashes: [4, 4],
-        color: { color: col, opacity: 0.6 },
+        color: edgeColor(col, 0.6),
         title: escHtml(cl.name) + ' → ' + escHtml(m.name),
       });
     });
@@ -296,7 +307,7 @@ function buildInstanceNodesEdges() {
             : dir === 'from' ? { to: { enabled: false }, from: { enabled: true } }
             : 'to',
       width: 2,
-      color: { color: '#7c3aed' },
+      color: edgeColor('#7c3aed'),
       title: srcLabel +
              (dir === 'both' ? ' ↔ ' : dir === 'none' ? ' — ' : dir === 'from' ? ' ← ' : ' → ') +
              tgtLabel + '<br>' + escHtml(r.type),
@@ -353,7 +364,7 @@ function buildInternetGraph() {
     newInetNodeIds.push(nodeId);
     const eid = 'inet_prov_' + nodeId;
     iEdges.push({ id: eid, from: 'internet_cloud', to: nodeId, arrows: 'to', width: 2,
-      color: { color: '#3b82f6' }, hidden });
+      color: edgeColor('#3b82f6'), hidden });
     newInetEdgeIds.push(eid);
   });
 
@@ -391,7 +402,7 @@ function buildInternetGraph() {
       iEdges.push({
         id: linkId, from: fromNode, to: r.server_id,
         arrows: 'to', width: 1.5, dashes: [4, 2],
-        color: { color: '#6b7280' },
+        color: edgeColor('#6b7280'),
         title: 'Gateway-Server',
         hidden,
       });
@@ -412,7 +423,7 @@ function buildInternetGraph() {
       arrows: 'to',
       width: r.upstream_router_id ? 1.5 : 2,
       dashes: r.upstream_router_id ? [5, 3] : false,
-      color: { color: r.upstream_router_id ? '#f97316' : '#38bdf8' },
+      color: edgeColor(r.upstream_router_id ? '#f97316' : '#38bdf8'),
       title: r.upstream_router_id ? 'Routing → ' + escHtml(r.name) : escHtml(r.external_ip || 'Anschluss'),
       hidden,
     });
@@ -423,7 +434,7 @@ function buildInternetGraph() {
     iEdges.push({
       id: 'inet_extern_' + s.id, from: 'internet_cloud', to: s.id,
       arrows: 'to', width: 2, physics: true,
-      color: { color: '#3b82f6', opacity: 0.7 },
+      color: edgeColor('#3b82f6', 0.7),
       title: 'Direkte Internet-Verbindung',
       hidden,
     });
@@ -499,14 +510,14 @@ function buildEnvironmentSwitches() {
           // too, or the second+ membership collides with the first.
           id: 'appswitch_mem_srv_' + s.id + '_' + env.id, from: appNodeId, to: s.id,
           arrows: '', dashes: [2, 4], width: 1.5, length: 60,
-          color: { color: app.color, opacity: 0.35 },
+          color: edgeColor(app.color, 0.35),
           title: 'Quelle: 🔗 ' + escHtml(app.name) + '<br>Ziel: ' + escHtml(s.hostname),
         });
       });
       swEdges.push({
         id: 'appswitch_link_' + env.id + '_' + app.id, from: appNodeId, to: nodeId,
         arrows: 'to', width: 1, dashes: [3, 3],
-        color: { color: env.color, opacity: 0.5 },
+        color: edgeColor(env.color, 0.5),
         title: 'Quelle: 🔗 ' + escHtml(app.name) + '<br>Ziel: 🔌 ' + escHtml(env.name),
       });
     });
@@ -515,7 +526,7 @@ function buildEnvironmentSwitches() {
       swEdges.push({
         id: 'switch_mem_srv_' + s.id + '_' + env.id, from: nodeId, to: s.id,
         arrows: '', dashes: [2, 4], width: 2, length: 110,
-        color: { color: env.color, opacity: 0.3 },
+        color: edgeColor(env.color, 0.3),
         title: 'Quelle: 🔌 ' + escHtml(env.name) + '<br>Ziel: ' + escHtml(s.hostname),
       });
     });
@@ -525,7 +536,7 @@ function buildEnvironmentSwitches() {
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: 'router_' + env.default_gateway_router_id,
         arrows: 'to', width: 0.6, dashes: [4, 2],
-        color: { color: env.color, opacity: 0.5 },
+        color: edgeColor(env.color, 0.5),
         title: 'Gateway: ' + escHtml(r ? r.name : String(env.default_gateway_router_id)),
       });
     } else if (env.default_gateway_server_id) {
@@ -533,7 +544,7 @@ function buildEnvironmentSwitches() {
       swEdges.push({
         id: 'switch_gw_' + env.id, from: nodeId, to: env.default_gateway_server_id,
         arrows: 'to', width: 0.6, dashes: [4, 2],
-        color: { color: env.color, opacity: 0.5 },
+        color: edgeColor(env.color, 0.5),
         title: 'Gateway: ' + escHtml(gs ? gs.hostname : String(env.default_gateway_server_id)),
       });
     }
@@ -1266,7 +1277,7 @@ export function renderGraph(skipFit = false) {
     const tgtSrv = allServers.find(s => s.id === r.target_id);
     edgeData.push({
       id: 'sr_' + r.id, from: r.source_id, to: r.target_id,
-      arrows: 'to', color: { color: '#4b5563' },
+      arrows: 'to', color: edgeColor('#4b5563'),
       title: escHtml(srcSrv ? srcSrv.hostname : String(r.source_id)) + ' → ' +
              escHtml(tgtSrv ? tgtSrv.hostname : String(r.target_id)) + '<br>' + escHtml(r.type),
     });
@@ -1296,7 +1307,7 @@ export function renderGraph(skipFit = false) {
     edgeData.push({
       id: key, from, to,
       arrows: 'to', dashes: true,
-      color: { color: '#7c3aed' },
+      color: edgeColor('#7c3aed'),
       title: lines.join('<hr style="border-color:#334155;margin:5px 0">'),
     });
     newIrSrvEdgeIds.push(key);
@@ -1331,7 +1342,7 @@ export function renderGraph(skipFit = false) {
       edgeData.push({
         id: eid, from: s.id, to: 'router_' + s.gateway_router_id,
         arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
-        color: { color: '#f97316', opacity: 0.45 },
+        color: edgeColor('#f97316', 0.45),
         title: 'Gateway: ' + escHtml(gwR ? gwR.name : String(s.gateway_router_id)),
         hidden: !showInternet,
       });
@@ -1342,7 +1353,7 @@ export function renderGraph(skipFit = false) {
       edgeData.push({
         id: eid, from: s.id, to: s.gateway_server_id,
         arrows: 'to', width: 0.6, dashes: [4, 4], smooth: { enabled: false },
-        color: { color: '#22d3ee', opacity: 0.45 },
+        color: edgeColor('#22d3ee', 0.45),
         title: 'Gateway: ' + escHtml(gwS ? gwS.hostname : String(s.gateway_server_id)),
       });
     }
