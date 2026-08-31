@@ -196,6 +196,11 @@ Relationen
 | Reinzoomen (> 65 %) | Zeigt Instanz-Knoten innerhalb des Servers |
 | Rauszoomen | Blendet Instanz-Knoten aus, zeigt Übersichtskanten |
 | Hover über Kante | Zeigt Verbindungsdetails als Tooltip |
+| Hover über Server-Knoten | Zeigt Name, Alternativname und alle IPs als Tooltip |
+| Hover über Service-/Instanz-Knoten | Zeigt Art des Service/Instanz und den Host als Tooltip |
+| Hover über Cluster-Raute | Zeigt die Clustermitglieder (inkl. Host) als Tooltip |
+| Hover über Netzwerk-Knoten (⬡) | Zeigt Subnetz und die Namen der Netzwerkmitglieder als Tooltip |
+| Hover über Anwendungs-Knoten (⬡) | Zeigt die Mitglieder der Anwendung als Tooltip |
 | VM-Instanzen | Werden visuell im farbigen Bereich ihres Hyper-V-Hosts dargestellt |
 | Klick auf Cluster-Raute | Öffnet Cluster-Sidebar |
 
@@ -395,6 +400,19 @@ Schaltfläche **Excel** → `systemdocu.xlsx` wird heruntergeladen.
 
 Server- und Service-Zellen sind farbig markiert (entsprechend der Graph-Farben). Erste Zeile eingefroren, Spaltenbreiten vorgegeben.
 
+### GraphML
+
+Schaltfläche **GraphML** → `systemdocu.graphml` wird heruntergeladen — die
+komplette Topologie als [GraphML](http://graphml.graphdrawing.org/)-Datei
+zum Öffnen in Graph-/Diagramm-Werkzeugen wie yEd, Gephi oder Cytoscape.
+
+Jeder Server, jede Service-Instanz, jedes Cluster, jede Umgebung, jede
+Anwendung und jeder Internetanschluss wird zu einem Knoten (mit Attributen
+wie Name, Alternativname, IPs, OS-/Service-Typ, Host, Umgebungen,
+Anwendungen, Subnetz, …); Hosting, Cluster-Mitgliedschaft, Umgebungs-/
+Anwendungs-Zuordnung, Gateway-Verknüpfungen, Router-Verkettung sowie alle
+Server- und Instanz-/Cluster-Relationen werden zu Kanten.
+
 ### DB Import/Export (JSON)
 
 Schaltfläche **DB Import/Export** → vollständiger, verlustfreier Export als
@@ -514,6 +532,7 @@ Interaktive Swagger-Doku: `http://<server-ip>:9191/api/docs`
 | GET/POST/PUT/DELETE | `/api/applications` | Anwendungen verwalten |
 | GET/POST/PUT/DELETE | `/api/internet-routers` | Internetanschlüsse verwalten |
 | GET | `/api/export/excel` | Excel-Export |
+| GET | `/api/export/graphml` | GraphML-Export (vollständige Topologie als Graph-Datei) |
 | GET | `/api/db-export` | Vollständiger JSON-Export (verlustfrei) |
 | POST | `/api/db-import` | Vollständiger JSON-Import (ersetzt alle Daten) |
 | GET | `/api/events` | SSE-Stream für Echtzeit-Updates |

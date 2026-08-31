@@ -25,7 +25,7 @@ import {
   detailLevel,
 } from './state.js';
 
-import { buildInstServerMap, displayName, escHtml } from './utils.js';
+import { buildInstServerMap, displayName, escHtml, buildTooltip } from './utils.js';
 import { applyFilters } from './filters.js';
 import { stopBlink } from './search.js';
 import { openSidebar, closeSidebar } from './sidebar.js';
@@ -148,6 +148,8 @@ export function buildNode(server) {
   const col = appNodeColor(server.applications || []);
   const border = col === '#ffffff' ? '#9ca3af' : col;
   const highlightBorder = col === '#ffffff' ? '#4b5563' : '#ffffff';
+  const gwR = server.gateway_router_id ? allRouters.find(r => r.id === server.gateway_router_id) : null;
+  const gwS = server.gateway_server_id ? allServers.find(s => s.id === server.gateway_server_id) : null;
   return {
     id: server.id,
     label: displayName(server),
@@ -155,12 +157,17 @@ export function buildNode(server) {
     size: 18,
     color: { background: col, border, highlight: { background: col, border: highlightBorder } },
     font: { color: '#e0e0e0', size: 13 },
-    title: '[' + escHtml(server.os_type) + '] ' + escHtml(server.hostname) +
-           (server.common_name ? ' (' + escHtml(server.common_name) + ')' : '') +
-           (server.ips && server.ips.length ? '<br>' + server.ips.map(x => escHtml(x.ip)).join('<br>') : '') +
-           (server.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
-           (server.gateway_router_id ? '<br>GW: ' + escHtml((allRouters.find(r => r.id === server.gateway_router_id) || {}).name || '?') : '') +
-           (server.gateway_server_id ? '<br>GW: ' + escHtml((allServers.find(s => s.id === server.gateway_server_id) || {}).hostname || '?') : ''),
+    // Name, Alternativname und alle IPs — siehe buildTooltip() zur Begründung
+    // für den DOM-statt-HTML-Aufbau.
+    title: buildTooltip([
+      { text: server.hostname, bold: true },
+      server.common_name ? 'Alternativname: ' + server.common_name : null,
+      'Typ: ' + server.os_type,
+      ...(server.ips && server.ips.length ? server.ips.map(x => 'IP: ' + x.ip) : ['IP: —']),
+      server.is_gateway ? '⚡ fungiert als Gateway' : null,
+      gwR ? 'Gateway: ' + gwR.name : null,
+      gwS ? 'Gateway: ' + gwS.hostname : null,
+    ]),
   };
 }
 
@@ -186,17 +193,21 @@ function buildInstanceNodesEdges() {
         instNodes.push({
           id: 'inst_' + inst.id,
           label: (inst.is_gateway ? '⚡' : (INST_ICONS[svc.type] || '⚙')) + ' ' + inst.name,
-          title: escHtml(inst.name) +
-                 '<br>🖥 ' + escHtml(s.hostname) +
-                 (inst.is_gateway ? '<br>⚡ fungiert als Gateway' : '') +
-                 (inst.ips && inst.ips.length ? '<br>' + inst.ips.map(x => escHtml(x.ip)).join('<br>') : '') +
-                 (inst.environments && inst.environments.length
-                   ? '<br>🌍 ' + inst.environments.map(e => escHtml(e.name)).join(', ') : '') +
-                 (gwR ? '<br>GW: ' + escHtml(gwR.name) : '') +
-                 (gwS ? '<br>GW: ' + escHtml(gwS.hostname) : '') +
-                 (gwI ? '<br>GW: ' + escHtml(gwI.name) : '') +
-                 ((inst.own_services || []).length
-                   ? '<br>' + inst.own_services.map(s => (INST_ICONS[s.type] || '⚙') + ' ' + escHtml(s.type) + (s.port ? ':' + s.port : '')).join('  ') : ''),
+          // Art der Instanz (Service-Typ) und Host — siehe buildTooltip().
+          title: buildTooltip([
+            { text: inst.name, bold: true },
+            'Typ: ' + svc.type,
+            'Host: ' + s.hostname,
+            inst.is_gateway ? '⚡ fungiert als Gateway' : null,
+            ...(inst.ips && inst.ips.length ? inst.ips.map(x => 'IP: ' + x.ip) : []),
+            (inst.environments && inst.environments.length)
+              ? '🌍 ' + inst.environments.map(e => e.name).join(', ') : null,
+            gwR ? 'Gateway: ' + gwR.name : null,
+            gwS ? 'Gateway: ' + gwS.hostname : null,
+            gwI ? 'Gateway: ' + gwI.name : null,
+            (inst.own_services || []).length
+              ? 'Dienste: ' + inst.own_services.map(so => so.type + (so.port ? ':' + so.port : '')).join(', ') : null,
+          ]),
           shape: 'box',
           color: { background: nodeCol, border: nodeBorder, highlight: { background: nodeCol, border: '#ffffff' } },
           font: { color: nodeCol === '#ffffff' ? '#1f2937' : '#f0f0f0', size: 11 },
@@ -267,10 +278,19 @@ function buildInstanceNodesEdges() {
     clusterNodes.push({
       id: 'cluster_' + cl.id,
       label: '◆ ' + cl.name + (cl.domain ? '\n' + cl.domain : ''),
-      title: escHtml(cl.name) + ' [' + escHtml(cl.service_type) + ']' +
-             (cl.domain ? '<br>🌐 ' + escHtml(cl.domain) : '') +
-             (cl.description ? '<br>' + escHtml(cl.description) : '') +
-             (cl.members && cl.members.length ? '<br>Mitglieder: ' + cl.members.map(m => escHtml(m.name)).join(', ') : ''),
+      // Clustermitglieder (inkl. ihres Hosts) — siehe buildTooltip().
+      title: buildTooltip([
+        { text: cl.name, bold: true },
+        'Typ: ' + cl.service_type,
+        cl.domain ? '🌐 ' + cl.domain : null,
+        cl.description || null,
+        (cl.members && cl.members.length) ? 'Mitglieder:' : 'Mitglieder: —',
+        ...((cl.members || []).map(m => {
+          const info = im[m.id];
+          const host = info && info.serverId ? (allServers.find(s => s.id === info.serverId) || {}).hostname : null;
+          return '• ' + m.name + (host ? ' @ ' + host : '');
+        })),
+      ]),
       shape: 'diamond',
       size: 20,
       color: { background: col + 'cc', border: col, highlight: { background: col, border: '#fff' } },
@@ -370,16 +390,16 @@ function buildInternetGraph() {
 
   const n = allRouters.length;
   allRouters.forEach((r, idx) => {
-    const titleParts = [];
-    if (r.provider)    titleParts.push('Anbieter: ' + escHtml(r.provider));
-    if (r.external_ip) titleParts.push('Externe IP: ' + escHtml(r.external_ip));
-    if (r.internal_ip) titleParts.push('Interne IP: ' + escHtml(r.internal_ip));
+    const titleRows = [{ text: r.name, bold: true }];
+    if (r.provider)    titleRows.push('Anbieter: ' + r.provider);
+    if (r.external_ip) titleRows.push('Externe IP: ' + r.external_ip);
+    if (r.internal_ip) titleRows.push('Interne IP: ' + r.internal_ip);
     if (r.server_id) {
       const srv = allServers.find(s => s.id === r.server_id);
-      if (srv) titleParts.push('Server: ' + escHtml(srv.hostname));
+      if (srv) titleRows.push('Server: ' + srv.hostname);
     }
     if (r.environments && r.environments.length)
-      titleParts.push('Netze: ' + r.environments.map(e => escHtml(e.subnet || e.name)).join(', '));
+      titleRows.push('Netze: ' + r.environments.map(e => e.subnet || e.name).join(', '));
 
     const fromNode = 'router_' + r.id;
     const y = (idx - (n - 1) / 2) * 160;
@@ -393,7 +413,7 @@ function buildInternetGraph() {
       margin: { top: 6, bottom: 6, left: 9, right: 9 },
       borderWidth: 1.5,
       hidden,
-      title: titleParts.join('<br>') || escHtml(r.name),
+      title: buildTooltip(titleRows),
     });
     newInetNodeIds.push(fromNode);
 
@@ -463,9 +483,15 @@ function buildEnvironmentSwitches() {
     if (env.name.toLowerCase() === 'www') return;
     const memberServers = allServers.filter(s => (s.environments || []).some(e => e.id === env.id));
     const hasGateway = env.default_gateway_router_id || env.default_gateway_server_id;
-    const hasInstanceMember = allServers.some(s => (s.services || []).some(svc =>
-      (svc.instances || []).some(inst => (inst.environments || []).some(e => e.id === env.id))));
-    if (!memberServers.length && !hasInstanceMember && !hasGateway) return;
+    // Instance members (name + their host), gathered once and reused both to
+    // decide whether this environment gets a switch at all (an env with only
+    // instance members and no server members still needs one) and to list
+    // them by name in the tooltip below.
+    const instanceMembers = [];
+    allServers.forEach(s => (s.services || []).forEach(svc => (svc.instances || []).forEach(inst => {
+      if ((inst.environments || []).some(e => e.id === env.id)) instanceMembers.push(inst.name + ' @ ' + s.hostname);
+    })));
+    if (!memberServers.length && !instanceMembers.length && !hasGateway) return;
 
     const nodeId = 'switch_' + env.id;
     swNodes.push({
@@ -475,7 +501,16 @@ function buildEnvironmentSwitches() {
       size: 14,
       color: { background: env.color, border: env.color, highlight: { background: env.color, border: '#fff' } },
       font: { color: '#e0e0e0', size: 11 },
-      title: escHtml(env.name) + (env.subnet ? '<br>' + escHtml(env.subnet) : ''),
+      // IP-Kreis (Subnetz) und Namen der Netzwerkmitglieder — siehe buildTooltip().
+      title: buildTooltip([
+        { text: env.name, bold: true },
+        env.subnet ? 'Subnetz: ' + env.subnet : null,
+        memberServers.length ? 'Server:' : null,
+        ...memberServers.map(s => '• ' + s.hostname),
+        instanceMembers.length ? 'Instanzen:' : null,
+        ...instanceMembers.map(n => '• ' + n),
+        (!memberServers.length && !instanceMembers.length) ? 'Keine Mitglieder' : null,
+      ]),
     });
 
     // A member server with an assigned application connects to a small
@@ -500,7 +535,13 @@ function buildEnvironmentSwitches() {
         size: 8,
         color: { background: app.color, border: app.color, highlight: { background: app.color, border: '#fff' } },
         font: { color: '#e0e0e0', size: 9 },
-        title: escHtml(app.name),
+        // Namen der Anwendungsmitglieder — analog zum Netzwerk-Tooltip oben.
+        title: buildTooltip([
+          { text: app.name, bold: true },
+          'Umgebung: ' + env.name,
+          servers.length ? 'Mitglieder:' : 'Mitglieder: —',
+          ...servers.map(s => '• ' + s.hostname),
+        ]),
       });
       servers.forEach(s => {
         swEdges.push({
@@ -1598,6 +1639,19 @@ export function renderGraph(skipFit = false) {
   });
 }
 
+/**
+ * Extracts a plain-text signature from a node `title`, which since
+ * buildTooltip() is a DOM element rather than a string — an element always
+ * stringifies to the same generic "[object HTMLDivElement]" regardless of
+ * its content, so _nodeSignature() below reads its dataset.sig instead
+ * (falling back to the value itself for any plain-string title).
+ */
+function _titleSig(title) {
+  if (title == null) return '';
+  if (typeof title === 'string') return title;
+  return (title.dataset && title.dataset.sig) || '';
+}
+
 /** Computes a node's diff signature for cheap change detection in patchGraph. */
 function _nodeSignature(n) {
   // Includes x/y so a hierarchical-mode re-layout (nodeData carries fixed
@@ -1605,7 +1659,7 @@ function _nodeSignature(n) {
   // otherwise patchGraph() would leave it at its old position after e.g. an
   // SSE-triggered reload that only changed unrelated nodes' layout.
   return n.label + '|' + n.shape + '|' + (n.borderWidth || 1) + '|' +
-         JSON.stringify(n.color) + '|' + (n.title || '') + '|' +
+         JSON.stringify(n.color) + '|' + _titleSig(n.title) + '|' +
          (n.x !== undefined ? n.x.toFixed(1) : '') + '|' + (n.y !== undefined ? n.y.toFixed(1) : '');
 }
 

@@ -1,6 +1,6 @@
 /*
  * utils.js — shared helper utilities used across multiple modules.
- * Exports: escHtml, buildInstServerMap, makeInstDropdownBtn, checkZabbixStatus, nextColor.
+ * Exports: escHtml, buildTooltip, buildInstServerMap, makeInstDropdownBtn, checkZabbixStatus, nextColor.
  */
 'use strict';
 
@@ -21,6 +21,48 @@ export function displayName(server) {
  */
 export function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Builds a small DOM tooltip for a vis-network node `title`. vis-network
+ * ≥9.1.7 renders node titles via `textContent` rather than `innerHTML` (an
+ * XSS-hardening change upstream), so the old approach of joining escaped
+ * strings with literal '<br>' no longer produces line breaks — the raw tags
+ * show up as text instead. Every node tooltip must therefore be built as an
+ * actual DOM element, which vis-network's popup appends as-is (each entry
+ * becomes its own line, no HTML needed).
+ *
+ * `rows` is a flat list of strings (falsy entries — null/undefined/'' — are
+ * skipped, so callers can inline conditionals) or {text, bold, muted}
+ * objects for emphasis/de-emphasis.
+ *
+ * The returned element also carries a plain-text `dataset.sig`, used by
+ * graph.js's change-detection signature: a freshly built DOM element always
+ * stringifies to the same generic "[object HTMLDivElement]" regardless of
+ * its actual content, so without this the live graph would never notice a
+ * tooltip's content changed (e.g. an IP added to a server) unless some other
+ * field changed at the same time.
+ */
+export function buildTooltip(rows) {
+  const el = document.createElement('div');
+  el.className = 'graph-tooltip';
+  const sig = [];
+  rows.filter(row => row !== null && row !== undefined && row !== false && row !== '').forEach(row => {
+    // typeof row === 'object' (not just `row.bold` truthiness) guards against
+    // the legacy String.prototype.bold()/italics() wrapper methods — a plain
+    // string row's `.bold` is that *function*, which is truthy, so every row
+    // would render bold without this check.
+    const isObj = row !== null && typeof row === 'object';
+    const text = isObj ? row.text : row;
+    const line = document.createElement('div');
+    line.textContent = text;
+    if (isObj && row.bold) line.style.fontWeight = '700';
+    if (isObj && row.muted) line.style.opacity = '0.7';
+    el.appendChild(line);
+    sig.push(text);
+  });
+  el.dataset.sig = sig.join('');
+  return el;
 }
 
 /**

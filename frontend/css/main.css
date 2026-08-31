@@ -22,6 +22,10 @@ select{cursor:pointer}
 #graph-legend .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#d1d5db}
 #graph-legend .leg-dot{width:11px;height:11px;border-radius:2px;flex-shrink:0}
 #edge-tooltip{position:fixed;z-index:200;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:7px 11px;font-size:0.78rem;color:#e2e8f0;pointer-events:none;white-space:pre;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none}
+/* vis-network's own node-hover popup (see buildTooltip() in graph.js) — kept
+   deliberately small/compact per the same brief as #edge-tooltip above. */
+.vis-tooltip{position:absolute;z-index:20;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:6px 10px;box-shadow:0 4px 12px rgba(0,0,0,0.5);max-width:280px;pointer-events:none}
+.graph-tooltip{font-size:0.68rem;line-height:1.45;color:#e2e8f0;white-space:nowrap}
 #sidebar-resizer{width:5px;background:transparent;cursor:col-resize;flex-shrink:0;display:none;transition:background 0.15s}
 #sidebar-resizer:hover,#sidebar-resizer.dragging{background:#1d4ed8}
 #sidebar{width:430px;min-width:280px;max-width:700px;background:#16213e;border-left:1px solid #0f3460;overflow-y:auto;overflow-x:hidden;padding:14px;display:none;flex-direction:column;gap:10px}

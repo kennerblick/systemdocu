@@ -1,6 +1,6 @@
 /*
  * main.js — application entry point: DOMContentLoaded init, sidebar resizer,
- *           layout toggle wiring, and Excel export.
+ *           layout toggle wiring, and Excel/GraphML export.
  * Imports and initialises all feature modules.
  */
 'use strict';
@@ -23,6 +23,19 @@ function exportExcel() {
   a.click();
 }
 
+/**
+ * Triggers the browser to download the GraphML export from the API — the
+ * full topology (Server/Instanz/Cluster/Umgebung/Anwendung/Anschluss-Knoten
+ * plus jede Beziehung dazwischen) as a graph file for tools like yEd, Gephi
+ * or Cytoscape.
+ */
+function exportGraphml() {
+  const a = document.createElement('a');
+  a.href = '/api/export/graphml';
+  a.download = 'systemdocu.graphml';
+  a.click();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Wire up all module event listeners
   initFilters();
@@ -34,8 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Layout toggle button
   document.getElementById('layout-toggle-btn').addEventListener('click', toggleLayout);
 
-  // Excel export button
+  // Excel / GraphML export buttons
   document.getElementById('btn-export-excel').addEventListener('click', exportExcel);
+  document.getElementById('btn-export-graphml').addEventListener('click', exportGraphml);
 
   // Sidebar resizer
   (function () {
