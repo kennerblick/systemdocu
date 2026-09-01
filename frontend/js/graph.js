@@ -1115,11 +1115,26 @@ export function computeHierarchicalPositions(opts = {}) {
   const clusterIds = detailLevel === 'full' ? _clusters.map(c => 'cluster_' + c.id) : [];
   if (clusterIds.length) { y += placeGrid(clusterIds, y, NODE_H) + BELOW_GAP; }
 
+  // ── Switches/application-switches that don't belong to any real column
+  // (see the two cases below) still need *some* position, but they must
+  // stay in the switch/app-switch tier — above the server row, like every
+  // other one of their kind — rather than piling up below the deepest
+  // server+instance column in the whole graph: a whole extra "orphan
+  // column" placed beyond the rightmost real content, at row 0's own
+  // switch-tier height, keeps "Umgebung"/"Anwendung" reading above
+  // "Server" even for these edge cases.
+  const orphanTierX = Object.values(pos).reduce((max, p) => Math.max(max, p.x), 0) + COL_GAP + NODE_W;
+  const orphanSwitchY = (rowInfo.length ? rowInfo[0].y0 : 0) - SWITCH_GAP;
+  const orphanAppSwitchY = (rowInfo.length ? rowInfo[0].y0 : 0) - APP_SWITCH_GAP;
+  const placeRowAt = (ids, x0, rowY) => {
+    ids.forEach((id, i) => { pos[id] = { x: x0 + i * NODE_W, y: rowY }; });
+  };
+
   // ── Switches for environments with no server-member column (only
   // instance members, or only a configured gateway and no members at all
   // in the current view) still need a position — without this they'd stay
   // wherever vis last put them (usually near the origin), disconnected
-  // from their actual members/gateway. Group them in their own small row.
+  // from their actual members/gateway.
   const positionedEnvIds = new Set([
     ...envColCx.keys(),
     ...allEnvironments.filter(e => pos['switch_' + e.id]).map(e => e.id),
@@ -1135,8 +1150,7 @@ export function computeHierarchicalPositions(opts = {}) {
     })
     .sort((a, b) => a.name.localeCompare(b.name));
   if (fallbackSwitchEnvs.length) {
-    y += BELOW_GAP;
-    y += placeGrid(fallbackSwitchEnvs.map(env => 'switch_' + env.id), y, NODE_H * 0.6);
+    placeRowAt(fallbackSwitchEnvs.map(env => 'switch_' + env.id), orphanTierX, orphanSwitchY);
   }
 
   // ── Application-switches for a server whose membership in this
@@ -1162,8 +1176,7 @@ export function computeHierarchicalPositions(opts = {}) {
     });
   }
   if (orphanAppSwitchIds.length) {
-    y += BELOW_GAP;
-    y += placeGrid(orphanAppSwitchIds, y, NODE_H * 0.5);
+    placeRowAt(orphanAppSwitchIds, orphanTierX, orphanAppSwitchY);
   }
 
   // ── Routers: centered over their own group's column span (not an
