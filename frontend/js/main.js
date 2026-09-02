@@ -6,7 +6,7 @@
 'use strict';
 
 import { loadAll, initSSE } from './api.js';
-import { toggleLayout } from './graph.js';
+import { toggleLayout, buildGraphmlExport } from './graph.js';
 import { initFilters } from './filters.js';
 import { initSidebar } from './sidebar.js';
 import { initCluster } from './cluster.js';
@@ -28,12 +28,22 @@ function exportExcel() {
  * full topology (Server/Instanz/Cluster/Umgebung/Anwendung/Anschluss-Knoten
  * plus jede Beziehung dazwischen) as a graph file for tools like yEd, Gephi
  * or Cytoscape.
+ *
+ * Built client-side from the currently rendered graph (real positions,
+ * colors, shapes from the hierarchical layout) rather than fetched from
+ * the backend, so the export matches exactly what is on screen instead
+ * of a generic server-side grid layout.
  */
 function exportGraphml() {
+  const xml = buildGraphmlExport();
+  if (!xml) return;
+  const blob = new Blob([xml], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = '/api/export/graphml';
+  a.href = url;
   a.download = 'systemdocu.graphml';
   a.click();
+  URL.revokeObjectURL(url);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

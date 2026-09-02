@@ -1,7 +1,7 @@
 /*
  * graph.js — vis-network graph construction, rendering, patching, and event handlers.
  * Exports: buildNode, renderGraph, patchGraph, computeHierarchicalPositions,
- *          toggleLayout, updateInstanceVisibility, renderLegend.
+ *          toggleLayout, updateInstanceVisibility, renderLegend, buildGraphmlExport.
  */
 'use strict';
 
@@ -1882,4 +1882,136 @@ export function renderLegend() {
       ).join('')
     : '';
   el.innerHTML = svcSection + envSection;
+}
+
+/* ------------------------------------------------------------------ *
+ * GraphML export (client-side)
+ *
+ * The backend export (/api/export/graphml) lays nodes out in a generic
+ * grid, one row per node kind — valid GraphML/yFiles, but for a graph
+ * this size (600+ nodes) it doesn't read as a topology, just a grid of
+ * boxes. The layout that actually makes this structure legible only
+ * exists here, client-side, as computeHierarchicalPositions() — it's
+ * what the user is already looking at on screen. So instead of
+ * reimplementing that algorithm in Python, export directly from the
+ * live vis-network: same nodes, same edges, same positions/colors/
+ * shapes/sizes currently rendered. WYSIWYG, and still plain GraphML
+ * with the yFiles extension, so it stays an open format yEd/Gephi/
+ * Cytoscape can all read.
+ * ------------------------------------------------------------------ */
+
+const GRAPHML_SHAPE = {
+  dot: 'ellipse',
+  ellipse: 'ellipse',
+  box: 'rectangle',
+  square: 'rectangle',
+  diamond: 'diamond',
+  hexagon: 'hexagon',
+  triangle: 'triangle',
+  star: 'star5',
+};
+
+function graphmlNodeKind(id) {
+  const s = String(id);
+  if (s.startsWith('appswitch_')) return 'application';
+  if (s.startsWith('switch_')) return 'environment';
+  if (s.startsWith('cluster_')) return 'cluster';
+  if (s.startsWith('inst_')) return 'instance';
+  if (s.startsWith('router_') || s === 'internet_cloud' || s.startsWith('provider_')) return 'router';
+  return 'server';
+}
+
+function graphmlColor(color, fallback) {
+  if (!color) return fallback;
+  if (typeof color === 'string') return color;
+  return color.background || fallback;
+}
+
+function graphmlTitleText(title) {
+  if (!title) return '';
+  if (typeof title === 'string') return title;
+  if (title.textContent != null) return title.textContent.replace(/\s+/g, ' ').trim();
+  return '';
+}
+
+function xmlEscape(value) {
+  return escHtml(value == null ? '' : String(value));
+}
+
+/**
+ * Builds a yEd/Gephi-compatible GraphML document from the currently
+ * rendered vis-network graph (real positions, colors, shapes).
+ * Returns the GraphML XML as a string.
+ */
+export function buildGraphmlExport() {
+  if (!network || !nodes || !edges) return null;
+  const nodeArr = nodes.get();
+  const edgeArr = edges.get();
+  const ids = nodeArr.map(n => n.id);
+  const positions = network.getPositions(ids);
+
+  const nodeXml = nodeArr.map(n => {
+    const pos = positions[n.id] || { x: 0, y: 0 };
+    const box = network.getBoundingBox(n.id) || { left: pos.x - 40, right: pos.x + 40, top: pos.y - 20, bottom: pos.y + 20 };
+    const width = Math.max(20, box.right - box.left);
+    const height = Math.max(20, box.bottom - box.top);
+    const shape = GRAPHML_SHAPE[n.shape] || 'rectangle';
+    const fill = graphmlColor(n.color, '#5a6a8a');
+    const label = n.label != null ? String(n.label) : String(n.id);
+    const kind = graphmlNodeKind(n.id);
+    const description = graphmlTitleText(n.title);
+    return (
+      `      <node id="${xmlEscape(n.id)}">\n` +
+      `        <data key="d_kind">${xmlEscape(kind)}</data>\n` +
+      (description ? `        <data key="d_description">${xmlEscape(description)}</data>\n` : '') +
+      `        <data key="d_gfx">\n` +
+      `          <y:ShapeNode>\n` +
+      `            <y:Geometry x="${pos.x.toFixed(1)}" y="${pos.y.toFixed(1)}" width="${width.toFixed(1)}" height="${height.toFixed(1)}"/>\n` +
+      `            <y:Fill color="${xmlEscape(fill)}" transparent="false"/>\n` +
+      `            <y:BorderStyle color="#000000" type="line" width="1.0"/>\n` +
+      `            <y:NodeLabel>${xmlEscape(label)}</y:NodeLabel>\n` +
+      `            <y:Shape type="${shape}"/>\n` +
+      `          </y:ShapeNode>\n` +
+      `        </data>\n` +
+      `      </node>\n`
+    );
+  }).join('');
+
+  const edgeXml = edgeArr.map((e, i) => {
+    const eid = e.id != null ? e.id : `e${i + 1}`;
+    const color = graphmlColor(e.color, '#4a6a8a');
+    const label = e.label ? String(e.label) : '';
+    const dashed = !!e.dashes;
+    const arrows = e.arrows;
+    const toArrow = arrows == null
+      ? true
+      : (typeof arrows === 'string' ? arrows.includes('to') : !!(arrows.to && arrows.to.enabled !== false));
+    const fromArrow = typeof arrows === 'object' && arrows && arrows.from && arrows.from.enabled;
+    return (
+      `      <edge id="${xmlEscape(eid)}" source="${xmlEscape(e.from)}" target="${xmlEscape(e.to)}">\n` +
+      (label ? `        <data key="e_label">${xmlEscape(label)}</data>\n` : '') +
+      `        <data key="e_gfx">\n` +
+      `          <y:PolyLineEdge>\n` +
+      `            <y:LineStyle color="${xmlEscape(color)}" type="${dashed ? 'dashed' : 'line'}" width="1.0"/>\n` +
+      `            <y:Arrows source="${fromArrow ? 'standard' : 'none'}" target="${toArrow ? 'standard' : 'none'}"/>\n` +
+      (label ? `            <y:EdgeLabel>${xmlEscape(label)}</y:EdgeLabel>\n` : '') +
+      `          </y:PolyLineEdge>\n` +
+      `        </data>\n` +
+      `      </edge>\n`
+    );
+  }).join('');
+
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:y="http://www.yworks.com/xml/graphml">\n` +
+    `  <key id="d_kind" for="node" attr.name="kind" attr.type="string"/>\n` +
+    `  <key id="d_description" for="node" attr.name="description" attr.type="string"/>\n` +
+    `  <key id="e_label" for="edge" attr.name="label" attr.type="string"/>\n` +
+    `  <key for="node" id="d_gfx" yfiles.type="nodegraphics"/>\n` +
+    `  <key for="edge" id="e_gfx" yfiles.type="edgegraphics"/>\n` +
+    `  <graph id="systemdocu" edgedefault="directed">\n` +
+    nodeXml + edgeXml +
+    `  </graph>\n` +
+    `</graphml>\n`
+  );
 }

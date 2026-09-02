@@ -406,19 +406,33 @@ Schaltfläche **GraphML** → `systemdocu.graphml` wird heruntergeladen — die
 komplette Topologie als [GraphML](http://graphml.graphdrawing.org/)-Datei
 zum Öffnen in Graph-/Diagramm-Werkzeugen wie yEd, Gephi oder Cytoscape.
 
-Jeder Server, jede Service-Instanz, jedes Cluster, jede Umgebung, jede
-Anwendung und jeder Internetanschluss wird zu einem Knoten (mit Attributen
-wie Name, Alternativname, IPs, OS-/Service-Typ, Host, Umgebungen,
-Anwendungen, Subnetz, …); Hosting, Cluster-Mitgliedschaft, Umgebungs-/
-Anwendungs-Zuordnung, Gateway-Verknüpfungen, Router-Verkettung sowie alle
-Server- und Instanz-/Cluster-Relationen werden zu Kanten.
+Der Export wird **im Browser aus dem gerade gerenderten Graphen** erzeugt
+(gleiche Knoten, Kanten, Positionen, Farben und Formen wie in der
+Topologie-Ansicht) statt serverseitig neu berechnet. Grund: Die Anwendung
+verwendet bereits einen eigenen, auf diese Struktur zugeschnittenen
+hierarchischen Layout-Algorithmus (`computeHierarchicalPositions()` in
+`frontend/js/graph.js`) — Router/Internet oben, darunter Umgebungen und
+Anwendungen, darunter die Server-Spalten mit ihren Instanzen. Ein früherer
+serverseitiger Export mit generischem Zeilen-Raster war bei einer Topologie
+dieser Größe (600+ Knoten) nicht mehr übersichtlich; der clientseitige
+Export übernimmt stattdessen 1:1 die bereits sinnvoll angeordnete Ansicht.
 
-Die Datei enthält zusätzlich die yFiles-GraphML-Erweiterung (Form, Farbe,
-Beschriftung je Knotenart, nach Art in Zeilen gruppiert), damit sie direkt
-in yEd sichtbar ist — ohne sie würde yEd alle Knoten an derselben
-Standardposition zeichnen (nur ein gelbes Rechteck). Die Positionen sind
-ein einfaches Raster als Ausgangspunkt; über yEds eigenes Menü *Layout*
-lässt sich die Anordnung anschließend beliebig neu berechnen.
+Jeder Server, jede Service-Instanz, jedes Cluster, jede Umgebung, jede
+Anwendung und jeder Internetanschluss wird zu einem Knoten; Hosting,
+Cluster-Mitgliedschaft, Umgebungs-/Anwendungs-Zuordnung, Gateway-
+Verknüpfungen, Router-Verkettung sowie alle Server- und Instanz-/Cluster-
+Relationen werden zu Kanten.
+
+Die Datei enthält die yFiles-GraphML-Erweiterung (reale Position, Form,
+Farbe, Beschriftung je Knoten aus dem gerenderten Graphen sowie
+Beschriftung/Pfeilrichtung je Kante), damit sie direkt in yEd sichtbar ist
+— ohne sie würde yEd alle Knoten an derselben Standardposition zeichnen
+(nur ein gelbes Rechteck).
+
+Der alte serverseitige Endpunkt `/api/export/graphml` (generisches
+Knotenart-Raster statt echter Topologie-Positionen) bleibt für
+programmatischen/headless Zugriff ohne Browser erhalten, wird von der
+Oberfläche aber nicht mehr verwendet.
 
 ### DB Import/Export (JSON)
 
