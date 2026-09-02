@@ -413,6 +413,13 @@ Anwendungen, Subnetz, …); Hosting, Cluster-Mitgliedschaft, Umgebungs-/
 Anwendungs-Zuordnung, Gateway-Verknüpfungen, Router-Verkettung sowie alle
 Server- und Instanz-/Cluster-Relationen werden zu Kanten.
 
+Die Datei enthält zusätzlich die yFiles-GraphML-Erweiterung (Form, Farbe,
+Beschriftung je Knotenart, nach Art in Zeilen gruppiert), damit sie direkt
+in yEd sichtbar ist — ohne sie würde yEd alle Knoten an derselben
+Standardposition zeichnen (nur ein gelbes Rechteck). Die Positionen sind
+ein einfaches Raster als Ausgangspunkt; über yEds eigenes Menü *Layout*
+lässt sich die Anordnung anschließend beliebig neu berechnen.
+
 ### DB Import/Export (JSON)
 
 Schaltfläche **DB Import/Export** → vollständiger, verlustfreier Export als

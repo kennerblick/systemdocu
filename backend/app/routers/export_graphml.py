@@ -15,9 +15,20 @@ GraphML (http://graphml.graphdrawing.org/) is a plain, well-known XML
 schema, so this is built with the standard library's ElementTree rather than
 pulling in a graph library — no extra dependency, and it mirrors the
 hand-rolled approach already used for the Excel export (openpyxl aside).
+
+Every node/edge also carries the yFiles GraphML extension (the "y:"-prefixed
+elements below) alongside the plain <data> attributes: yEd renders nodes
+*without* it all at an identical default position/size, so hundreds of nodes
+end up perfectly stacked on top of each other — indistinguishable from a
+single, empty-looking box. The extension gives each node an actual (if
+simple, grid-based — real coordinates only exist client-side, in the app's
+own live layout, not stored server-side) position, size, shape and fill, and
+each edge an arrowhead and label, so the file is immediately readable; yEd's
+own layout algorithms (Layout menu) can then rearrange it however preferred.
 """
 import io
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -34,7 +45,14 @@ from ..models import (
 router = APIRouter(tags=["export"])
 
 GRAPHML_NS = "http://graphml.graphdrawing.org/xmlns"
+Y_NS = "http://www.yworks.com/xml/graphml"
 ET.register_namespace("", GRAPHML_NS)
+ET.register_namespace("y", Y_NS)
+
+
+def _y(tag: str) -> str:
+    return f"{{{Y_NS}}}{tag}"
+
 
 # (key id, applies to "node"/"edge", attribute name, GraphML type)
 _KEYS = [
@@ -64,6 +82,25 @@ _KEYS = [
     ("e_direction",    "edge", "direction",     "string"),
 ]
 
+# yEd-visible shape/fill per node kind (a "generic node" for anything
+# unlisted) — environment/application nodes carry their own DB color instead
+# and only fall back to this if unset.
+_KIND_STYLE = {
+    "environment": {"shape": "hexagon",  "color": "#22c55e", "height": 40.0},
+    "application": {"shape": "hexagon",  "color": "#3b82f6", "height": 40.0},
+    "router":      {"shape": "diamond",  "color": "#f97316", "height": 40.0},
+    "server":      {"shape": "rectangle", "color": "#1e4080", "height": 30.0},
+    "instance":    {"shape": "ellipse",  "color": "#2a6a4a", "height": 30.0},
+    "cluster":     {"shape": "diamond",  "color": "#7c3aed", "height": 40.0},
+}
+_DEFAULT_STYLE = {"shape": "rectangle", "color": "#5a6a8a", "height": 30.0}
+
+# One row per kind, top to bottom, purely so the initial (pre-layout) view
+# groups similar things together instead of interleaving them at random.
+_KIND_ROW = {"environment": 0, "application": 1, "router": 2, "server": 3, "instance": 4, "cluster": 5}
+_ROW_HEIGHT = 150.0
+_NODE_GAP = 30.0
+
 
 def _node_id(kind: str, obj_id: int) -> str:
     return f"{kind}_{obj_id}"
@@ -78,6 +115,19 @@ class _GraphBuilder:
             "graph", {"id": "systemdocu", "edgedefault": "directed"}
         )
         self._edge_seq = 0
+        self._kind_next_x: dict[str, float] = defaultdict(float)
+
+    def _node_geometry(self, kind: str, label: str) -> tuple[float, float, float, float]:
+        """Places nodes of the same kind left-to-right in their own row,
+        packed by each node's own (label-based) width - see module docstring
+        for why any position at all is needed here."""
+        style = _KIND_STYLE.get(kind, _DEFAULT_STYLE)
+        width = max(80.0, min(240.0, 9.0 * len(label or "") + 24.0))
+        height = style["height"]
+        x = self._kind_next_x[kind]
+        y = _KIND_ROW.get(kind, len(_KIND_ROW)) * _ROW_HEIGHT
+        self._kind_next_x[kind] = x + width + _NODE_GAP
+        return x, y, width, height
 
     def add_node(self, node_id: str, **attrs) -> None:
         el = ET.SubElement(self.graph, "node", {"id": node_id})
@@ -87,6 +137,23 @@ class _GraphBuilder:
             key = "d_" + name
             data = ET.SubElement(el, "data", {"key": key})
             data.text = str(value).lower() if name == "is_gateway" else str(value)
+
+        kind = attrs.get("kind", "")
+        label = str(attrs.get("label") or node_id)
+        style = _KIND_STYLE.get(kind, _DEFAULT_STYLE)
+        fill = attrs.get("color") or style["color"]
+        x, y, width, height = self._node_geometry(kind, label)
+
+        gfx = ET.SubElement(el, "data", {"key": "d_gfx"})
+        shape_node = ET.SubElement(gfx, _y("ShapeNode"))
+        ET.SubElement(shape_node, _y("Geometry"), {
+            "x": f"{x:.1f}", "y": f"{y:.1f}", "width": f"{width:.1f}", "height": f"{height:.1f}",
+        })
+        ET.SubElement(shape_node, _y("Fill"), {"color": fill, "transparent": "false"})
+        ET.SubElement(shape_node, _y("BorderStyle"), {"color": "#000000", "type": "line", "width": "1.0"})
+        node_label = ET.SubElement(shape_node, _y("NodeLabel"))
+        node_label.text = label
+        ET.SubElement(shape_node, _y("Shape"), {"type": style["shape"]})
 
     def add_edge(self, source: str, target: str, **attrs) -> None:
         self._edge_seq += 1
@@ -99,6 +166,21 @@ class _GraphBuilder:
                 continue
             data = ET.SubElement(el, "data", {"key": "e_" + name})
             data.text = str(value)
+
+        gfx = ET.SubElement(el, "data", {"key": "e_gfx"})
+        poly_edge = ET.SubElement(gfx, _y("PolyLineEdge"))
+        ET.SubElement(poly_edge, _y("LineStyle"), {"color": "#4a6a8a", "type": "line", "width": "1.0"})
+        direction = attrs.get("direction")
+        arrows = {"source": "none", "target": "standard"}
+        if direction == "both":
+            arrows["source"] = "standard"
+        elif direction == "none":
+            arrows["target"] = "none"
+        ET.SubElement(poly_edge, _y("Arrows"), arrows)
+        label_text = attrs.get("label")
+        if label_text:
+            edge_label = ET.SubElement(poly_edge, _y("EdgeLabel"))
+            edge_label.text = str(label_text)
 
 
 def _build_document(
@@ -116,6 +198,11 @@ def _build_document(
             "id": key_id, "for": for_,
             "attr.name": name, "attr.type": type_,
         })
+    # yFiles graphics keys — see module docstring. No attr.name/attr.type:
+    # yfiles.type tells yEd the <data> holds a <y:ShapeNode>/<y:PolyLineEdge>
+    # rather than a plain attribute value.
+    ET.SubElement(root, "key", {"for": "node", "id": "d_gfx", "yfiles.type": "nodegraphics"})
+    ET.SubElement(root, "key", {"for": "edge", "id": "e_gfx", "yfiles.type": "edgegraphics"})
 
     g = _GraphBuilder()
 
