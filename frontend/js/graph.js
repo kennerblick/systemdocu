@@ -1149,8 +1149,33 @@ export function computeHierarchicalPositions(opts = {}) {
       return hasInstMember || env.default_gateway_router_id || env.default_gateway_server_id;
     })
     .sort((a, b) => a.name.localeCompare(b.name));
-  if (fallbackSwitchEnvs.length) {
-    placeRowAt(fallbackSwitchEnvs.map(env => 'switch_' + env.id), orphanTierX, orphanSwitchY);
+  // An environment lands here whenever *no* server counts it as their
+  // primary (first-listed) membership — which happens not only for truly
+  // member-less environments, but also for one whose only real members
+  // (server_environments) all happen to list some *other* environment
+  // first (e.g. a shared gateway server, itself primarily grouped under
+  // the parent network, is the only member of a secondary VLAN). That
+  // second case still has real members with real, already-computed
+  // positions — anchor the switch above their centroid instead of the
+  // generic orphan row, so it reads as "belongs near its members" rather
+  // than "unrelated, parked off to the side". Only environments with no
+  // positioned members at all fall through to the plain orphan row.
+  const trulyOrphanSwitchEnvs = [];
+  fallbackSwitchEnvs.forEach(env => {
+    const memberPositions = _servers
+      .filter(s => (s.environments || []).some(e => e.id === env.id))
+      .map(s => pos[s.id])
+      .filter(Boolean);
+    if (memberPositions.length) {
+      const avgX = memberPositions.reduce((sum, p) => sum + p.x, 0) / memberPositions.length;
+      const minY = Math.min(...memberPositions.map(p => p.y));
+      pos['switch_' + env.id] = { x: avgX, y: minY - SWITCH_GAP };
+    } else {
+      trulyOrphanSwitchEnvs.push(env);
+    }
+  });
+  if (trulyOrphanSwitchEnvs.length) {
+    placeRowAt(trulyOrphanSwitchEnvs.map(env => 'switch_' + env.id), orphanTierX, orphanSwitchY);
   }
 
   // ── Application-switches for a server whose membership in this
@@ -1159,8 +1184,10 @@ export function computeHierarchicalPositions(opts = {}) {
   // per-column pass — e.g. a gateway machine plugged into several networks
   // has an application-switch edge drawn in each of them (buildEnvironment
   // Switches considers every membership), but only its primary environment's
-  // column actually places it. Same fallback treatment as orphaned switches.
-  const orphanAppSwitchIds = [];
+  // column actually places it. Each one is tied to one specific member
+  // server, so anchor it just above that server's own (already-computed)
+  // position instead of a disconnected orphan row.
+  const orphanAppSwitches = [];
   if (detailLevel !== 'connections') {
     allEnvironments.forEach(env => {
       if (env.name.toLowerCase() === 'www') return;
@@ -1171,12 +1198,18 @@ export function computeHierarchicalPositions(opts = {}) {
         if (!app || seenAppIds.has(app.id)) return;
         seenAppIds.add(app.id);
         const key = 'appswitch_' + env.id + '_' + app.id;
-        if (!pos[key]) orphanAppSwitchIds.push(key);
+        if (!pos[key]) orphanAppSwitches.push({ key, anchorServerId: s.id });
       });
     });
   }
-  if (orphanAppSwitchIds.length) {
-    placeRowAt(orphanAppSwitchIds, orphanTierX, orphanAppSwitchY);
+  const unanchoredAppSwitchIds = [];
+  orphanAppSwitches.forEach(({ key, anchorServerId }) => {
+    const anchor = pos[anchorServerId];
+    if (anchor) pos[key] = { x: anchor.x, y: anchor.y - APP_SWITCH_GAP };
+    else unanchoredAppSwitchIds.push(key);
+  });
+  if (unanchoredAppSwitchIds.length) {
+    placeRowAt(unanchoredAppSwitchIds, orphanTierX, orphanAppSwitchY);
   }
 
   // ── Routers: centered over their own group's column span (not an
