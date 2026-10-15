@@ -4,8 +4,6 @@ Server-CMDB mit interaktiver Graphansicht. Dokumentiert physische und virtuelle 
 
 **Version: v0.5.0-alpha**
 
-![Graph-Ansicht](docs/screenshot.png)
-
 ---
 
 ## Inhaltsverzeichnis
